@@ -1,10 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { createPortal } from 'react-dom';
 import '@fontsource-variable/inter';
 import './styles.css';
 import { useSnapshot } from './store';
 import { bb } from './bridge';
-import { bufferInfo, dueAlerts, fmtLate, isQuiet, islandStatus, KONZEPTE, kColor, buildPlan, fmtIn, minsUntil, ymd, type Alert } from './logic';
+import { bufferInfo, dueAlerts, fmtLate, isQuiet, islandStatus, KONZEPTE, kColor, buildPlan, fmtIn, minsUntil, ymd, addDays, allTasks, ROTATION, type Alert } from './logic';
+import { AppCtx } from './ctx';
+import { useTaskDrag, COLS } from './taskDrag';
+import type { Task } from './types';
 import { doUploadPack, markUploaded } from './actions';
 import { Icon, Tick } from './ui';
 
@@ -80,7 +84,7 @@ function Island() {
   const STRIP = 34;
   let width = render ? 150 : 120, height = STRIP, radius = 999;
   if (alert && !open) { width = 340; height = STRIP + 48; radius = 24; }
-  if (open) { width = 440; height = STRIP + 132; radius = 28; }
+  if (open) { width = 760; height = STRIP + 330; radius = 30; }
   const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const doneN = st.todaySlots.filter((s) => s.uploaded).length;
   const nextMins = next ? minsUntil(next.when, now) : 0;
@@ -112,44 +116,87 @@ function Island() {
         </button>}
       </div>}
 
-      {open && <div className="pop isl-body" style={{ padding: '2px 12px 12px', gap: 8 }}>
-        {/* today: one bubble per slot */}
-        <div className="isl-tile" style={{ flex: 1.45 }} title="Today's uploads">
-          <Icon name="calendar" size={14} color="#AAC3F0" />
-          <div className="isl-slots">
-            {st.todaySlots.length ? st.todaySlots.map((s) => { const c = slotColor(s); return <div key={s.time} className="isl-slot" title={`${s.time} · ${s.video ? '#' + s.video.num : 'no video'} · ${s.uploaded ? 'uploaded' : s.state}`}>
-              <span className="isl-bubble" style={{ borderColor: c, background: s.uploaded ? c : 'transparent' }}>{s.uploaded ? <Tick size={10} color="#0B2016" /> : !s.video ? <span style={{ color: c, fontWeight: 800, fontSize: 11 }}>!</span> : null}</span>
-              <span className="num" style={{ fontSize: 10, color: 'var(--dim)' }}>{s.time}</span>
-            </div>; }) : <span className="small dim">Rest day</span>}
-          </div>
-          {allDone ? <span className="isl-tag" style={{ color: '#7FD9A8' }}><Tick size={10} color="#7FD9A8" /> all done</span>
-            : render ? <div className="row" style={{ gap: 6, width: '100%' }}><Icon name="film" size={12} color="#AAC3F0" /><div className="progress"><div style={{ width: `${Math.round((render.progress ?? 0) * 100)}%`, background: '#AAC3F0' }} /></div></div>
-            : <span className="isl-tag" title="Buffer: days covered by ready videos"><Icon name="film" size={11} />{b.days}d buffer</span>}
+      {open && <AppCtx.Provider value={{ snap, update, toast: flash, go: (p) => bb.showMain(p) }}><div className="pop isl-body isl-dock">
+        <div className="isl-row">
+          <GenTile flash={flash} />
+          <UploadTile flash={flash} />
         </div>
-
-        {/* next upload */}
-        <div className="isl-tile y" title="Next upload">
-          {next ? <>
-            <div className="row" style={{ gap: 6 }}><span className="dot" style={{ background: kColor(next.video!.konzept) }} title={KONZEPTE[next.video!.konzept ?? 0]?.name} /><span style={{ fontSize: 20, fontWeight: 800 }}>#{next.video!.num}</span></div>
-            <span className="isl-tag" style={{ color: nextMins < 0 ? '#FF8F7A' : '#FFD978' }}>{next.time} · {nextMins < 0 ? (nextMins > -60 ? `${-nextMins}m late` : `${Math.floor(-nextMins / 60)}h late`) : fmtIn(nextMins)}</span>
-            <div className="row" style={{ gap: 6, marginTop: 'auto' }}>
-              <button className="isl-btn primary" onClick={() => doUploadPack(next.video!.num, flash)} title="Upload pack: video, thumbnail, description" aria-label="Upload pack"><Icon name="upload" size={15} color="#1A1404" sw={2.4} /></button>
-              <button className="isl-btn" onClick={async () => { await update(markUploaded(snap, next.video!.num)); flash(`#${next.video!.num} done`); }} title="Mark uploaded" aria-label="Mark uploaded"><Tick size={13} color="#7FD9A8" /></button>
-            </div>
-          </> : <><Icon name="upload" size={18} color="#FFD978" /><span className="isl-tag">no video ready</span></>}
-        </div>
-
-        {/* make videos */}
-        <div className="isl-tile f" title="Make videos">
-          <div className="row" style={{ gap: 6 }}><Icon name="film" size={16} color="#C9CCF5" /><span style={{ fontSize: 20, fontWeight: 800 }}>{b.missing2 > 0 ? b.missing2 : <Tick size={16} color="#7FD9A8" />}</span></div>
-          <span className="isl-tag">{b.missing2 > 0 ? 'to make' : `${b.readyCount} ready`}</span>
-          <button className={`isl-btn ${b.missing2 > 0 ? 'white' : ''}`} style={{ marginTop: 'auto', width: 'auto', padding: '0 10px', gap: 5 }} onClick={async () => { const n = Math.max(1, b.missing2); await bb.runGen(n); flash(`"Gen x${n}" copied`); }} title={`Copy "Gen x${Math.max(1, b.missing2)}" and open Claude`} aria-label="Run Gen">
-            <Icon name="play" size={12} color={b.missing2 > 0 ? '#12152A' : '#C9CCF5'} />{'Gen' + (b.missing2 > 1 ? ' x' + b.missing2 : '')}
-          </button>
-        </div>
+        <TodoTile />
         {note && <div className="isl-note">{note}</div>}
-      </div>}
+      </div></AppCtx.Provider>}
     </div>
   </div>;
 }
+
+/* ---------- Gen: pick a number, run ---------- */
+function GenTile({ flash }: { flash: (m: string) => void }) {
+  const { snap } = React.useContext(AppCtx)!;
+  const b = bufferInfo(snap);
+  const [n, setN] = useState(() => Math.max(1, Math.min(10, b.missing2 || 1)));
+  const last = [...snap.videos].sort((x, y) => y.num - x.num)[0];
+  const startK = last?.konzept != null ? ROTATION.indexOf(last.konzept) : -1;
+  const nextK = Array.from({ length: Math.min(n, 6) }, (_, i) => ROTATION[(startK + 1 + i + ROTATION.length) % ROTATION.length]);
+  const r = snap.render;
+  const bc = b.days < 1 ? '#FF8F7A' : b.days < 2 ? '#FFC63A' : '#7FD9A8';
+  return <div className="isl-tile f dk">
+    <div className="dk-h"><Icon name="film" size={14} color="#FFD978" /><b>Gen</b><span className="isl-tag" style={{ marginLeft: 'auto', color: bc }}>{b.days}d buffer · {b.readyCount} ready</span></div>
+    <div className="dk-gen">
+      <div className="dk-step"><button onClick={() => setN(Math.max(1, n - 1))} aria-label="Fewer">−</button><b className="num">{n}</b><button onClick={() => setN(Math.min(10, n + 1))} aria-label="More">+</button></div>
+      <button className="dk-go" onClick={async () => { await bb.runGen(n); flash(`"${n > 1 ? `Gen x${n}` : 'Gen'}" copied · paste in Claude`); }}><Icon name="play" size={12} color="#1A1404" sw={2.4} /> Run Gen{n > 1 ? ` x${n}` : ''}</button>
+    </div>
+    {r ? <div className="row" style={{ gap: 6, width: '100%' }}><Icon name="film" size={12} color="#AAC3F0" /><span className="isl-tag">#{r.video ?? ''}</span><div className="progress" style={{ flex: 1 }}><div style={{ width: `${Math.round((r.progress ?? 0) * 100)}%`, background: '#AAC3F0' }} /></div><span className="isl-tag num">{Math.round((r.progress ?? 0) * 100)}%</span></div>
+      : <div className="dk-ks"><span className="isl-tag">Next</span>{nextK.map((k, i) => <span key={i} className="dk-k" title={KONZEPTE[k]?.name}><i style={{ background: kColor(k) }} />K{k} {KONZEPTE[k]?.name}</span>)}</div>}
+    {last && <span className="isl-tag" style={{ marginTop: 'auto' }}>Last made #{last.num} · K{last.konzept ?? '?'} {KONZEPTE[last.konzept ?? 0]?.name ?? ''}</span>}
+  </div>;
+}
+
+/* ---------- uploads: next one + 3 days of slots ---------- */
+const SC = { uploaded: '#7FD9A8', ready: '#AAC3F0', next: '#FFC63A', missing: '#FF8F7A', overdue: '#FF8F7A', missed: 'rgba(255,255,255,.3)' } as const;
+function UploadTile({ flash }: { flash: (m: string) => void }) {
+  const { snap, update } = React.useContext(AppCtx)!;
+  const now = new Date(snap.now);
+  const plan = buildPlan(snap, now, 3);
+  const next = plan.filter((x) => !x.uploaded && x.state !== 'missed').find((x) => x.video) || null;
+  const mins = next ? minsUntil(next.when, now) : 0;
+  const days = [0, 1, 2].map((i) => { const d = addDays(now, i); return { d, i, slots: plan.filter((x) => x.date === ymd(d)) }; });
+  return <div className="isl-tile y dk" style={{ flex: 1.3 }}>
+    <div className="dk-h"><Icon name="upload" size={14} color="#FFD978" /><b>Uploads</b>
+      {next && <span className="isl-tag" style={{ marginLeft: 'auto', color: mins < 0 ? '#FF8F7A' : '#FFD978' }}>#{next.video!.num} · {next.time} · {mins < 0 ? fmtLate(mins) : fmtIn(mins)}</span>}</div>
+    <div className="dk-days">
+      {days.map(({ d, i, slots }) => <div key={i} className="dk-day"><span className="dk-dl">{i === 0 ? 'Today' : i === 1 ? 'Tmrw' : d.toLocaleDateString('en-GB', { weekday: 'short' })}</span>
+        <div className="dk-slots">{slots.length ? slots.map((x) => <span key={x.time} className={`dk-slot ${x.state}`} style={{ ['--c' as string]: SC[x.state] }}>{x.uploaded ? <Tick size={9} color="#7FD9A8" /> : null}<b className="num">{x.time}</b>{x.video && !x.uploaded ? <small>#{x.video.num}</small> : null}</span>) : <span className="isl-tag">no posts</span>}</div></div>)}
+    </div>
+    {next && <div className="row" style={{ gap: 6, marginTop: 'auto' }}>
+      <button className="dk-btn y" onClick={() => doUploadPack(next.video!.num, flash)}><Icon name="upload" size={12} color="#1A1404" sw={2.4} /> Upload pack #{next.video!.num}</button>
+      <button className="dk-btn" onClick={async () => { await update(markUploaded(snap, next.video!.num)); flash(`#${next.video!.num} done`); }}><Tick size={11} color="#7FD9A8" /> Done</button>
+    </div>}
+  </div>;
+}
+
+/* ---------- to-do: drag between To do / In progress / Done ---------- */
+function TodoTile() {
+  const { snap } = React.useContext(AppCtx)!;
+  const today = ymd(new Date(snap.now));
+  const all = allTasks(snap);
+  const { drag, over, onDown } = useTaskDrag(all);
+  const pick = (c: string) => all.filter((t) => t.col === c && (c === 'prog' || !t.due || (c === 'done' ? t.due >= today : t.due <= today)));
+  const dragged = drag ? all.find((t) => t.id === drag.id) : null;
+  const card = (t: Task, ghost = false) => <div key={t.id + (ghost ? 'g' : '')} className={`dk-card ${t.col} ${ghost ? 'ghost' : ''} ${!ghost && drag?.id === t.id ? 'drag' : ''}`}
+    style={ghost ? { left: drag!.x, top: drag!.y, width: drag!.w } : undefined} onPointerDown={ghost ? undefined : (e) => onDown(e, t)}>
+    <i style={{ background: kColor(t.konzept) }} /><span>{t.title}</span>{t.prio && <em>{t.prio}</em>}
+  </div>;
+  return <div className="isl-tile dk" style={{ flex: 'none' }}>
+    <div className="dk-h"><Icon name="check" size={14} color="#AAC3F0" /><b>To do</b><span className="isl-tag" style={{ marginLeft: 'auto' }}>drag between columns</span></div>
+    <div className="dk-board">
+      {COLS.map((c) => { const list = pick(c.key); return <div key={c.key} data-col={c.key} className={`dk-col ${over === c.key ? 'over' : ''}`}>
+        <div className="dk-ch"><i style={{ background: c.dot }} />{c.name}<span>{list.length}</span></div>
+        {list.slice(0, 4).map((t) => card(t))}
+        {list.length > 4 && <span className="isl-tag" style={{ paddingLeft: 4 }}>+{list.length - 4} more</span>}
+        {!list.length && <span className="dk-empty">Drop here</span>}
+      </div>; })}
+    </div>
+    {dragged && drag && createPortal(card(dragged, true), document.body)}
+  </div>;
+}
+
 createRoot(document.getElementById('root')!).render(<Island />);

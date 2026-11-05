@@ -186,7 +186,7 @@ function autoBackup() {
 
 /* ---------- windows ---------- */
 let mainWin = null, islandWin = null, tray = null, quitting = false;
-const ISL_W = 900, ISL_H = 340;
+const ISL_W = 900, ISL_H = 420;
 const iconPath = () => path.join(__dirname, 'icon.png');
 function load(win, page) {
   if (DEV_URL) win.loadURL(`${DEV_URL}/${page}.html`);
