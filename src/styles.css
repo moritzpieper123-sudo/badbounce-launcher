@@ -805,3 +805,9 @@ main.content > .grid > *:nth-child(4) { animation-delay: .22s; } main.content > 
 .np-ctl button:hover { background: rgba(255,255,255,.12); }
 .np-ctl .np-play { width: 40px; height: 40px; background: #F4F6FF; box-shadow: 0 0 16px rgba(244,246,255,.35); }
 .np-ctl .np-play:hover { background: #fff; transform: scale(1.06); }
+
+/* header with a centred middle (now playing) */
+.top.top3 { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: end; }
+.top3 .top-c { display: flex; justify-content: center; }
+.top3 .top-r { justify-content: flex-end; }
+@media (max-width: 1180px) { .top.top3 { grid-template-columns: 1fr auto; } .top3 .top-c { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; } }

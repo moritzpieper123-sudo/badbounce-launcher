@@ -32,8 +32,7 @@ export default function Today() {
   const isMonday = now.getDay() === 1;
   const rev = isMonday ? weeklyReview(snap) : null;
   return <>
-    <Header title={`${greet}, Mo`} sub={sub} right={<>
-      <NowPlaying />
+    <Header title={`${greet}, Mo`} sub={sub} center={<NowPlaying />} right={<>
       <button className="btn accent" onClick={() => go('board')}><Icon name="plus" size={15} sw={2.4} /> New task</button>
     </>} />
 

@@ -16,9 +16,24 @@ $asT = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { $_.Name -eq '
 function Await($op, [Type]$t) { $task = $asT.MakeGenericMethod($t).Invoke($null, @($op)); [void]$task.Wait(5000); $task.Result }
 [void][Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
 [void][Windows.Storage.Streams.IRandomAccessStreamWithContentType, Windows.Storage.Streams, ContentType = WindowsRuntime]
+[void][Windows.Storage.Streams.DataReader, Windows.Storage.Streams, ContentType = WindowsRuntime]
+$log = Join-Path $env:TEMP 'bb-media-log.txt'
+function ReadCover($ref) {
+  try {
+    $st = Await ($ref.OpenReadAsync()) ([Windows.Storage.Streams.IRandomAccessStreamWithContentType])
+    if (-not $st) { Add-Content $log 'cover: open failed'; return $null }
+    $size = [uint32]$st.Size
+    if ($size -eq 0) { Add-Content $log 'cover: empty'; return $null }
+    $rd = New-Object Windows.Storage.Streams.DataReader($st.GetInputStreamAt(0))
+    [void](Await ($rd.LoadAsync($size)) ([uint32]))
+    $bytes = New-Object byte[] $size; $rd.ReadBytes($bytes); $rd.Dispose()
+    $mime = $st.ContentType; if (-not $mime) { $mime = 'image/jpeg' }
+    return @{ b64 = [Convert]::ToBase64String($bytes); mime = $mime }
+  } catch { Add-Content $log ("cover: " + $_.Exception.Message); return $null }
+}
 $mgr = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
 $cmdFile = '${cmdFile.replace(/'/g, "''")}'
-$lastKey = ''
+$lastKey = ''; $tries = 0
 while ($true) {
   $s = $null
   foreach ($x in $mgr.GetSessions()) { if ($x.SourceAppUserModelId -like '*Spotify*') { $s = $x } }
@@ -40,9 +55,9 @@ while ($true) {
     playing = ($pb.PlaybackStatus -eq 'Playing'); pos = $tl.Position.TotalSeconds; dur = ($tl.EndTime - $tl.StartTime).TotalSeconds;
     at = $tl.LastUpdatedTime.ToUnixTimeMilliseconds() }
   $key = "$($p.Title)|$($p.Artist)"
-  if ($key -ne $lastKey -and $p.Thumbnail) {
-    $st = Await ($p.Thumbnail.OpenReadAsync()) ([Windows.Storage.Streams.IRandomAccessStreamWithContentType])
-    if ($st) { $ms = New-Object System.IO.MemoryStream; [System.IO.WindowsRuntimeStreamExtensions]::AsStreamForRead($st).CopyTo($ms); $o.cover = [Convert]::ToBase64String($ms.ToArray()); $o.mime = $st.ContentType; $lastKey = $key }
+  if ($key -ne $lastKey) {
+    if ($p.Thumbnail) { $cv = ReadCover $p.Thumbnail; if ($cv) { $o.cover = $cv.b64; $o.mime = $cv.mime; $lastKey = $key; $tries = 0 } }
+    $tries++; if ($tries -gt 6) { $lastKey = $key; $tries = 0; $o.nocover = $true } # Spotify sets the cover a moment after the song starts
   }
   [Console]::Out.WriteLine(($o | ConvertTo-Json -Compress))
   Start-Sleep -Milliseconds 900
@@ -64,6 +79,7 @@ function start(cb) {
       try {
         const o = JSON.parse(l);
         if (o.cover) { cover = `data:${o.mime || 'image/jpeg'};base64,${o.cover}`; delete o.cover; delete o.mime; }
+        if (o.nocover) { cover = null; delete o.nocover; }
         const next = o.none ? null : { ...o, cover };
         const changed = JSON.stringify(next) !== JSON.stringify(last);
         last = next; if (changed) onChange(last);

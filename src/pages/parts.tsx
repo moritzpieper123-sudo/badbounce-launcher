@@ -7,8 +7,8 @@ import { TikTokLogo } from '../logos';
 import { doUploadPack, markUploaded, setLink, unmarkUploaded } from '../actions';
 import type { Task, Video } from '../types';
 
-export function Header({ title, sub, right }: { title: string; sub?: React.ReactNode; right?: React.ReactNode }) {
-  return <header className="top"><div><h1>{title}</h1>{sub && <p>{sub}</p>}</div>{right && <div className="row" style={{ flexWrap: 'wrap' }}>{right}</div>}</header>;
+export function Header({ title, sub, right, center }: { title: string; sub?: React.ReactNode; right?: React.ReactNode; center?: React.ReactNode }) {
+  return <header className={`top ${center ? 'top3' : ''}`}><div><h1>{title}</h1>{sub && <p>{sub}</p>}</div>{center && <div className="top-c">{center}</div>}{right && <div className="row top-r" style={{ flexWrap: 'wrap' }}>{right}</div>}</header>;
 }
 
 export function Thumb({ v, w = 64, h = 112 }: { v: Video | null | undefined; w?: number; h?: number }) {
