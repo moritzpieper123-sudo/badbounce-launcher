@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../ctx';
-import { addDays, allTasks, buildPlan, dayNumber, fmtDay, fmtNum, kpis, phaseLabel, ymd, parseYmd, konzeptTable, KONZEPTE, isReady, weeklyReview } from '../logic';
+import { addDays, allTasks, buildPlan, dayNumber, fmtDay, fmtNum, kpis, phaseLabel, ymd, parseYmd, konzeptTable, KONZEPTE, isReady, weeklyReview, ROTATION, kColor, uid } from '../logic';
 import { Rings, Spark, Icon, Count } from '../ui';
-import { Header, NextUpload, SlotList, TaskRow, BufferMeter } from './parts';
-import { bb } from '../bridge';
+import { Header, NextUpload, BufferMeter, DueLabel } from './parts';
+import { useTaskDrag, DropBar, COLS } from '../taskDrag';
+import type { Task } from '../types';
+import { bb, isDesktop } from '../bridge';
 
 export default function Today() {
   const { snap, go } = useApp();
@@ -62,42 +64,118 @@ export default function Today() {
       <span className="muted">Last week: {rev.posted} posted · {fmtNum(rev.k.views7)} views{rev.change != null ? ` (${rev.change >= 0 ? '+' : ''}${rev.change.toFixed(0)}%)` : ''}{rev.bestK ? ` · best Konzept K${rev.bestK.k}` : ''}{rev.bestSlot ? ` · best slot ${rev.bestSlot.slot}` : ''}</span>
     </div>}
 
-    <section className="grid g-auto">
-      <div className="glass card lift" style={{ justifyContent: 'space-between' }}>
+    <section className="dash">
+      <GenTool />
+      <UploadPlan />
+      <div className="glass card lift s3" style={{ justifyContent: 'space-between' }}>
         <div><h2>Today</h2><p className="sub">{plan.length ? 'Close your rings' : dn < 1 ? 'Warm-up has not started yet' : dn <= 2 ? 'Warm-up day: no posts, just scroll For You' : 'No uploads planned'}</p></div>
-        <div className="row rings-row" style={{ gap: 22 }}>
+        <div className="row rings-row" style={{ gap: 18 }}>
           <Rings rings={[{ frac: plan.length ? made / plan.length : 0, color: 'var(--glow)' }, { frac: plan.length ? uploaded / plan.length : 0, color: 'var(--yellow-text)' }, { frac: tasks.length ? tasksDone / tasks.length : 0, color: 'var(--frost)' }]} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[['Made', made, plan.length, 'var(--glow)'], ['Uploaded', uploaded, plan.length, 'var(--yellow)'], ['Tasks', tasksDone, tasks.length, 'var(--frost)']].map(([l, a, b, c]) =>
-              <div key={l as string} style={{ borderLeft: `3px solid ${c}`, paddingLeft: 10 }}><div className="small muted">{l}</div><div style={{ fontSize: 22, fontWeight: 600 }}>{a}<span className="dim" style={{ fontSize: 14, fontWeight: 500 }}> / {b}</span></div></div>)}
+              <div key={l as string} style={{ borderLeft: `3px solid ${c}`, paddingLeft: 9 }}><div className="small muted">{l}</div><div style={{ fontSize: 19, fontWeight: 600 }}>{a}<span className="dim" style={{ fontSize: 13, fontWeight: 500 }}> / {b}</span></div></div>)}
           </div>
         </div>
-        <BufferMeter />
       </div>
-
-      <div className="glass card lift">
-        <div className="between"><h2>Up next</h2><button className="btn sm" onClick={() => go('schedule')}>Schedule</button></div>
-        <NextUpload />
-        <SlotList date={now} />
-        {snap.render && <div className="row small" style={{ gap: 8 }}><Icon name="film" size={16} color="var(--frost)" /><span className="muted">Rendering {snap.render.video ?? ''} {snap.render.label ?? ''}</span><div className="progress"><div style={{ width: `${Math.round((snap.render.progress ?? 0) * 100)}%`, background: 'var(--frost)' }} /></div><span className="num">{Math.round((snap.render.progress ?? 0) * 100)}%</span></div>}
-      </div>
-
-      <div className="glass card lift" style={{ gap: 4 }}>
-        <div className="between" style={{ marginBottom: 6 }}><div><h2>My tasks</h2><p className="sub">Due today and late</p></div><button className="btn sm" onClick={() => go('board')}>Open board</button></div>
-        {tasks.length ? tasks.slice(0, 6).map((t) => <TaskRow key={t.id} t={t} />) : <div className="empty">Nothing due. Nice.</div>}
-        {tasks.length > 6 && <button className="linkbtn" onClick={() => go('board')}>+{tasks.length - 6} more on the board</button>}
-      </div>
-    </section>
-
-    <section className="glass card">
+      <TaskOverview />
+      <section className="glass card s4">
       <div className="between"><div><h2>This week</h2><p className="sub">{hasWeek ? 'Views per day (from your TikTok CSV)' : 'Uploads per day (views appear after the first CSV import)'}</p></div><button className="btn sm" onClick={() => bb.openUrl('https://www.tiktok.com/tiktokstudio/analytics')}>TikTok Studio</button></div>
-      <div className="weekbars" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0,1fr))', gap: 14, alignItems: 'end', height: 170 }}>
+      <div className="weekbars" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0,1fr))', gap: 8, alignItems: 'end', height: 'auto', flex: 1, minHeight: 150 }}>
         {week.map((d, i) => { const isT = i === 6; const v = barVals[i]; return <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, height: '100%', justifyContent: 'flex-end' }}>
           <span className="small" style={{ color: isT ? 'var(--glow)' : 'var(--dim)', fontWeight: 600 }}>{hasWeek ? (weekVals[i] == null ? '' : fmtNum(weekVals[i])) : v}</span>
-          <div className="bar-grow" style={{ animationDelay: `${i * 60}ms`, width: '100%', maxWidth: 64, height: Math.max(6, (v / maxBar) * 120), borderRadius: 14, background: isT ? 'var(--bar-hl)' : 'var(--bar)', boxShadow: isT ? '0 0 34px var(--hl-glow)' : 'inset 0 1px 0 rgba(var(--wrgb),.18)' }} />
-          <span className="small" style={{ color: isT ? 'var(--glow)' : 'var(--dim)' }}>{isT ? 'Today' : d.toLocaleDateString('en-GB', { weekday: 'short' })}</span>
+          <div className="bar-grow" style={{ animationDelay: `${i * 60}ms`, width: '100%', maxWidth: 64, height: Math.max(6, (v / maxBar) * 110), borderRadius: 10, background: isT ? 'var(--bar-hl)' : 'var(--bar)', boxShadow: isT ? '0 0 34px var(--hl-glow)' : 'inset 0 1px 0 rgba(var(--wrgb),.18)' }} />
+          <span className="small" style={{ color: isT ? 'var(--glow)' : 'var(--dim)' }}>{isT ? 'Today' : d.toLocaleDateString('en-GB', { weekday: 'short' }).slice(0, 2)}</span>
         </div>; })}
       </div>
     </section>
+    </section>
   </>;
+}
+
+
+/* ---------- Gen tool: make videos with Claude ---------- */
+function GenTool() {
+  const { snap, toast } = useApp();
+  const now = new Date(snap.now);
+  const plan = buildPlan(snap, now, 3).filter((x) => !x.uploaded && x.state !== 'missed');
+  const need = plan.filter((x) => !x.video).length;
+  const [n, setN] = useState(() => Math.max(1, Math.min(10, need || 1)));
+  const last = [...snap.videos].sort((a, b) => b.num - a.num)[0];
+  const startK = last?.konzept != null ? ROTATION.indexOf(last.konzept) : -1;
+  const nextK = Array.from({ length: Math.min(n, 6) }, (_, i) => ROTATION[(startK + 1 + i + ROTATION.length) % ROTATION.length]);
+  const r = snap.render;
+  const run = async () => {
+    if (!isDesktop) { const cmd = n > 1 ? `Gen x${n}` : 'Gen'; try { await navigator.clipboard.writeText(cmd); } catch { /* ignore */ } const u = snap.state.settings.projectUrl; if (u) bb.openUrl(u); toast(`"${cmd}" copied · paste it in Claude`); return; }
+    await bb.runGen(n); toast(`"${n > 1 ? `Gen x${n}` : 'Gen'}" copied · paste it in the Claude chat that just opened`); };
+  return <div className="glass card lift s4 gen">
+    <div className="between"><div><h2 className="row" style={{ gap: 8 }}><Icon name="film" size={18} color="var(--yellow-text)" />Gen</h2><p className="sub">Make new videos with Claude</p></div>
+      <span className={`chip ${need ? 'warn' : ''}`}>{need ? `${need} slot${need > 1 ? 's' : ''} need a video` : 'Next 3 days covered'}</span></div>
+    <div className="gen-row">
+      <div className="stepper" role="group" aria-label="How many videos">
+        <button onClick={() => setN(Math.max(1, n - 1))} aria-label="Fewer">−</button>
+        <b className="num">{n}</b>
+        <button onClick={() => setN(Math.min(10, n + 1))} aria-label="More">+</button>
+      </div>
+      <button className="btn primary gen-go" onClick={run}><Icon name="sparkle" size={16} /> Run Gen{n > 1 ? ` x${n}` : ''}</button>
+    </div>
+    <div className="row small" style={{ gap: 6, flexWrap: 'wrap' }}><span className="dim">Next Konzepte</span>{nextK.map((k, i) => <span key={i} className="chip"><span className="dot" style={{ width: 6, height: 6, background: kColor(k) }} />K{k} {KONZEPTE[k]?.name}</span>)}</div>
+    {r ? <div className="row small" style={{ gap: 8 }}><Icon name="film" size={15} color="var(--frost)" /><span className="muted" style={{ whiteSpace: 'nowrap' }}>Rendering {r.video ?? ''}</span><div className="progress" style={{ flex: 1 }}><div style={{ width: `${Math.round((r.progress ?? 0) * 100)}%`, background: 'var(--frost)' }} /></div><span className="num">{Math.round((r.progress ?? 0) * 100)}%</span></div>
+      : last ? <span className="small dim">Last made: #{last.num} · K{last.konzept ?? '?'} {KONZEPTE[last.konzept ?? 0]?.name ?? ''}{isReady(last) ? '' : ' · not complete yet'}</span> : null}
+    <div style={{ marginTop: 'auto' }}><BufferMeter /></div>
+  </div>;
+}
+
+/* ---------- compact upload schedule: next 3 days ---------- */
+const SLOT_COL = { uploaded: '#7FD9A8', ready: '#AAC3F0', next: '#FFC63A', missing: '#FF8F7A', overdue: '#FF8F7A', missed: 'rgba(255,255,255,.3)' } as const;
+function UploadPlan() {
+  const { snap, go } = useApp();
+  const now = new Date(snap.now);
+  const plan = buildPlan(snap, now, 3);
+  const days = [0, 1, 2].map((i) => { const d = addDays(now, i); return { d, ds: ymd(d), slots: plan.filter((x) => x.date === ymd(d)) }; });
+  return <div className="glass card lift s5">
+    <div className="between"><h2>Upload schedule</h2><button className="btn sm" onClick={() => go('schedule')}>Full plan</button></div>
+    <NextUpload compact />
+    <div className="uplan">
+      {days.map(({ d, ds, slots }, i) => <div key={ds} className="uday">
+        <span className="uday-l">{i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })}</span>
+        <div className="uslots">{slots.length ? slots.map((x) => <span key={x.time} className={`uslot ${x.state}`} title={x.state} style={{ ['--c' as string]: SLOT_COL[x.state] }}>
+          <b className="num">{x.time}</b><small>{x.uploaded ? '✓' : x.video ? `#${x.video.num}` : '–'}</small></span>)
+          : <span className="small dim">{dayNumber(d, snap.state.settings.day1) <= 2 ? 'Warm-up, no posts' : 'No slots'}</span>}</div>
+      </div>)}
+    </div>
+  </div>;
+}
+
+/* ---------- to-do overview: drag cards between columns ---------- */
+function TaskOverview() {
+  const { snap, update, go } = useApp();
+  const today = ymd(new Date(snap.now));
+  const all = allTasks(snap);
+  const { drag, over, onDown } = useTaskDrag(all);
+  const [txt, setTxt] = useState('');
+  const add = async () => { const t = txt.trim(); if (!t) return; const task: Task = { id: uid(), title: t, tag: 'Task', konzept: null, prio: '', col: 'todo', due: today, createdAt: new Date().toISOString() }; setTxt(''); await update((st) => ({ ...st, tasks: [task, ...st.tasks] })); };
+  // done column: only today's and recent, keeps it short
+  const show = (c: string) => all.filter((t) => t.col === c && (c !== 'done' || !t.due || t.due >= ymd(addDays(new Date(snap.now), -2))));
+  const dragged = drag ? all.find((t) => t.id === drag.id) : null;
+  const mcard = (t: Task, ghost = false) => <div key={t.id + (ghost ? 'g' : '')} className={`mcard ${t.col} ${ghost ? 'ghost' : ''} ${!ghost && drag?.id === t.id ? 'drag' : ''}`}
+    style={ghost ? { left: drag!.x, top: drag!.y, width: drag!.w } : undefined} onPointerDown={ghost ? undefined : (e) => onDown(e, t)} onContextMenu={(e) => e.preventDefault()}>
+    <span className="dot" style={{ background: kColor(t.konzept) }} />
+    <span className="mt">{t.title}</span>
+    {t.prio && <span className={`prio-${t.prio}`}>{t.prio}</span>}
+    {t.due && t.col !== 'done' && <span className="small dim"><DueLabel due={t.due} now={snap.now} /></span>}
+  </div>;
+  return <section className="glass card s8 tview">
+    <div className="between"><div><h2>To do</h2><p className="sub">{all.filter((t) => t.col !== 'done').length} open · drag cards between the columns</p></div><button className="btn sm" onClick={() => go('board')}>Open board</button></div>
+    <div className="mini-board">
+      {COLS.map((c) => { const list = show(c.key); return <div key={c.key} data-col={c.key} className={`mcol ${over === c.key ? 'over' : ''}`}>
+        <div className="mcol-h"><span className="dot" style={{ background: c.dot }} /><b>{c.name}</b><span className="chip">{list.length}</span></div>
+        {c.key === 'todo' && <input className="in madd" value={txt} onChange={(e) => setTxt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder="+ Add a task, press Enter" />}
+        {list.slice(0, 6).map((t) => mcard(t))}
+        {list.length > 6 && <button className="linkbtn small" onClick={() => go('board')}>+{list.length - 6} more</button>}
+        {!list.length && <div className="mempty">Drop here</div>}
+      </div>; })}
+    </div>
+    {dragged && drag && mcard(dragged, true)}
+    {drag && <DropBar over={over} />}
+  </section>;
 }

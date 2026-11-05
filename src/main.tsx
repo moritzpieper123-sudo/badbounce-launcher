@@ -120,8 +120,9 @@ function App() {
               <span className="ws-name"><b>Badbounce</b><small>@badb0unce</small></span>
               <span className="crumb"><span>Launcher</span><span>›</span><b>{cur.short}</b></span>
             </div>
+            <Search snap={snap} go={go} pages={PAGES} actions={{ backup, fetchCsv }} />
           </div>
-          <Search snap={snap} go={go} pages={PAGES} actions={{ backup, fetchCsv }} />
+          <div className="tl-island" aria-hidden="true" />
           <div className="tl-right">
             {csv.state !== 'idle' && csv.state !== 'done' && <CsvPill csv={csv} />}
             <button className="btn accent pillbtn" onClick={() => go('ideas')}><Icon name="plus" size={15} sw={2.4} /> Idea</button>

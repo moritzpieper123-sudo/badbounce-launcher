@@ -100,7 +100,7 @@ export function Search({ snap, go, pages, actions }: { snap: Snapshot; go: (p: s
   return <div className="search">
     <label className="glass tpill">
       <Icon name="search" size={16} />
-      <input ref={inp} value={q} placeholder="Search anything: tasks, videos, notes, mail, settings…" onChange={(e) => { setQ(e.target.value); setSel(0); setOpen(true); }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+      <input ref={inp} value={q} placeholder="Search anything…" onChange={(e) => { setQ(e.target.value); setSel(0); setOpen(true); }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
         onKeyDown={(e) => { if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(list.length - 1, s + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(0, s - 1)); } else if (e.key === 'Enter') pick(list[sel]); else if (e.key === 'Escape') { setQ(''); inp.current?.blur(); } }} />
       <span className="kbd">Ctrl K</span>
     </label>
