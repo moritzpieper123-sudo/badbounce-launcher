@@ -369,7 +369,7 @@ else {
     globalShortcut.register('Control+Alt+B', () => { if (islandWin) { islandWin.setIgnoreMouseEvents(false); islandWin.webContents.send('navigate', 'toggle'); } });
     const st = loadState(); setAutostart(st.settings.autostart);
     startFullscreenWatch();
-    media.start((m) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('media', m); });
+    media.start((m) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('media', m); }, path.join(dataDir(), 'media-log.txt'));
     app.on('before-quit', () => media.stop());
     autoBackup(); setInterval(autoBackup, 3600000);
     // re-scan the vault every 20 s so new Gen results appear on their own

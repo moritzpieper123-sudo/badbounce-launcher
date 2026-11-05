@@ -7,7 +7,28 @@ const os = require('os');
 const path = require('path');
 
 const CMD = path.join(os.tmpdir(), 'bb-media-cmd.txt');
+let LOG = path.join(os.tmpdir(), 'bb-media-log.txt');
 let last = null, cover = null, proc = null, onChange = () => {};
+let trackKey = '', webCover = null, webKey = '';
+
+/* Fallback: look the cover up online (iTunes, then Deezer; both need no key) when Windows gives none */
+const clean = (t) => String(t || '').replace(/\s*[([].*?(feat|ft\.|with|remaster|version|edit|live|mix).*?[)\]]/gi, '').replace(/\s+-\s+.*(remaster|version|edit|live|mix).*$/i, '').trim();
+async function lookupCover(title, artist) {
+  const a = clean(artist).split(/,|&| x /i)[0].trim(), t = clean(title);
+  try {
+    const r = await fetch(`https://itunes.apple.com/search?media=music&entity=song&limit=5&term=${encodeURIComponent(`${a} ${t}`)}`);
+    const j = await r.json();
+    const hit = (j.results || []).find((x) => (x.artistName || '').toLowerCase().includes(a.toLowerCase().slice(0, 6))) || (j.results || [])[0];
+    if (hit?.artworkUrl100) return hit.artworkUrl100.replace('100x100bb', '600x600bb');
+  } catch (e) { console.error('cover itunes', e.message); }
+  try {
+    const r = await fetch(`https://api.deezer.com/search?limit=1&q=${encodeURIComponent(`artist:"${a}" track:"${t}"`)}`);
+    const j = await r.json();
+    if (j.data?.[0]?.album?.cover_xl) return j.data[0].album.cover_xl;
+  } catch (e) { console.error('cover deezer', e.message); }
+  return null;
+}
+function emit(next) { const changed = JSON.stringify(next) !== JSON.stringify(last); last = next; if (changed) onChange(last); }
 
 const PS = (cmdFile) => `
 $ErrorActionPreference = 'SilentlyContinue'
@@ -17,7 +38,7 @@ function Await($op, [Type]$t) { $task = $asT.MakeGenericMethod($t).Invoke($null,
 [void][Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
 [void][Windows.Storage.Streams.IRandomAccessStreamWithContentType, Windows.Storage.Streams, ContentType = WindowsRuntime]
 [void][Windows.Storage.Streams.DataReader, Windows.Storage.Streams, ContentType = WindowsRuntime]
-$log = Join-Path $env:TEMP 'bb-media-log.txt'
+$log = '${LOG}'
 function ReadCover($ref) {
   try {
     $st = Await ($ref.OpenReadAsync()) ([Windows.Storage.Streams.IRandomAccessStreamWithContentType])
@@ -63,8 +84,8 @@ while ($true) {
   Start-Sleep -Milliseconds 900
 }`;
 
-function start(cb) {
-  onChange = cb;
+function start(cb, logFile) {
+  onChange = cb; if (logFile) LOG = logFile;
   if (process.env.BB_MEDIA_MOCK) { last = JSON.parse(process.env.BB_MEDIA_MOCK); setTimeout(() => cb(last), 1500); return; } // test hook
   if (process.platform !== 'win32' || proc) return;
   try { fs.unlinkSync(CMD); } catch { /* none */ }
@@ -78,11 +99,20 @@ function start(cb) {
       if (!l.trim().startsWith('{')) continue;
       try {
         const o = JSON.parse(l);
-        if (o.cover) { cover = `data:${o.mime || 'image/jpeg'};base64,${o.cover}`; delete o.cover; delete o.mime; }
+        const fresh = o.cover ? `data:${o.mime || 'image/jpeg'};base64,${o.cover}` : null; delete o.cover; delete o.mime;
         if (o.nocover) { cover = null; delete o.nocover; }
-        const next = o.none ? null : { ...o, cover };
-        const changed = JSON.stringify(next) !== JSON.stringify(last);
-        last = next; if (changed) onChange(last);
+        if (o.none) { emit(null); continue; }
+        const key = `${o.title}|${o.artist}`;
+        if (key !== trackKey) {
+          trackKey = key; webCover = null; webKey = ''; cover = null;
+          setTimeout(async () => { // no Windows cover after 2.5 s: ask the web
+            if (trackKey !== key || cover) return;
+            const u = await lookupCover(o.title, o.artist);
+            if (u && trackKey === key && !cover) { webCover = u; webKey = key; emit({ ...last, cover: u }); }
+          }, 2500);
+        }
+        if (fresh) cover = fresh;
+        emit({ ...o, cover: cover || (webKey === key ? webCover : null) });
       } catch { /* partial line */ }
     }
   });
