@@ -237,10 +237,13 @@ export function islandStatus(snap: Snapshot) {
   return { mood, todaySlots, tasks, open };
 }
 
-export interface Alert { key: string; title: string; sub: string; kind: 'upload' | 'make' | 'csv' | 'comment' | 'milestone' | 'overdue' | 'buffer'; action?: 'upload' | 'gen' | 'csv' | 'open'; videoNum?: number; }
+export interface Alert { key: string; title: string; sub: string; kind: 'upload' | 'make' | 'csv' | 'comment' | 'milestone' | 'overdue' | 'buffer' | 'mail'; action?: 'upload' | 'gen' | 'csv' | 'open' | 'mail'; url?: string; videoNum?: number; }
 /** Alerts that should pop now (caller filters already-seen keys and quiet time). */
+export const gmailLink = (threadId: string) => `https://mail.google.com/mail/u/0/#all/${threadId}`;
 export function dueAlerts(snap: Snapshot): Alert[] {
   const now = new Date(snap.now), today = ymd(now), out: Alert[] = [];
+  // new unread email (arrived in the last 20 min)
+  for (const m of snap.mail?.items ?? []) if (m.unread && now.getTime() - new Date(m.date).getTime() < 20 * 60e3) out.push({ key: `mail:${m.id}`, kind: 'mail', title: `Mail from ${m.from}`, sub: m.subject, action: 'mail', url: gmailLink(m.threadId) });
   const plan = buildPlan(snap, now, 2);
   for (const s of plan.filter((p) => p.date === today && !p.uploaded)) {
     const m = minsUntil(s.when, now);

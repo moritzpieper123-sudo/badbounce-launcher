@@ -1,6 +1,6 @@
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { CLOUD_URL, CLOUD_KEY } from './config';
-import type { AppState, RenderStatus } from '../types';
+import type { AppState, MailStatus, RenderStatus } from '../types';
 
 export const cloudConfigured = !!(CLOUD_URL && CLOUD_KEY);
 export const sb: SupabaseClient | null = cloudConfigured
@@ -14,7 +14,7 @@ export interface CloudVideo {
   description?: string; durationSec?: number | null; createdMs: number;
   videoPath?: string; thumbPath?: string;
 }
-export interface CloudRow { user_id: string; state: AppState | Record<string, never>; videos: CloudVideo[]; render: RenderStatus | null; updated_at: string; updated_by: string | null; }
+export interface CloudRow { user_id: string; state: AppState | Record<string, never>; videos: CloudVideo[]; render: RenderStatus | null; mail?: MailStatus | null; updated_at: string; updated_by: string | null; }
 
 export async function session(): Promise<Session | null> {
   if (!sb) return null;
@@ -41,7 +41,11 @@ export async function pullRow(): Promise<CloudRow | null> {
 export async function pushRow(patch: Partial<Omit<CloudRow, 'user_id'>>, by: 'pc' | 'phone') {
   const s = await session(); if (!sb || !s) return null;
   const updated_at = new Date().toISOString();
-  const { error } = await sb.from('launcher').upsert({ user_id: s.user.id, ...patch, updated_at, updated_by: by });
+  let { error } = await sb.from('launcher').upsert({ user_id: s.user.id, ...patch, updated_at, updated_by: by });
+  if (error && 'mail' in patch && /mail/i.test(error.message)) { // column not added yet: sync the rest anyway
+    const { mail: _m, ...rest } = patch; void _m;
+    ({ error } = await sb.from('launcher').upsert({ user_id: s.user.id, ...rest, updated_at, updated_by: by }));
+  }
   if (error) throw error;
   return updated_at;
 }

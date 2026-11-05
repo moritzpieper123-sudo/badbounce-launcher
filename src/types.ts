@@ -84,12 +84,15 @@ export interface AppState {
 
 export interface RenderStatus { video?: string; konzept?: number; progress?: number; etaSec?: number; label?: string; updated?: string; }
 
+export interface MailItem { id: string; threadId: string; from: string; fromAddr?: string; subject: string; snippet: string; date: string; unread: boolean; }
+export interface MailStatus { connected: boolean; email: string | null; unread: number; items: MailItem[]; updated: string | null; error: string | null; }
 export interface Snapshot {
   vaultPath: string;
   vaultOk: boolean;
   videos: Video[];
   state: AppState;
   render: RenderStatus | null;
+  mail?: MailStatus | null;
   fullscreen: boolean;
   now: string;
 }

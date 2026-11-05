@@ -23,4 +23,7 @@ contextBridge.exposeInMainWorld('bb', {
   onNavigate: (cb) => on('navigate', cb),
   onIslandToast: (cb) => on('islandToast', cb),
   islandToast: (t, s) => ipcRenderer.send('islandToast', t, s),
+  mailConnect: (id, secret) => ipcRenderer.invoke('mailConnect', id, secret),
+  mailDisconnect: () => ipcRenderer.invoke('mailDisconnect'),
+  mailRefresh: () => ipcRenderer.invoke('mailRefresh'),
 });

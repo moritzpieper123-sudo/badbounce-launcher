@@ -28,3 +28,6 @@ create policy "own files read"   on storage.objects for select using (bucket_id 
 create policy "own files write"  on storage.objects for insert with check (bucket_id = 'videos' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "own files update" on storage.objects for update using (bucket_id = 'videos' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "own files delete" on storage.objects for delete using (bucket_id = 'videos' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- 3) Inbox on the phone (added 2026-11-05)
+alter table public.launcher add column if not exists mail jsonb;

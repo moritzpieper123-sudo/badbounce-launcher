@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
+const gmail = require('./gmail');
 
 const DEFAULT_SETTINGS = { day1: '2026-11-05', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
 const HIDDEN = process.argv.includes('--hidden');
@@ -223,9 +224,12 @@ function broadcast() { for (const w of [mainWin, islandWin]) if (w && !w.isDestr
 /* ---------- IPC ---------- */
 function snapshot() {
   const v = vault();
-  return { vaultPath: v, vaultOk: fs.existsSync(v), videos: scanVideos(), state: loadState(), render: renderStatus(), fullscreen, now: new Date().toISOString() };
+  return { vaultPath: v, vaultOk: fs.existsSync(v), videos: scanVideos(), state: loadState(), render: renderStatus(), mail: gmail.status(), fullscreen, now: new Date().toISOString() };
 }
 ipcMain.handle('snapshot', () => snapshot());
+ipcMain.handle('mailConnect', async (_e, id, secret) => { try { const r = await gmail.connect(String(id).trim(), String(secret).trim()); broadcast(); return { ok: true, email: r.email }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
+ipcMain.handle('mailDisconnect', () => { gmail.disconnect(); broadcast(); });
+ipcMain.handle('mailRefresh', async () => { await gmail.refresh(); broadcast(); });
 ipcMain.handle('save', (_e, st) => { saveState(st); broadcast(); });
 ipcMain.handle('copy', (_e, t) => clipboard.writeText(String(t)));
 // claude.ai links open in the Claude desktop app when it is installed (claude:// protocol), else in the browser
@@ -300,6 +304,7 @@ else {
     autoBackup(); setInterval(autoBackup, 3600000);
     // re-scan the vault every 20 s so new Gen results appear on their own
     setInterval(broadcast, 20000);
+    gmail.refresh().then(broadcast); setInterval(() => gmail.refresh().then(broadcast), 3 * 60e3);
     if (process.env.BB_SHOT) setTimeout(async () => {
       try {
         if (process.env.BB_PAGE) mainWin.webContents.send('navigate', process.env.BB_PAGE);

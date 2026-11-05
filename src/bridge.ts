@@ -24,6 +24,9 @@ export interface BB {
   onNavigate(cb: (page: string) => void): () => void;
   onIslandToast(cb: (msg: { title: string; sub: string }) => void): () => void;
   islandToast(title: string, sub: string): void;
+  mailConnect?(clientId: string, secret: string): Promise<{ ok: boolean; email?: string; error?: string }>;
+  mailDisconnect?(): Promise<void>;
+  mailRefresh?(): Promise<void>;
 }
 
 declare global { interface Window { bb?: BB } }
@@ -35,7 +38,10 @@ function demoSnapshot(): Snapshot {
   let state: AppState | null = null;
   try { const raw = localStorage.getItem('bb-demo-state'); if (raw) state = JSON.parse(raw); } catch { /* ignore */ }
   if (!state) state = { version: 1, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } };
-  return { vaultPath: 'C:\\Users\\Morit\\OneDrive\\Badbounce', vaultOk: true, videos: [mk(1, 1), mk(2, 2), mk(3, 4), mk(4, 5), mk(5, 6), mk(6, 3), mk(7, 1, false)], state, render: null, fullscreen: false, now: now.toISOString() };
+  return { vaultPath: 'C:\\Users\\Morit\\OneDrive\\Badbounce', vaultOk: true, videos: [mk(1, 1), mk(2, 2), mk(3, 4), mk(4, 5), mk(5, 6), mk(6, 3), mk(7, 1, false)], state, render: null, mail: { connected: true, email: 'demo@gmail.com', unread: 2, updated: now.toISOString(), error: null, items: [
+    { id: 'm1', threadId: 'm1', from: 'TikTok', subject: 'Your video is trending', snippet: 'Congrats! Your video reached 10K views in the last 24 hours…', date: new Date(now.getTime() - 8 * 60e3).toISOString(), unread: true },
+    { id: 'm2', threadId: 'm2', from: 'Brand Partner GmbH', subject: 'Collaboration request for Badbounce', snippet: 'Hi Mo, we love your physics simulations and would like to…', date: new Date(now.getTime() - 3 * 3600e3).toISOString(), unread: true },
+    { id: 'm3', threadId: 'm3', from: 'Google', subject: 'Security alert', snippet: 'A new sign-in on Windows…', date: new Date(now.getTime() - 30 * 3600e3).toISOString(), unread: false }] }, fullscreen: false, now: now.toISOString() };
 }
 const listeners = new Set<() => void>();
 const fallback: BB = {

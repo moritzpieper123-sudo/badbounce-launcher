@@ -20,6 +20,7 @@ import Library from './pages/Library';
 import Ideas from './pages/Ideas';
 import Tools from './pages/Tools';
 import Settings from './pages/Settings';
+import Mail from './pages/Mail';
 
 const PAGES = [
   { id: 'today', label: 'Today', icon: 'home' },
@@ -29,6 +30,7 @@ const PAGES = [
   { id: 'analytics', label: 'Analytics', icon: 'chart' },
   { id: 'library', label: 'Library', icon: 'grid' },
   { id: 'ideas', label: 'Idea inbox', icon: 'bulb' },
+  { id: 'mail', label: 'Inbox', icon: 'mail' },
   { id: 'tools', label: 'Tools', icon: 'tools' },
 ];
 
@@ -47,7 +49,7 @@ function App() {
   if (!snap) return <><Background /><div style={{ padding: 40, position: 'relative' }} className="muted">Loading…</div></>;
   const due = csvDue(snap);
   const buf = bufferInfo(snap);
-  const Page = { today: Today, schedule: Schedule, board: Board, upload: Upload, analytics: Analytics, library: Library, ideas: Ideas, tools: Tools, settings: Settings }[page] || Today;
+  const Page = { today: Today, schedule: Schedule, board: Board, upload: Upload, analytics: Analytics, library: Library, ideas: Ideas, mail: Mail, tools: Tools, settings: Settings }[page] || Today;
   return (
     <AppCtx.Provider value={{ snap, update, toast, go }}>
       <Background />
@@ -64,6 +66,7 @@ function App() {
             <button key={p.id} className={`rail-btn ${page === p.id ? 'on' : ''}`} onClick={() => go(p.id)} aria-label={p.label}>
               <Icon name={p.icon} /><span className="tip">{p.label}</span>
               {p.id === 'analytics' && due && <span className="badge-dot" />}
+              {p.id === 'mail' && (snap.mail?.unread ?? 0) > 0 && <span className="count">{Math.min(99, snap.mail!.unread)}</span>}
             </button>
           ))}
           <div style={{ flex: 1 }} />

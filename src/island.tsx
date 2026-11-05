@@ -65,7 +65,8 @@ function Island() {
 
   const runAction = async (a: Alert | null) => {
     if (!a) return;
-    if (a.action === 'upload' && a.videoNum != null) { await doUploadPack(a.videoNum, flash); }
+    if (a.action === 'mail' && a.url) { await bb.openUrl(a.url); }
+    else if (a.action === 'upload' && a.videoNum != null) { await doUploadPack(a.videoNum, flash); }
     else if (a.action === 'gen') { await bb.runGen(Math.max(1, b.missing2)); flash('Gen copied · paste in Claude'); }
     else if (a.action === 'csv') bb.showMain('analytics');
     else bb.showMain('upload');
@@ -80,7 +81,7 @@ function Island() {
   const doneN = st.todaySlots.filter((s) => s.uploaded).length;
   const nextMins = next ? minsUntil(next.when, now) : 0;
   const slotColor = (s: (typeof st.todaySlots)[number]) => s.uploaded ? '#7FD9A8' : s.state === 'overdue' || s.state === 'missing' ? '#FF8F7A' : s.state === 'next' ? '#FFC63A' : '#AAC3F0';
-  const alertIcon = alert ? (alert.kind === 'upload' || alert.kind === 'overdue' ? 'upload' : alert.kind === 'csv' ? 'csv' : alert.kind === 'toast' ? 'sparkle' : alert.kind === 'comment' ? 'bell' : 'film') : 'film';
+  const alertIcon = alert ? (alert.kind === 'upload' || alert.kind === 'overdue' ? 'upload' : alert.kind === 'csv' ? 'csv' : alert.kind === 'toast' ? 'sparkle' : alert.kind === 'comment' ? 'bell' : alert.kind === 'mail' ? 'mail' : 'film') : 'film';
 
   return <div className="island-wrap">
     <div className="island" style={{ width, height, borderRadius: radius }} onMouseEnter={enter} onMouseLeave={leave}>
@@ -103,7 +104,7 @@ function Island() {
         <div className="isl-ico" style={{ background: alert.kind === 'overdue' ? 'rgba(255,107,92,.18)' : 'rgba(255,198,58,.16)' }}><Icon name={alertIcon} size={16} color={alert.kind === 'overdue' ? '#FF6B5C' : '#FFC63A'} /></div>
         <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{alert.title}</div><div className="small muted" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{alert.sub}</div></div>
         {'action' in alert && alert.action && <button className="isl-btn primary" onClick={() => runAction(alert as Alert)} title={alert.action === 'upload' ? 'Prepare upload' : alert.action === 'gen' ? 'Run Gen' : alert.action === 'csv' ? 'Import CSV' : 'Open'} aria-label="Do it">
-          <Icon name={alert.action === 'upload' ? 'upload' : alert.action === 'gen' ? 'play' : alert.action === 'csv' ? 'csv' : 'link'} size={15} color="#1A1404" sw={2.4} />
+          <Icon name={alert.action === 'upload' ? 'upload' : alert.action === 'gen' ? 'play' : alert.action === 'csv' ? 'csv' : alert.action === 'mail' ? 'mail' : 'link'} size={15} color="#1A1404" sw={2.4} />
         </button>}
       </div>}
 

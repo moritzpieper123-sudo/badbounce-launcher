@@ -88,7 +88,7 @@ export async function syncTick(snap: Snapshot, apply: (st: AppState) => Promise<
     const pulled = await pullIdeaFiles(snap.state, id);
     if (pulled) { await apply(pulled); return; }
     const filesChanged = await uploadFiles(snap, m, id);
-    const payload = { state: strip(snap.state), videos: cloudVideos(snap, m, id), render: snap.render };
+    const payload = { state: strip(snap.state), videos: cloudVideos(snap, m, id), render: snap.render, mail: snap.mail ?? null };
     const key = JSON.stringify(payload);
     if (key !== lastPushed || filesChanged) {
       m.lastAt = (await pushRow(payload, 'pc')) ?? m.lastAt; save(m); lastPushed = key;

@@ -12,6 +12,7 @@ const APP_SCHEMES: [RegExp, (u: string) => string][] = [
   [/^https:\/\/claude\.ai\//, (u) => u.replace(/^https:\/\//, 'claude://')],
   [/^https:\/\/chatgpt\.com/, () => 'chatgpt://'],
   [/^https:\/\/gemini\.google\.com/, () => 'googlegemini://'],
+  [/^https:\/\/mail\.google\.com/, () => 'googlegmail:///'],
 ];
 function openLink(u: string) {
   const hit = APP_SCHEMES.find(([re]) => re.test(u));
@@ -46,7 +47,7 @@ export const webBridge: BB = {
     const st = row?.state && 'version' in row.state ? (row.state as AppState) : emptyState();
     st.settings = { ...DEFAULT_SETTINGS, ...st.settings };
     projectUrl = st.settings.projectUrl || projectUrl;
-    return { vaultPath: '', vaultOk: true, videos, state: st, render: row?.render ?? null, fullscreen: false, now: new Date().toISOString() };
+    return { vaultPath: '', vaultOk: true, videos, state: st, render: row?.render ?? null, mail: row?.mail ?? null, fullscreen: false, now: new Date().toISOString() };
   },
   async saveState(state) { await pushRow({ state }, 'phone'); },
   onChange(cb) { return subscribeRow(() => cb()); },
