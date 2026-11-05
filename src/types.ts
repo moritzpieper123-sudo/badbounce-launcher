@@ -93,6 +93,7 @@ export interface Snapshot {
   state: AppState;
   render: RenderStatus | null;
   mail?: MailStatus | null;
+  update?: UpdateStatus | null;
   fullscreen: boolean;
   now: string;
 }
@@ -111,4 +112,5 @@ export const DEFAULT_SETTINGS: Settings = {
   csvWeekday: 0,
 };
 
+export interface UpdateStatus { current: string; ready: string | null; error: string | null }
 export interface MailBody { ok: boolean; error?: string; id?: string; from?: string; to?: string; subject?: string; date?: string; html?: string; files?: string[] }

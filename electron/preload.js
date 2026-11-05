@@ -26,5 +26,6 @@ contextBridge.exposeInMainWorld('bb', {
   mailConnect: (id, secret) => ipcRenderer.invoke('mailConnect', id, secret),
   mailDisconnect: () => ipcRenderer.invoke('mailDisconnect'),
   mailBody: (id) => ipcRenderer.invoke('mailBody', id),
+  applyUpdate: () => ipcRenderer.invoke('applyUpdate'),
   mailRefresh: () => ipcRenderer.invoke('mailRefresh'),
 });

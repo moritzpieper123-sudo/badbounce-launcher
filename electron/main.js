@@ -6,6 +6,7 @@ const os = require('os');
 const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
 const gmail = require('./gmail');
+const updater = require('./updater');
 
 const DEFAULT_SETTINGS = { day1: '2026-11-05', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
 const HIDDEN = process.argv.includes('--hidden');
@@ -224,12 +225,14 @@ function broadcast() { for (const w of [mainWin, islandWin]) if (w && !w.isDestr
 /* ---------- IPC ---------- */
 function snapshot() {
   const v = vault();
-  return { vaultPath: v, vaultOk: fs.existsSync(v), videos: scanVideos(), state: loadState(), render: renderStatus(), mail: gmail.status(), fullscreen, now: new Date().toISOString() };
+  return { vaultPath: v, vaultOk: fs.existsSync(v), videos: scanVideos(), state: loadState(), render: renderStatus(), mail: gmail.status(), update: updater.status(), fullscreen, now: new Date().toISOString() };
 }
 ipcMain.handle('snapshot', () => snapshot());
 ipcMain.handle('mailConnect', async (_e, id, secret) => { try { const r = await gmail.connect(String(id).trim(), String(secret).trim()); broadcast(); return { ok: true, email: r.email }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
 ipcMain.handle('mailDisconnect', () => { gmail.disconnect(); broadcast(); });
 ipcMain.handle('mailBody', async (_e, id) => { try { return { ok: true, ...(await gmail.body(String(id))) }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
+function restartWithUpdate(hidden) { if (updater.apply(vault())) { quitting = true; app.relaunch({ args: hidden ? ['--hidden'] : [] }); app.exit(0); return true; } broadcast(); return false; }
+ipcMain.handle('applyUpdate', () => restartWithUpdate(false));
 ipcMain.handle('mailRefresh', async () => { await gmail.refresh(); broadcast(); });
 ipcMain.handle('save', (_e, st) => { saveState(st); broadcast(); });
 ipcMain.handle('copy', (_e, t) => clipboard.writeText(String(t)));
@@ -282,6 +285,7 @@ else {
   app.on('second-instance', () => showMain());
   app.whenReady().then(() => {
     app.setAppUserModelId('Badbounce.Launcher');
+    if (restartWithUpdate(HIDDEN)) return;
     protocol.handle('bbfile', (req) => {
       const u = new URL(req.url); const p = decodeURIComponent(u.pathname.replace(/^\//, ''));
       return net.fetch(pathToFileURL(p).toString());
@@ -305,6 +309,8 @@ else {
     autoBackup(); setInterval(autoBackup, 3600000);
     // re-scan the vault every 20 s so new Gen results appear on their own
     setInterval(broadcast, 20000);
+    // look for a new version in OneDrive every 5 min; install it right away while the window is hidden
+    setInterval(() => { const u = updater.check(vault()); if (u.ready) { if (!mainWin || !mainWin.isVisible()) restartWithUpdate(true); else broadcast(); } }, 5 * 60e3);
     gmail.refresh().then(broadcast); setInterval(() => gmail.refresh().then(broadcast), 3 * 60e3);
     if (process.env.BB_SHOT) setTimeout(async () => {
       try {

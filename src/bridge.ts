@@ -28,6 +28,7 @@ export interface BB {
   mailDisconnect?(): Promise<void>;
   mailRefresh?(): Promise<void>;
   mailBody?(id: string): Promise<MailBody>;
+  applyUpdate?(): Promise<boolean>;
 }
 
 declare global { interface Window { bb?: BB } }

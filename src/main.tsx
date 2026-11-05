@@ -70,6 +70,7 @@ function App() {
             </button>
           ))}
           <div style={{ flex: 1 }} />
+          {snap.update?.ready && <button className="rail-btn upd hide-phone" onClick={async () => { toast(`Installing update ${snap.update!.ready}…`); if (!(await bb.applyUpdate?.())) toast('Update failed, try again later'); }} aria-label="Install update"><Icon name="sparkle" color="var(--yellow)" /><span className="badge-dot" /><span className="tip">Update {snap.update.ready} ready · click to restart</span></button>}
           <button className="rail-btn hide-phone" onClick={async () => { const p = await bb.backupNow(); update((s) => ({ ...s, lastBackup: new Date().toISOString() })); toast(`Saved backup: ${p.split(/[\\/]/).pop()}`); }} aria-label="Save backup now"><Icon name="save" /><span className="tip">Save backup now</span></button>
           <button className={`rail-btn ${page === 'settings' ? 'on' : ''}`} onClick={() => go('settings')} aria-label="Settings"><Icon name="gear" /><span className="tip">Settings</span></button>
         </nav>

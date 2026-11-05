@@ -30,7 +30,7 @@ export default function Settings() {
         <button className="btn" onClick={() => bb.islandToast('Test alert', 'This is how a pop-down looks')}>Test the island</button>
       </div>}
       {isDesktop && <div className="glass card">
-        <h2>App</h2>
+        <div className="between"><h2>App</h2>{snap.update && <span className="small dim">Version {snap.update.current}{snap.update.error ? ` · update failed: ${snap.update.error}` : ''}</span>}</div>
         <Toggle on={s.autostart} onChange={(v) => { set({ autostart: v }); bb.setAutostart(v); }} label="Start with Windows" />
         <label className="f">Badbounce vault folder<input className="in" defaultValue={snap.vaultPath} onBlur={async (e) => { if (e.target.value !== snap.vaultPath && bb.setVault) { await bb.setVault(e.target.value); toast('Vault folder changed'); } }} /></label>
         <label className="f">Claude project link<input className="in" value={s.projectUrl} onChange={(e) => set({ projectUrl: e.target.value })} /></label>
