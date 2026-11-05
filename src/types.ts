@@ -110,3 +110,5 @@ export const DEFAULT_SETTINGS: Settings = {
   autostart: true,
   csvWeekday: 0,
 };
+
+export interface MailBody { ok: boolean; error?: string; id?: string; from?: string; to?: string; subject?: string; date?: string; html?: string; files?: string[] }

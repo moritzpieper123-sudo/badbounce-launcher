@@ -4,7 +4,7 @@ import { Header } from './parts';
 import { Icon } from '../ui';
 import { bb, isDesktop } from '../bridge';
 import { gmailLink } from '../logic';
-import type { MailItem } from '../types';
+import type { MailBody, MailItem } from '../types';
 
 const when = (iso: string, now: Date) => {
   const d = new Date(iso), diff = (now.getTime() - d.getTime()) / 60e3;
@@ -23,7 +23,13 @@ export default function Mail() {
   const now = new Date(snap.now);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [id, setId] = useState(''); const [secret, setSecret] = useState(''); const [busy, setBusy] = useState(false);
-  const open = (x: MailItem) => bb.openUrl(gmailLink(x.threadId));
+  const [read, setRead] = useState<{ item: MailItem; body: MailBody | null } | null>(null);
+  const open = async (x: MailItem) => {
+    if (!bb.mailBody) return bb.openUrl(gmailLink(x.threadId));
+    setRead({ item: x, body: null });
+    const b = await bb.mailBody(x.id);
+    setRead((r) => (r?.item.id === x.id ? { item: x, body: b } : r));
+  };
   const connect = async () => {
     if (!bb.mailConnect) return;
     setBusy(true); toast('A Google sign-in opens in your browser…');
@@ -41,6 +47,7 @@ export default function Mail() {
       {m?.error && <span className="small" style={{ color: 'var(--red)' }}>{m.error}</span>}
     </section> : <div className="glass card"><div className="empty">Connect Gmail once in the PC launcher (Inbox page). The emails then show up here too.</div></div>}
   </>;
+  if (read) return <Reader item={read.item} body={read.body} onBack={() => setRead(null)} />;
   const items = (m.items || []).filter((x) => filter === 'all' || x.unread);
   return <>
     <Header title="Inbox" sub={`${m.unread} unread · ${m.email ?? ''}`} right={<>
@@ -62,5 +69,32 @@ export default function Mail() {
       </button>) : <div className="empty" style={{ margin: 12 }}>{filter === 'unread' ? 'No unread emails.' : 'Inbox is empty.'}</div>}
     </section>
     {isDesktop && <div className="row small dim" style={{ justifyContent: 'space-between' }}><span>Updates every 3 minutes{m.updated ? ` · last ${new Date(m.updated).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}</span><button className="linkbtn" onClick={async () => { await bb.mailDisconnect?.(); toast('Gmail disconnected'); }}>Disconnect Gmail</button></div>}
+  </>;
+}
+
+const frameDoc = (html: string) => `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>html,body{margin:0;background:#fff;color:#202124;font:14px/1.5 Arial,system-ui,sans-serif}body{padding:20px;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}</style></head><body>${html}</body></html>`;
+
+function Reader({ item, body, onBack }: { item: MailItem; body: MailBody | null; onBack: () => void }) {
+  const [h, setH] = useState(400);
+  const fit = (f: HTMLIFrameElement | null) => { try { const d = f?.contentDocument; if (d?.body) setH(Math.max(200, d.body.scrollHeight + 44)); } catch { /* ignore */ } };
+  const addr = body?.from?.match(/<([^>]+)>/)?.[1] ?? item.fromAddr ?? '';
+  return <>
+    <div className="row" style={{ justifyContent: 'space-between' }}>
+      <button className="btn sm" onClick={onBack}><span aria-hidden style={{ fontSize: 16, lineHeight: 1 }}>‹</span> Inbox</button>
+      <button className="btn sm" onClick={() => bb.openUrl(gmailLink(item.threadId))}><Icon name="mail" size={14} /> Reply in Gmail</button>
+    </div>
+    <section className="glass card" style={{ gap: 10 }}>
+      <h2 style={{ fontSize: 20, lineHeight: 1.3 }}>{body?.subject ?? item.subject}</h2>
+      <div className="row" style={{ gap: 10 }}>
+        <span className="mav" style={{ background: `hsl(${hue(addr || item.from)} 45% 32%)` }}>{initials(item.from)}</span>
+        <div style={{ minWidth: 0 }}><b>{item.from}</b> <span className="small dim">{addr}</span><div className="small dim">{new Date(item.date).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}{body?.to ? ` · to ${body.to}` : ''}</div></div>
+      </div>
+      {!!body?.files?.length && <div className="row small" style={{ gap: 6, flexWrap: 'wrap' }}>{body.files.map((f) => <span key={f} className="chip">📎 {f}</span>)}<span className="dim">open attachments in Gmail</span></div>}
+    </section>
+    <section className="glass card" style={{ padding: 8 }}>
+      {!body ? <div className="empty">Loading…</div>
+        : !body.ok ? <div className="empty" style={{ color: 'var(--red)' }}>Could not load this email: {body.error}</div>
+        : <iframe title="email" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" srcDoc={frameDoc(body.html ?? '')} onLoad={(e) => { const f = e.currentTarget; fit(f); setTimeout(() => fit(f), 600); setTimeout(() => fit(f), 2000); }} style={{ width: '100%', height: h, border: 0, borderRadius: 12, background: '#fff', display: 'block' }} />}
+    </section>
   </>;
 }

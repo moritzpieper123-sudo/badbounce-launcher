@@ -229,6 +229,7 @@ function snapshot() {
 ipcMain.handle('snapshot', () => snapshot());
 ipcMain.handle('mailConnect', async (_e, id, secret) => { try { const r = await gmail.connect(String(id).trim(), String(secret).trim()); broadcast(); return { ok: true, email: r.email }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
 ipcMain.handle('mailDisconnect', () => { gmail.disconnect(); broadcast(); });
+ipcMain.handle('mailBody', async (_e, id) => { try { return { ok: true, ...(await gmail.body(String(id))) }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
 ipcMain.handle('mailRefresh', async () => { await gmail.refresh(); broadcast(); });
 ipcMain.handle('save', (_e, st) => { saveState(st); broadcast(); });
 ipcMain.handle('copy', (_e, t) => clipboard.writeText(String(t)));

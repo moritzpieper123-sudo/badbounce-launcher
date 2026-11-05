@@ -1,6 +1,6 @@
 import { cloudConfigured } from './cloud/client';
 import { webBridge } from './cloud/webBridge';
-import type { AppState, Snapshot, Video } from './types';
+import type { AppState, MailBody, Snapshot, Video } from './types';
 import { DEFAULT_SETTINGS } from './types';
 
 export interface BB {
@@ -27,6 +27,7 @@ export interface BB {
   mailConnect?(clientId: string, secret: string): Promise<{ ok: boolean; email?: string; error?: string }>;
   mailDisconnect?(): Promise<void>;
   mailRefresh?(): Promise<void>;
+  mailBody?(id: string): Promise<MailBody>;
 }
 
 declare global { interface Window { bb?: BB } }
@@ -46,6 +47,7 @@ function demoSnapshot(): Snapshot {
 const listeners = new Set<() => void>();
 const fallback: BB = {
   async getSnapshot() { return demoSnapshot(); },
+  async mailBody(id) { const it = demoSnapshot().mail?.items.find((x) => x.id === id); return { ok: true, id, from: `${it?.from} <hello@example.com>`, to: 'demo@gmail.com', subject: it?.subject ?? '', date: it?.date ?? '', files: ['stats.pdf'], html: `<div style="font-family:Arial;max-width:560px;margin:auto"><h2 style="color:#111">${it?.subject}</h2><p>${it?.snippet}</p><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer posuere erat a ante.</p><p><a href="https://example.com">Open the details</a></p><p>Best,<br>The team</p></div>` }; },
   async saveState(s) { try { localStorage.setItem('bb-demo-state', JSON.stringify(s)); } catch { /* ignore */ } listeners.forEach((l) => l()); },
   onChange(cb) { listeners.add(cb); return () => listeners.delete(cb); },
   async uploadPack() { return { ok: true, folder: 'Downloads\\Badbounce upload' }; },

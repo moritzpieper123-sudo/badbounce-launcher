@@ -103,6 +103,25 @@ async function refresh() {
   } catch (e) { cache = { ...cache, connected: !!cfg.refresh, email: cfg.email, error: String(e.message || e) }; }
   return cache;
 }
+/** One full email for the reader: prefers the HTML part, else plain text */
+const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const unb64 = (d) => Buffer.from(d.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+async function body(id) {
+  const d = await api(`messages/${encodeURIComponent(id)}?format=full`);
+  let html = '', text = ''; const files = [];
+  const walk = (p) => {
+    if (!p) return;
+    if (p.filename) files.push(p.filename);
+    else if (p.mimeType === 'text/html' && p.body?.data && !html) html = unb64(p.body.data);
+    else if (p.mimeType === 'text/plain' && p.body?.data && !text) text = unb64(p.body.data);
+    (p.parts || []).forEach(walk);
+  };
+  walk(d.payload);
+  if (!html) html = `<pre style="white-space:pre-wrap;font:14px/1.5 system-ui,sans-serif;margin:0">${esc(text || d.snippet || '')}</pre>`
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>');
+  const h = (n) => d.payload?.headers?.find((x) => x.name.toLowerCase() === n.toLowerCase())?.value || '';
+  return { id: d.id, from: h('From'), to: h('To'), subject: h('Subject') || '(no subject)', date: new Date(+d.internalDate).toISOString(), html, files };
+}
 function disconnect() { load(); cfg = {}; access = null; save(); cache = { connected: false, email: null, unread: 0, items: [], updated: null, error: null }; return cache; }
 function hasClient() { load(); return { clientId: cfg.clientId || '' }; }
-module.exports = { connect, refresh, disconnect, status: () => (load(), cache), hasClient };
+module.exports = { body, connect, refresh, disconnect, status: () => (load(), cache), hasClient };
