@@ -187,7 +187,7 @@ function autoBackup() {
 /* ---------- windows ---------- */
 let mainWin = null, islandWin = null, tray = null, quitting = false;
 const ISL_W = 900, ISL_H = 420;
-const iconPath = () => path.join(__dirname, 'icon.png');
+const iconPath = () => path.join(__dirname, process.platform === 'win32' ? 'icon.ico' : 'icon.png');
 function load(win, page) {
   if (DEV_URL) win.loadURL(`${DEV_URL}/${page}.html`);
   else win.loadFile(path.join(__dirname, '..', 'dist', `${page}.html`));
@@ -201,7 +201,8 @@ function createMain(show) {
   if (readCfg().windowed !== true) mainWin.setFullScreen(true);
   if (show) mainWin.once('ready-to-show', () => mainWin.show());
   mainWin.webContents.on('before-input-event', (e, i) => { if (i.type === 'keyDown' && i.key === 'F11') { e.preventDefault(); toggleFull(); } });
-  mainWin.on('enter-full-screen', broadcast); mainWin.on('leave-full-screen', broadcast);
+  mainWin.on('enter-full-screen', () => { broadcast(); setTimeout(keepIslandOnTop, 200); }); mainWin.on('leave-full-screen', () => { broadcast(); setTimeout(keepIslandOnTop, 200); });
+  for (const ev of ['focus', 'blur', 'show', 'restore']) mainWin.on(ev, () => setTimeout(keepIslandOnTop, 100));
   mainWin.on('close', (e) => { if (!quitting) { e.preventDefault(); mainWin.hide(); } });
   mainWin.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
 }
@@ -220,6 +221,13 @@ function createIsland() {
   load(islandWin, 'island');
   islandWin.once('ready-to-show', () => islandWin.showInactive());
   screen.on('display-metrics-changed', placeIsland);
+  // Windows drops "always on top" when other windows (or our own fullscreen window) take focus: re-assert it all the time
+  setInterval(keepIslandOnTop, 1500);
+}
+function keepIslandOnTop() {
+  if (!islandWin || islandWin.isDestroyed() || !islandWin.isVisible()) return;
+  islandWin.setAlwaysOnTop(true, 'screen-saver', 1);
+  islandWin.moveTop();
 }
 function showMain(page) {
   if (!mainWin) createMain(true);
@@ -309,12 +317,34 @@ function setAutostart(on) {
   app.setLoginItemSettings({ openAtLogin: !!on, path: process.execPath, args: ['--hidden'] });
 }
 
+/* ---------- taskbar: shortcuts must carry the same app id as the running app,
+   otherwise Windows shows a second taskbar icon next to the pinned one ---------- */
+const AUMID = 'Badbounce.Launcher';
+function fixShortcuts() {
+  if (process.platform !== 'win32') return;
+  const ad = app.getPath('appData');
+  const dirs = [app.getPath('desktop'), path.join(ad, 'Microsoft', 'Windows', 'Start Menu', 'Programs'), path.join(ad, 'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'TaskBar'), path.join(ad, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup')];
+  const exe = process.execPath.toLowerCase();
+  for (const d of dirs) {
+    let files = []; try { files = fs.readdirSync(d).filter((f) => f.toLowerCase().endsWith('.lnk')); } catch { continue; }
+    for (const f of files) {
+      const p = path.join(d, f);
+      try {
+        const l = shell.readShortcutLink(p);
+        if ((l.target || '').toLowerCase() !== exe || l.appUserModelId === AUMID) continue;
+        shell.writeShortcutLink(p, 'update', { appUserModelId: AUMID, icon: path.join(__dirname, 'icon.ico'), iconIndex: 0 });
+      } catch (e) { console.error('shortcut', p, e.message); }
+    }
+  }
+}
+
 /* ---------- app ---------- */
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 else {
   app.on('second-instance', () => showMain());
   app.whenReady().then(() => {
-    app.setAppUserModelId('Badbounce.Launcher');
+    app.setAppUserModelId(AUMID);
+    fixShortcuts();
     if (restartWithUpdate(HIDDEN)) return;
     protocol.handle('bbfile', (req) => {
       const u = new URL(req.url); const p = decodeURIComponent(u.pathname.replace(/^\//, ''));
