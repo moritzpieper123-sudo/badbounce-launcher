@@ -1,0 +1,157 @@
+import React, { useState } from 'react';
+import { useApp } from '../ctx';
+import { addDays, consistency, fmtNum, konzeptTable, kpis, mergeStats, MILESTONES, parseTikTokCsv, slotTable, weeklyReview, ymd, KONZEPTE, kColor, type CsvResult } from '../logic';
+import { Header } from './parts';
+import { Icon, Rings } from '../ui';
+import { bb } from '../bridge';
+import { TikTokLogo } from '../logos';
+
+export default function Analytics() {
+  const { snap, update, toast } = useApp();
+  const [range, setRange] = useState(30);
+  const [over, setOver] = useState(false);
+  const [last, setLast] = useState<CsvResult[] | null>(null);
+  const now = new Date(snap.now);
+  const k = kpis(snap), kt = konzeptTable(snap), sl = slotTable(snap), cons = consistency(snap, 35), rev = weeklyReview(snap);
+  const days = snap.state.stats.days;
+  const series = Array.from({ length: range }, (_, i) => { const d = addDays(now, i - range + 1); return { d, v: days.find((x) => x.date === ymd(d))?.views ?? 0 }; });
+  const maxV = Math.max(1, ...series.map((s) => s.v));
+  const maxSlot = Math.max(1, ...sl.map((s) => s.avg));
+
+  const importFiles = async (files: FileList | File[]) => {
+    const res: CsvResult[] = [];
+    for (const f of Array.from(files)) {
+      if (!/\.(csv|txt)$/i.test(f.name)) { toast(`${f.name}: please export as CSV`); continue; }
+      res.push(parseTikTokCsv(await f.text()));
+    }
+    if (!res.length) return;
+    setLast(res);
+    let celebrate: number[] = [];
+    await update((st) => {
+      const stats = mergeStats(st.stats, res);
+      const fol = stats.days.filter((d) => d.followers != null).pop()?.followers ?? 0;
+      celebrate = MILESTONES.filter((m) => fol >= m && !st.milestonesSeen.includes(m));
+      return { ...st, stats, milestonesSeen: [...st.milestonesSeen, ...celebrate] };
+    });
+    const top = celebrate[celebrate.length - 1];
+    if (top) bb.islandToast(`${fmtNum(top)} followers!`, 'Milestone reached');
+    toast(`Imported ${res.reduce((s, r) => s + r.rows, 0)} rows from ${res.length} file${res.length > 1 ? 's' : ''}`);
+  };
+
+  return <>
+    <Header title="Analytics" sub={snap.state.stats.importedAt ? `Last CSV import: ${new Date(snap.state.stats.importedAt).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : 'No data yet. Import your first TikTok Studio CSV below.'} right={<>
+      {[7, 30, 90].map((r) => <button key={r} className={`btn sm ${range === r ? 'white' : ''}`} onClick={() => setRange(r)}>{r}D</button>)}
+    </>} />
+
+    <section className="glass card" style={{ padding: 16 }}>
+      <label className={`drop drop-row ${over ? 'over' : ''}`} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); importFiles(e.dataTransfer.files); }}>
+        <span className="drop-ico"><Icon name="csv" size={20} color="var(--yellow)" /></span>
+        <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+          <b style={{ color: 'var(--text)' }}>Weekly CSV import</b>
+          <span className="small dim" style={{ display: 'block' }}>TikTok Studio → Analytics → Download data. Drop all CSV files here at once, or click to choose.</span>
+        </span>
+        <button type="button" className="btn sm" onClick={(e) => { e.preventDefault(); bb.openUrl('https://www.tiktok.com/tiktokstudio/analytics'); }}><TikTokLogo size={14} /> TikTok Studio</button>
+        <input type="file" accept=".csv,text/csv" multiple style={{ display: 'none' }} onChange={(e) => e.target.files && importFiles(e.target.files)} />
+      </label>
+      {last && <div className="small muted">{last.map((r, i) => <div key={i}>File {i + 1}: {r.kind === 'unknown' ? 'not recognised' : `${r.kind}, ${r.rows} rows`} · columns used: {r.found.join(', ') || 'none'}</div>)}</div>}
+    </section>
+
+    <section className="grid g-kpi">
+      <div className="glass card kpi"><span className="l">Creator Rewards</span>
+        <div className="row" style={{ gap: 14 }}>
+          <Rings size={76} rings={[{ frac: (k.followers ?? 0) / 10000, color: '#F4F6FF' }, { frac: k.views30 / 100000, color: '#FFC63A' }]} />
+          <div className="small" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span><b style={{ color: 'var(--glow)' }}>{fmtNum(k.followers ?? 0)}</b><span className="dim"> / 10K followers</span></span>
+            <span><b style={{ color: 'var(--yellow)' }}>{fmtNum(k.views30)}</b><span className="dim"> / 100K views</span></span>
+          </div>
+        </div>
+        <span className="small dim">Views in 30 days · only videos over 1 min pay</span>
+      </div>
+      <div className="glass card kpi"><span className="l">Views · last 7 days</span><span className="v">{fmtNum(k.hasData ? k.views7 : null)}</span><span className="small" style={{ color: k.views7 >= k.viewsPrev7 ? 'var(--green)' : 'var(--red)' }}>{k.viewsPrev7 >= 100 ? `${k.views7 >= k.viewsPrev7 ? '+' : ''}${(((k.views7 - k.viewsPrev7) / k.viewsPrev7) * 100).toFixed(0)}% vs previous week` : <span className="dim">No previous week to compare yet</span>}</span></div>
+      <div className="glass card kpi"><span className="l">New followers per 1K views</span><span className="v">{k.followersPer1k != null ? k.followersPer1k.toFixed(1) : '–'}</span><span className="small dim">How well views turn into followers</span></div>
+      <div className="glass card kpi"><span className="l">Shares · saves per 1K views</span><span className="v">{k.sharesPer1k != null ? k.sharesPer1k.toFixed(1) : '–'}<span className="dim" style={{ fontWeight: 500 }}> · </span>{k.savesPer1k != null ? k.savesPer1k.toFixed(1) : '–'}</span><span className="small dim">Stronger reach signal than likes</span></div>
+      <div className="glass card kpi"><span className="l">Watched to the end</span><span className="v">{k.fullWatch != null ? `${k.fullWatch.toFixed(0)}%` : '–'}</span><span className="small dim">{k.avgWatch != null ? `Avg watch time ${k.avgWatch.toFixed(1)} s` : 'Needs the content CSV'}</span></div>
+    </section>
+
+    <section className="glass card">
+      <div className="between"><h2>Views per day</h2><span className="small dim">{range} days · peak {fmtNum(maxV > 1 ? maxV : 0)}</span></div>
+      {days.length ? <>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: range > 30 ? 2 : 6, height: 160 }}>
+          {series.map((s, i) => <div key={i} title={`${s.d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}: ${fmtNum(s.v)} views`} style={{ flex: 1, height: Math.max(3, (s.v / maxV) * 150), borderRadius: range > 30 ? 3 : 8, background: i === series.length - 1 ? 'linear-gradient(180deg,#FFD978,#FFC63A)' : s.v === maxV ? 'rgba(170,195,240,.6)' : 'rgba(170,195,240,.28)' }} />)}
+        </div>
+        <div className="between small dim"><span>{series[0].d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span><span>Today</span></div>
+      </> : <div className="empty">The chart fills after the first CSV import.</div>}
+    </section>
+
+    <section className="grid g-2">
+      <div className="glass card">
+        <h2>Konzept comparison</h2>
+        {kt.length ? <table className="t"><thead><tr><th>Konzept</th><th>Posts</th><th>Avg views</th><th>Shares/1K</th><th>Full watch</th></tr></thead><tbody>
+          {kt.map((r) => <tr key={r.k}><td><span className="row" style={{ gap: 6 }}><span className="dot" style={{ background: kColor(r.k) }} />K{r.k} {KONZEPTE[r.k]?.name}</span></td><td>{r.posts}</td><td>{fmtNum(Math.round(r.avgViews))}</td><td>{r.sharesPer1k.toFixed(1)}</td><td>{r.full != null ? `${r.full.toFixed(0)}%` : '–'}</td></tr>)}
+        </tbody></table> : <div className="empty">Matches CSV posts to videos by the TikTok link you paste after uploading (or by post time).</div>}
+      </div>
+      <div className="glass card">
+        <div className="between"><h2>Best slot</h2><span className="small dim">avg views · posts</span></div>
+        {sl.length ? sl.map((s) => <div key={s.slot} className="row"><span className="num" style={{ width: 48 }}>{s.slot}</span><div className="progress" style={{ height: 12, borderRadius: 6 }}><div style={{ width: `${(s.avg / maxSlot) * 100}%`, background: s.avg === maxSlot ? 'var(--yellow)' : 'rgba(170,195,240,.5)', borderRadius: 6 }} /></div><span className="small num" style={{ width: 84, textAlign: 'right' }}>{fmtNum(Math.round(s.avg))} · {s.posts}</span></div>) : <div className="empty">Fills once posts are matched to slots.</div>}
+      </div>
+    </section>
+
+    <Milestones followers={k.followers} gain7={k.followers7} />
+
+    <section className="grid g-2">
+      <div className="glass card">
+        <div className="between"><h2>Consistency</h2><span style={{ fontWeight: 700, color: 'var(--yellow)' }}>{cons.streak} day streak</span></div>
+        <div className="heat" role="img" aria-label="Days the plan was kept">
+          {cons.days.map((d) => { const bg = d.planned < 0 ? 'rgba(255,255,255,.04)' : d.planned === 0 ? 'rgba(170,195,240,.15)' : d.done >= d.planned ? '#7FD9A8' : d.done > 0 ? '#FFC63A' : d.date === ymd(now) ? 'rgba(255,255,255,.12)' : '#FF8F7A'; return <div key={d.date} title={`${d.date}: ${d.done}/${d.planned < 0 ? 0 : d.planned}`} style={{ background: bg }} />; })}
+        </div>
+        <div className="row small dim" style={{ flexWrap: 'wrap', gap: 12 }}>
+          {[['#7FD9A8', 'all posted'], ['#FFC63A', 'some'], ['#FF8F7A', 'none'], ['rgba(170,195,240,.4)', 'warm-up']].map(([c, l]) => <span key={l} className="row" style={{ gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: c }} />{l}</span>)}
+        </div>
+      </div>
+      <div className="glass card">
+        <div className="between"><h2>Weekly review</h2><button className="btn sm primary" onClick={async () => { await bb.copyText(rev.text); await bb.openUrl(snap.state.settings.projectUrl); toast('Review copied: paste it into Claude'); }}><Icon name="sparkle" size={14} /> Ask Claude</button></div>
+        <pre className="muted review">{rev.text}</pre>
+      </div>
+    </section>
+  </>;
+}
+
+function Milestones({ followers, gain7 }: { followers: number | null; gain7: number | null }) {
+  const f = followers ?? 0;
+  const ni = MILESTONES.findIndex((m) => f < m);
+  const next = ni < 0 ? null : MILESTONES[ni];
+  const prev = ni <= 0 ? 0 : MILESTONES[ni - 1];
+  const part = next ? (f - prev) / (next - prev) : 1;
+  const lineW = Math.max(0, Math.min(100, ni < 0 ? 100 : ni === 0 ? 0 : ((ni - 1 + part) / (MILESTONES.length - 1)) * 100));
+  const weeks = next && gain7 && gain7 > 0 ? Math.ceil((next - f) / gain7) : null;
+  return <div className="glass card">
+    <div className="between">
+      <h2>Milestones</h2>
+      <span className="small dim">{followers == null ? 'Import a CSV with followers to start' : `${fmtNum(f)} followers now`}</span>
+    </div>
+    <div className="row" style={{ gap: 18, alignItems: 'center' }}>
+      <Ring value={part} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="small dim">{next ? 'Next milestone' : 'All milestones reached'}</div>
+        <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-.02em' }}>{next ? `${fmtNum(next)} followers` : '100K ★'}</div>
+        <div className="small muted">{next ? `${fmtNum(next - f)} to go${weeks ? ` · about ${weeks} week${weeks === 1 ? '' : 's'} at this week's pace` : ''}` : 'Time for new goals, Sir.'}</div>
+      </div>
+    </div>
+    <div className="ms-track">
+      <div className="ms-line"><div style={{ width: `${lineW}%` }} /></div>
+      {MILESTONES.map((m, i) => { const hit = f >= m; return <div key={m} className={`ms-node ${hit ? 'hit' : i === ni ? 'ms-next' : ''}`}>
+        <span className="ms-dot">{hit && <svg width="12" height="12" viewBox="0 0 24 24"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.7-6.2 3.7 1.6-7L2 9.2l7.1-.6z" fill="#1A1404" /></svg>}</span>
+        <span className="num">{fmtNum(m)}</span>
+      </div>; })}
+    </div>
+  </div>;
+}
+
+function Ring({ value }: { value: number }) {
+  const r = 30, c = 2 * Math.PI * r, v = Math.max(0, Math.min(1, value));
+  return <svg width="76" height="76" viewBox="0 0 76 76" role="img" aria-label={`${Math.round(v * 100)}% to next milestone`} style={{ flexShrink: 0 }}>
+    <circle cx="38" cy="38" r={r} fill="none" stroke="rgba(255,255,255,.1)" strokeWidth="7" />
+    <circle cx="38" cy="38" r={r} fill="none" stroke="#FFC63A" strokeWidth="7" strokeLinecap="round" strokeDasharray={`${c * v} ${c}`} transform="rotate(-90 38 38)" style={{ filter: 'drop-shadow(0 0 6px rgba(255,198,58,.6))' }} />
+    <text x="38" y="43" textAnchor="middle" fill="#fff" fontSize="15" fontWeight="700">{Math.round(v * 100)}%</text>
+  </svg>;
+}

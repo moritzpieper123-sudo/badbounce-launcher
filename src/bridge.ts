@@ -1,0 +1,64 @@
+import { cloudConfigured } from './cloud/client';
+import { webBridge } from './cloud/webBridge';
+import type { AppState, Snapshot, Video } from './types';
+import { DEFAULT_SETTINGS } from './types';
+
+export interface BB {
+  getSnapshot(): Promise<Snapshot>;
+  saveState(state: AppState): Promise<void>;
+  onChange(cb: () => void): () => void;
+  uploadPack(num: number): Promise<{ ok: boolean; folder?: string; error?: string }>;
+  copyText(text: string): Promise<void>;
+  openUrl(url: string): Promise<void>;
+  openPath(p: string): Promise<void>;
+  openVault(sub?: string): Promise<void>;
+  saveIdeaFile(name: string, data: ArrayBuffer): Promise<string>;
+  backupNow(): Promise<string>;
+  runGen(n: number): Promise<void>;
+  setAutostart(on: boolean): Promise<void>;
+  setVault?(p: string): Promise<void>;
+  fileUrl(p: string): string;
+  islandHover(on: boolean): void;
+  islandSize(mode: 'pill' | 'alert' | 'open'): void;
+  showMain(page?: string): void;
+  onNavigate(cb: (page: string) => void): () => void;
+  onIslandToast(cb: (msg: { title: string; sub: string }) => void): () => void;
+  islandToast(title: string, sub: string): void;
+}
+
+declare global { interface Window { bb?: BB } }
+
+/* Browser fallback (for previews): demo data in localStorage. */
+function demoSnapshot(): Snapshot {
+  const now = new Date();
+  const mk = (num: number, k: number, ready = true): Video => ({ num, folder: `/demo/Results/#${num}`, konzept: k, title: `Demo video #${num}`, hasVideo: ready, hasThumb: ready, hasDesc: ready, description: `Demo description for #${num}\n#satisfying #physics`, durationSec: 30 + num, createdMs: now.getTime() - (30 - num) * 3600000 });
+  let state: AppState | null = null;
+  try { const raw = localStorage.getItem('bb-demo-state'); if (raw) state = JSON.parse(raw); } catch { /* ignore */ }
+  if (!state) state = { version: 1, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } };
+  return { vaultPath: 'C:\\Users\\Morit\\OneDrive\\Badbounce', vaultOk: true, videos: [mk(1, 1), mk(2, 2), mk(3, 4), mk(4, 5), mk(5, 6), mk(6, 3), mk(7, 1, false)], state, render: null, fullscreen: false, now: now.toISOString() };
+}
+const listeners = new Set<() => void>();
+const fallback: BB = {
+  async getSnapshot() { return demoSnapshot(); },
+  async saveState(s) { try { localStorage.setItem('bb-demo-state', JSON.stringify(s)); } catch { /* ignore */ } listeners.forEach((l) => l()); },
+  onChange(cb) { listeners.add(cb); return () => listeners.delete(cb); },
+  async uploadPack() { return { ok: true, folder: 'Downloads\\Badbounce upload' }; },
+  async copyText(t) { try { await navigator.clipboard.writeText(t); } catch { /* ignore */ } },
+  async openUrl(u) { window.open(u, '_blank'); },
+  async openPath() { /* no-op */ },
+  async openVault() { /* no-op */ },
+  async saveIdeaFile(name) { return name; },
+  async backupNow() { return 'demo-backup.json'; },
+  async runGen() { /* no-op */ },
+  async setAutostart() { /* no-op */ },
+  fileUrl() { return ''; },
+  islandHover() { /* no-op */ },
+  islandSize() { /* no-op */ },
+  showMain() { /* no-op */ },
+  onNavigate() { return () => undefined; },
+  onIslandToast() { return () => undefined; },
+  islandToast() { /* no-op */ },
+};
+/** true inside the Windows app (vault, island, folders); false on phone / iPad */
+export const isDesktop = !!window.bb;
+export const bb: BB = window.bb ?? (cloudConfigured ? webBridge : fallback);
