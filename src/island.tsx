@@ -187,12 +187,15 @@ function UploadTile({ flash }: { flash: (m: string) => void }) {
         <button className="dk-ib" onClick={() => bb.openUrl('https://www.tiktok.com/tiktokstudio/upload')} title="Open TikTok Studio" aria-label="Open TikTok Studio"><TikTokLogo size={14} /></button>
       </div>
     </div> : <div className="dk-next empty" title="No ready video"><Icon name="film" size={20} color="#FF8F7A" /></div>}
-    <div className="dk-week">
-      {days.map(({ d, i, slots }) => <div key={i} className={`dk-dcol ${i === 0 ? 'today' : ''}`} title={d.toLocaleDateString('en-GB', { weekday: 'long' })}>
-        <span className="dk-wd">{i === 0 ? '●' : d.toLocaleDateString('en-GB', { weekday: 'short' }).slice(0, 2)}</span>
-        {slots.length ? slots.map((x) => <span key={x.time} className="dk-bub" style={{ borderColor: SC[x.state], background: x.uploaded ? SC[x.state] : x.state === 'next' ? 'rgba(255,198,58,.18)' : 'transparent', boxShadow: x.state === 'next' ? '0 0 10px rgba(255,198,58,.5)' : undefined }}
-          title={`${x.time} · ${x.video ? '#' + x.video.num : 'no video'} · ${x.state}`}>{x.uploaded ? <Tick size={9} color="#0B2016" /> : x.video ? <small>{x.video.num}</small> : <small style={{ color: SC[x.state] }}>!</small>}</span>)
-          : <span className="dk-rest" title="No posts">–</span>}
+    <div className="dk-sched">
+      {days.map(({ d, i, slots }) => <div key={i} className={`dk-srow ${i === 0 ? 'today' : ''}`}>
+        <span className="dk-sday">{i === 0 ? 'Today' : i === 1 ? 'Tmrw' : d.toLocaleDateString('en-GB', { weekday: 'short' })}</span>
+        <div className="dk-spills">
+          {slots.length ? slots.map((x) => <span key={x.time} className={`dk-spill ${x.state}`} style={{ ['--c' as string]: SC[x.state] }} title={`${x.time} · ${x.video ? 'video #' + x.video.num : 'no video yet'} · ${x.state}`}>
+            <b className="num">{x.time}</b>
+            {x.uploaded ? <Tick size={10} color="#7FD9A8" /> : x.video ? <em>#{x.video.num}</em> : <em className="warn">!</em>}
+          </span>) : <span className="dk-spill rest"><Icon name="moon" size={11} color="currentColor" />rest</span>}
+        </div>
       </div>)}
     </div>
   </div>;

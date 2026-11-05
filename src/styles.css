@@ -764,3 +764,19 @@ main.content > .grid > *:nth-child(4) { animation-delay: .22s; } main.content > 
 .dk-col { min-height: 96px; }
 .dk-card em { color: #FF8F7A; font-weight: 800; }
 .dk-more { font-size: 10px; color: var(--dim); text-align: center; }
+
+/* dock schedule: one clear row per day */
+.dk-sched { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.dk-srow { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 10px; }
+.dk-srow.today { background: rgba(255,255,255,.06); }
+.dk-sday { font-size: 12px; font-weight: 700; color: var(--muted); }
+.dk-srow.today .dk-sday { color: #FFD978; }
+.dk-spills { display: flex; gap: 5px; flex-wrap: wrap; }
+.dk-spill { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 8px; font-size: 12.5px; background: rgba(255,255,255,.07); box-shadow: inset 3px 0 0 var(--c, transparent); }
+.dk-spill b { font-weight: 700; color: #F4F6FF; }
+.dk-spill em { font-style: normal; font-size: 11px; font-weight: 700; color: var(--muted); }
+.dk-spill em.warn { color: #FF8F7A; }
+.dk-spill.next { background: rgba(255,198,58,.18); box-shadow: inset 3px 0 0 var(--c), 0 0 12px rgba(255,198,58,.25); }
+.dk-spill.next em { color: #FFD978; }
+.dk-spill.uploaded b { color: var(--dim); text-decoration: line-through; }
+.dk-spill.rest { color: var(--dim); font-size: 11.5px; gap: 4px; background: transparent; }
