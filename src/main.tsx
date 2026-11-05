@@ -86,6 +86,23 @@ function App() {
     </AppCtx.Provider>
   );
 }
+// phone: GitHub Pages caches the page ~10 min; check for a newer build when the app comes to the front
+if (!isDesktop) {
+  const mine = [...document.scripts].map((x) => x.src).find((x) => /assets\/main-/.test(x)) ?? '';
+  const check = async () => {
+    try {
+      const html = await (await fetch('./index.html', { cache: 'no-store' })).text();
+      const m = html.match(/assets\/main-[\w-]+\.js/);
+      if (m && mine && !mine.endsWith(m[0])) {
+        let last = 0; try { last = +(sessionStorage.getItem('bb-reload') || 0); sessionStorage.setItem('bb-reload', String(Date.now())); } catch { /* ignore */ }
+        if (Date.now() - last > 60e3) location.replace('./index.html?v=' + m[0].slice(12, 20) + location.hash);
+      }
+    } catch { /* offline */ }
+  };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+  setInterval(check, 5 * 60e3);
+  check();
+}
 // iOS ignores user-scalable=no in Safari: block pinch and double-tap zoom by hand (phone only)
 if (!isDesktop) {
   for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
