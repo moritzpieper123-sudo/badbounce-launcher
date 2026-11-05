@@ -82,15 +82,7 @@ export function useNow(ms = 30000) {
   useEffect(() => { const t = setInterval(() => setN(new Date()), ms); return () => clearInterval(t); }, [ms]);
   return n;
 }
-/* Background = the Badbounce world as a scene (night / dusk / day), like a photo behind floating glass.
-   All three layers are stacked; the theme fades the right one in. */
-export function Background() {
-  return <div className="bg" aria-hidden="true">
-    <i className="scene s-dark" /><i className="scene s-medium" /><i className="scene s-light" />
-    <i className="bg-shade" />
-    {Array.from({ length: 18 }, (_, i) => <i key={'d' + i} className="dust" style={{ left: `${(i * 37) % 100}%`, top: `${(i * 61) % 100}%`, ['--d' as string]: `${14 + (i % 5) * 4}s`, opacity: .2 + ((i * 7) % 5) / 10 }} />)}
-  </div>;
-}
+export { Background } from './scene';
 /** Number that counts up when it first appears. */
 export function Count({ value, format = (n: number) => String(Math.round(n)) }: { value: number | null | undefined; format?: (n: number) => string }) {
   const [v, setV] = useState(() => (value == null || matchMedia('(prefers-reduced-motion: reduce)').matches ? value ?? 0 : 0));
