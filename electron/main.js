@@ -190,7 +190,7 @@ function load(win, page) {
 }
 function createMain(show) {
   mainWin = new BrowserWindow({ width: 1400, height: 920, minWidth: 900, minHeight: 600, show: false, backgroundColor: '#0B1124', title: 'Badbounce Launcher', icon: iconPath(), autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false } });
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false, backgroundThrottling: false } });
   mainWin.setMenuBarVisibility(false);
   load(mainWin, 'index');
   if (show) mainWin.once('ready-to-show', () => mainWin.show());
