@@ -27,8 +27,15 @@ export default function Mail() {
   const open = async (x: MailItem) => {
     if (!bb.mailBody) return bb.openUrl(gmailLink(x.threadId));
     setRead({ item: x, body: null });
+    if (x.unread) bb.mailRead?.(x.id);
     const b = await bb.mailBody(x.id);
     setRead((r) => (r?.item.id === x.id ? { item: x, body: b } : r));
+  };
+  const allow = async () => {
+    if (!bb.mailAllowModify) return;
+    toast('Google opens in your browser: sign in and approve, so read emails sync to Gmail');
+    const r = await bb.mailAllowModify();
+    toast(r.ok ? 'Done. Opened emails are now marked read in Gmail too' : `Not changed: ${r.error}`);
   };
   const connect = async () => {
     if (!bb.mailConnect) return;
@@ -40,7 +47,7 @@ export default function Mail() {
     <Header title="Inbox" sub="Your Gmail inside the launcher" />
     {isDesktop ? <section className="glass card form" style={{ maxWidth: 640 }}>
       <h2>Connect Gmail</h2>
-      <span className="small muted">Read-only: the launcher can show your emails but never send, change or delete anything. Paste the two values from your Google Cloud “Desktop app” client.</span>
+      <span className="small muted">The launcher shows your emails and can mark them as read. It never sends or deletes anything. Paste the two values from your Google Cloud “Desktop app” client.</span>
       <label className="f">Client ID<input className="in" value={id} onChange={(e) => setId(e.target.value)} placeholder="…apps.googleusercontent.com" /></label>
       <label className="f">Client secret<input className="in" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="GOCSPX-…" /></label>
       <div className="row"><button className="btn primary" disabled={busy || !id.trim() || !secret.trim()} onClick={connect}><Icon name="mail" size={15} /> {busy ? 'Waiting for Google…' : 'Connect Gmail'}</button></div>
@@ -56,6 +63,7 @@ export default function Mail() {
       {isDesktop && <button className="btn sm icon" title="Refresh" aria-label="Refresh" onClick={() => bb.mailRefresh?.()}><Icon name="sparkle" size={14} /></button>}
       <button className="btn sm" onClick={() => bb.openUrl('https://mail.google.com/mail/u/0/#inbox')}><Icon name="mail" size={14} /> Gmail</button>
     </>} />
+    {isDesktop && !m.canModify && <div className="glass card row" style={{ justifyContent: 'space-between', gap: 10 }}><span className="small">Opened emails are marked read here. Allow once so they are marked read in Gmail too.</span><button className="btn sm primary" onClick={allow}>Allow</button></div>}
     {m.error && <div className="glass card" style={{ borderColor: 'rgba(255,143,122,.5)' }}><span className="small" style={{ color: 'var(--red)' }}>Gmail: {m.error}</span></div>}
     <section className="glass card" style={{ gap: 0, padding: '6px 10px' }}>
       {items.length ? items.map((x) => <button key={x.id} className={`mrow ${x.unread ? 'unread' : ''}`} onClick={() => open(x)}>

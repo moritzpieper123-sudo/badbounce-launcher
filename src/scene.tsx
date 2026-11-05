@@ -101,6 +101,8 @@ function drawCity(ctx: CanvasRenderingContext2D, W: number, H: number, t: number
   const b = world.birds; if (day > .4) { b.x += b.v * dt; if (b.x > 1.2) { b.x = -.3 - world.r() * 2; b.y = .08 + world.r() * .25; } ctx.strokeStyle = 'rgba(40,50,70,.7)'; ctx.lineWidth = 1.4; for (let k = 0; k < 4; k++) { const bx = (b.x - k * .025) * W, by = b.y * hz + Math.sin(k * 2) * 5, f = Math.sin(t * 8 + k) * 3; ctx.beginPath(); ctx.moveTo(bx - 5, by - f); ctx.lineTo(bx, by); ctx.lineTo(bx + 5, by - f); ctx.stroke(); } }
   const p = world.plane; if (night > .4) { p.x += .012 * dt; if (p.x > 1.2) { p.x = -.4 - world.r(); p.y = .06 + world.r() * .18; } if (Math.sin(t * 6) > .6) { ctx.fillStyle = '#FF5A5A'; ctx.beginPath(); ctx.arc(p.x * W, p.y * hz, 2, 0, 7); ctx.fill(); } ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillRect(p.x * W - 3, p.y * hz, 2, 1); }
   // a soft reflection on the glass
+  { const [d0, d1, n] = w; const hz2 = ctx.createLinearGradient(0, 0, 0, H); const col = `${Math.round(205 * d0 + 235 * d1 + 40 * n)},${Math.round(220 * d0 + 160 * d1 + 52 * n)},${Math.round(240 * d0 + 140 * d1 + 90 * n)}`;
+    hz2.addColorStop(0, `rgba(${col},.05)`); hz2.addColorStop(.55, `rgba(${col},.22)`); hz2.addColorStop(1, `rgba(${col},.08)`); ctx.fillStyle = hz2; ctx.fillRect(0, 0, W, H); }
   g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(.45, `rgba(255,255,255,${.04 + night * .03})`); g.addColorStop(.55, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 }
 
@@ -111,6 +113,7 @@ export function Background() {
   const [orient, setOrient] = useState<'wide' | 'tall'>(() => (innerWidth / innerHeight < .8 ? 'tall' : 'wide'));
   const wrap = useRef<HTMLDivElement>(null);
   const cv = useRef<HTMLCanvasElement>(null);
+  const spill = useRef<HTMLElement>(null);
   const themeRef = useRef(theme); themeRef.current = theme;
   useEffect(() => { const h = () => setOrient(innerWidth / innerHeight < .8 ? 'tall' : 'wide'); addEventListener('resize', h); return () => removeEventListener('resize', h); }, []);
   useEffect(() => {
@@ -120,8 +123,9 @@ export function Background() {
     const place = () => {
       const cw = el.clientWidth, ch = el.clientHeight, s = Math.max(cw / img.w, ch / img.h), ox = (cw - img.w * s) / 2, oy = (ch - img.h * s) / 2;
       const x = ox + win.x0 * img.w * s - 4, y = oy + win.y0 * img.h * s - 4, w = (win.x1 - win.x0) * img.w * s + 8, h = (win.y1 - win.y0) * img.h * s + 8;
+      const sp = spill.current; if (sp) Object.assign(sp.style, { left: `${x - w * .45}px`, top: `${y - h * .35}px`, width: `${w * 1.9}px`, height: `${h * 1.9}px` });
       Object.assign(c.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` });
-      const d = Math.min(1.5, devicePixelRatio || 1); c.width = Math.round(w * d); c.height = Math.round(h * d);
+      const d = .55; c.width = Math.round(w * d); c.height = Math.round(h * d);
     };
     place(); const ro = new ResizeObserver(place); ro.observe(el);
     const world = makeWorld();
@@ -147,6 +151,7 @@ export function Background() {
     <div className="room" ref={wrap}>
       <canvas className="city" ref={cv} />
       {(['dark', 'medium', 'light'] as Theme[]).map((t) => <img key={t} className={`room-img ${theme === t ? 'on' : ''}`} src={img[t]} alt="" decoding="async" />)}
+      <i className={`spill ${theme}`} ref={spill} />
     </div>
     <i className="bg-shade" />
   </div>;

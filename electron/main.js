@@ -193,11 +193,15 @@ function load(win, page) {
   else win.loadFile(path.join(__dirname, '..', 'dist', `${page}.html`));
 }
 function createMain(show) {
-  mainWin = new BrowserWindow({ width: 1400, height: 920, minWidth: 900, minHeight: 600, show: false, backgroundColor: '#0B1124', title: 'Badbounce Launcher', icon: iconPath(), autoHideMenuBar: true,
+  mainWin = new BrowserWindow({ width: 1400, height: 920, minWidth: 900, minHeight: 600, show: false, frame: false, backgroundColor: '#0B1124', title: 'Badbounce Launcher', icon: iconPath(), autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false, backgroundThrottling: false } });
   mainWin.setMenuBarVisibility(false);
   load(mainWin, 'index');
+  // borderless fullscreen by default (F11 or the window button switches to a normal window)
+  if (readCfg().windowed !== true) mainWin.setFullScreen(true);
   if (show) mainWin.once('ready-to-show', () => mainWin.show());
+  mainWin.webContents.on('before-input-event', (e, i) => { if (i.type === 'keyDown' && i.key === 'F11') { e.preventDefault(); toggleFull(); } });
+  mainWin.on('enter-full-screen', broadcast); mainWin.on('leave-full-screen', broadcast);
   mainWin.on('close', (e) => { if (!quitting) { e.preventDefault(); mainWin.hide(); } });
   mainWin.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
 }
@@ -227,10 +231,12 @@ function broadcast() { for (const w of [mainWin, islandWin]) if (w && !w.isDestr
 /* ---------- IPC ---------- */
 function snapshot() {
   const v = vault();
-  return { vaultPath: v, vaultOk: fs.existsSync(v), videos: scanVideos(), state: loadState(), render: renderStatus(), mail: gmail.status(), update: updater.status(), fullscreen, now: new Date().toISOString() };
+  return { vaultPath: v, vaultOk: fs.existsSync(v), videos: scanVideos(), state: loadState(), render: renderStatus(), mail: gmail.status(), update: updater.status(), fullscreen, winFull: !!(mainWin && !mainWin.isDestroyed() && mainWin.isFullScreen()), now: new Date().toISOString() };
 }
 ipcMain.handle('snapshot', () => snapshot());
-ipcMain.handle('mailConnect', async (_e, id, secret) => { try { const r = await gmail.connect(String(id).trim(), String(secret).trim()); broadcast(); return { ok: true, email: r.email }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
+ipcMain.handle('mailConnect', async (_e, id, secret) => { try { const r = await gmail.connect(String(id).trim(), String(secret).trim(), true); broadcast(); return { ok: true, email: r.email }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
+ipcMain.handle('mailRead', async (_e, id) => { const r = await gmail.markRead(String(id)); broadcast(); return r; });
+ipcMain.handle('mailAllowModify', async () => { try { await gmail.allowModify(); broadcast(); return { ok: true }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
 ipcMain.handle('mailDisconnect', () => { gmail.disconnect(); broadcast(); });
 ipcMain.handle('mailBody', async (_e, id) => { try { return { ok: true, ...(await gmail.body(String(id))) }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
 function restartWithUpdate(hidden) { if (updater.apply(vault())) { quitting = true; app.relaunch({ args: hidden ? ['--hidden'] : [] }); app.exit(0); return true; } broadcast(); return false; }
@@ -254,6 +260,9 @@ ipcMain.on('openGraphWindow', () => {
 ipcMain.handle('csvFetch', () => csvfetch.start({ status: (st) => sendAll('csvStatus', st), files: (f) => sendAll('csvFiles', f) }));
 ipcMain.on('csvShow', () => csvfetch.show());
 ipcMain.on('csvCancel', () => csvfetch.cancel((st) => sendAll('csvStatus', st)));
+function toggleFull() { if (!mainWin) return; const full = !mainWin.isFullScreen(); mainWin.setFullScreen(full); const c = readCfg(); c.windowed = !full; writeCfg(c); }
+ipcMain.on('win', (_e, a) => { if (!mainWin) return; if (a === 'min') { if (mainWin.isFullScreen()) mainWin.minimize(); else mainWin.minimize(); } else if (a === 'close') mainWin.hide(); else if (a === 'full') toggleFull(); });
+ipcMain.handle('checkUpdate', () => { const st = updater.check(vault()); broadcast(); return st; });
 ipcMain.handle('mailRefresh', async () => { await gmail.refresh(); broadcast(); });
 ipcMain.handle('save', (_e, st) => { saveState(st); broadcast(); });
 ipcMain.handle('copy', (_e, t) => clipboard.writeText(String(t)));

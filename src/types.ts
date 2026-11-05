@@ -85,7 +85,7 @@ export interface AppState {
 export interface RenderStatus { video?: string; konzept?: number; progress?: number; etaSec?: number; label?: string; updated?: string; }
 
 export interface MailItem { id: string; threadId: string; from: string; fromAddr?: string; subject: string; snippet: string; date: string; unread: boolean; }
-export interface MailStatus { connected: boolean; email: string | null; unread: number; items: MailItem[]; updated: string | null; error: string | null; }
+export interface MailStatus { canModify?: boolean; connected: boolean; email: string | null; unread: number; items: MailItem[]; updated: string | null; error: string | null; }
 export interface Snapshot {
   vaultPath: string;
   vaultOk: boolean;
@@ -96,6 +96,7 @@ export interface Snapshot {
   update?: UpdateStatus | null;
   fullscreen: boolean;
   now: string;
+  winFull?: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

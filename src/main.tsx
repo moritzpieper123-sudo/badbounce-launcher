@@ -16,6 +16,8 @@ import type { AppState, Snapshot } from './types';
 import type { CsvStatus } from './bridge';
 import { importCsvTexts } from './csvImport';
 import VaultGraphPage from './pages/VaultGraph';
+import { Search } from './search';
+import avatarUrl from './assets/avatar.webp';
 import Today from './pages/Today';
 import Schedule from './pages/Schedule';
 import Board from './pages/Board';
@@ -78,6 +80,13 @@ function App() {
   const counts: Record<string, number> = { board: dueTasks, mail: snap.mail?.unread ?? 0 };
   const cur = PAGES.find((p) => p.id === page) ?? { label: 'Settings', short: 'Settings' };
   const backup = async () => { const p = await bb.backupNow(); update((s) => ({ ...s, lastBackup: new Date().toISOString() })); toast(`Saved backup: ${p.split(/[\\/]/).pop()}`); };
+  const checkUpdate = async () => {
+    if (snap.update?.ready) { toast(`Installing update ${snap.update.ready}…`); if (!(await bb.applyUpdate?.())) toast('Update failed, try again later'); return; }
+    if (!bb.checkUpdate) return;
+    toast('Checking for updates…');
+    const r = await bb.checkUpdate();
+    toast(r.error ? `Update check failed: ${r.error}` : r.ready ? `Update ${r.ready} is ready · click the button again to install` : `You are up to date (v${r.current})`);
+  };
   const fetchCsv = () => { if (!bb.csvFetch) { go('analytics'); return; } setCsv({ state: 'running', msg: 'Starting…' }); bb.csvFetch(); };
   const Page = { today: Today, schedule: Schedule, board: Board, upload: Upload, analytics: Analytics, library: Library, ideas: Ideas, mail: Mail, tools: Tools, settings: Settings, vault: VaultGraphPage }[page] || Today;
   const notes = notifications(snap, { due, buf, dueTasks, csv });
@@ -98,6 +107,7 @@ function App() {
           </button>)}
         </nav>
         <div className="vfoot">
+          {isDesktop && <button className={`vbtn upd ${snap.update?.ready ? 'ready' : ''}`} onClick={checkUpdate} aria-label="Updates"><Icon name="update" size={18} />{snap.update?.ready && <span className="vdot" />}<span className="tip">{snap.update?.ready ? `Install update ${snap.update.ready}` : 'Check for updates'}</span></button>}
           <button className="vbtn" onClick={backup} aria-label="Save backup now"><Icon name="save" size={18} /><span className="tip">Save backup now</span></button>
           <button className={`vbtn ${page === 'settings' ? 'on' : ''}`} style={page === 'settings' ? { background: 'var(--hl)', boxShadow: '0 0 24px var(--hl-glow)' } : undefined} onClick={() => go('settings')} aria-label="Settings"><Icon name="gear" size={18} /><span className="tip">Settings</span></button>
         </div>
@@ -106,20 +116,23 @@ function App() {
         <header className="topline hide-phone">
           <div className="tl-left">
             <div className="glass tpill ws">
-              <span className="ws-av"><i className={snap.vaultOk ? '' : 'bad'} /></span>
+              <span className="ws-av"><img src={avatarUrl} alt="" /><i className={snap.vaultOk ? '' : 'bad'} /></span>
               <span className="ws-name"><b>Badbounce</b><small>@badb0unce</small></span>
               <span className="crumb"><span>Launcher</span><span>›</span><b>{cur.short}</b></span>
             </div>
           </div>
-          <Search snap={snap} go={go} />
+          <Search snap={snap} go={go} pages={PAGES} actions={{ backup, fetchCsv }} />
           <div className="tl-right">
             {csv.state !== 'idle' && csv.state !== 'done' && <CsvPill csv={csv} />}
-            {snap.update?.ready && <button className="glass round" style={{ color: 'var(--yellow-text)' }} onClick={async () => { toast(`Installing update ${snap.update!.ready}…`); if (!(await bb.applyUpdate?.())) toast('Update failed, try again later'); }} title={`Update ${snap.update.ready} ready · click to restart`} aria-label="Install update"><Icon name="sparkle" size={17} /></button>}
             <button className="btn accent pillbtn" onClick={() => go('ideas')}><Icon name="plus" size={15} sw={2.4} /> Idea</button>
             <ThemeButton className="glass theme-pill" label />
             <Clock ok={snap.vaultOk} />
             <Bell {...bellProps} />
-            <span className="avatar" title="Mo">MO</span>
+            {isDesktop && bb.win && <div className="glass tpill winbtns">
+              <button onClick={() => bb.win!('min')} title="Minimize" aria-label="Minimize"><Icon name="wmin" size={14} /></button>
+              <button onClick={() => bb.win!('full')} title={snap.winFull ? 'Window (F11)' : 'Fullscreen (F11)'} aria-label="Toggle fullscreen"><Icon name={snap.winFull ? 'wrestore' : 'wmax'} size={14} /></button>
+              <button className="x" onClick={() => bb.win!('close')} title="Close to tray" aria-label="Close"><Icon name="wclose" size={14} /></button>
+            </div>}
           </div>
         </header>
         <header className="ptop phone-only">
@@ -218,38 +231,6 @@ function Clock({ ok }: { ok: boolean }) {
   return <div className="glass tpill clock" title={isDesktop ? (ok ? 'Vault connected' : 'Vault missing') : 'Synced with PC'}>
     <b>{now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</b>
     <small>{now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</small>
-  </div>;
-}
-function Search({ snap, go }: { snap: Snapshot; go: (p: string) => void }) {
-  const [q, setQ] = useState('');
-  const [open, setOpen] = useState(false);
-  const [sel, setSel] = useState(0);
-  const inp = useRef<HTMLInputElement>(null);
-  useEffect(() => { const h = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); inp.current?.focus(); setOpen(true); } }; addEventListener('keydown', h); return () => removeEventListener('keydown', h); }, []);
-  const t = q.trim().toLowerCase();
-  type R = { k: string; icon: string; title: string; sub: string; go: () => void };
-  const res: R[] = [];
-  if (t) {
-    for (const p of PAGES) if (p.label.toLowerCase().includes(t)) res.push({ k: 'p' + p.id, icon: p.icon, title: p.label, sub: 'Page', go: () => go(p.id) });
-    for (const x of allTasks(snap)) if (x.title.toLowerCase().includes(t)) res.push({ k: 't' + x.id, icon: 'check', title: x.title, sub: `Task · ${x.col === 'done' ? 'done' : x.col === 'prog' ? 'in progress' : 'to do'}`, go: () => go('board') });
-    for (const v of snap.videos) if (`#${v.num} ${v.title}`.toLowerCase().includes(t)) res.push({ k: 'v' + v.num, icon: 'film', title: `#${v.num} ${v.title}`, sub: 'Video', go: () => go('library') });
-    for (const i of snap.state.ideas) if ((i.text || '').toLowerCase().includes(t)) res.push({ k: 'i' + i.id, icon: 'bulb', title: i.text, sub: 'Idea', go: () => go('ideas') });
-    for (const m of snap.mail?.items ?? []) if (`${m.from} ${m.subject}`.toLowerCase().includes(t)) res.push({ k: 'm' + m.id, icon: 'mail', title: m.subject, sub: m.from, go: () => go('mail') });
-  }
-  const list = res.slice(0, 9);
-  const pick = (r?: R) => { if (!r) return; r.go(); setQ(''); setOpen(false); inp.current?.blur(); };
-  return <div className="search">
-    <label className="glass tpill">
-      <Icon name="search" size={16} />
-      <input ref={inp} value={q} placeholder="Search tasks, videos, ideas, mail…" onChange={(e) => { setQ(e.target.value); setSel(0); setOpen(true); }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
-        onKeyDown={(e) => { if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(list.length - 1, s + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(0, s - 1)); } else if (e.key === 'Enter') pick(list[sel]); else if (e.key === 'Escape') { setQ(''); inp.current?.blur(); } }} />
-      <span className="kbd">Ctrl K</span>
-    </label>
-    {open && t && <div className="glass dropdown">
-      {list.length ? list.map((r, i) => <button key={r.k} className={`dd-item ${i === sel ? 'sel' : ''}`} onMouseDown={(e) => { e.preventDefault(); pick(r); }} onMouseEnter={() => setSel(i)}>
-        <span className="dd-ico"><Icon name={r.icon} size={15} /></span><span className="dd-txt"><span>{r.title}</span><small>{r.sub}</small></span>
-      </button>) : <div className="dd-item" style={{ cursor: 'default' }}><span className="dd-txt"><span>No results</span><small>Try another word</small></span></div>}
-    </div>}
   </div>;
 }
 // phone: GitHub Pages caches the page ~10 min; check for a newer build when the app comes to the front

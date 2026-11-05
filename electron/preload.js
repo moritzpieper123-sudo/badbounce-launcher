@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('bb', {
   mailConnect: (id, secret) => ipcRenderer.invoke('mailConnect', id, secret),
   mailDisconnect: () => ipcRenderer.invoke('mailDisconnect'),
   mailBody: (id) => ipcRenderer.invoke('mailBody', id),
+  mailRead: (id) => ipcRenderer.invoke('mailRead', id),
+  mailAllowModify: () => ipcRenderer.invoke('mailAllowModify'),
   applyUpdate: () => ipcRenderer.invoke('applyUpdate'),
   mailRefresh: () => ipcRenderer.invoke('mailRefresh'),
   csvFetch: () => ipcRenderer.invoke('csvFetch'),
@@ -38,4 +40,6 @@ contextBridge.exposeInMainWorld('bb', {
   noteText: (id) => ipcRenderer.invoke('noteText', id),
   openNote: (id) => ipcRenderer.invoke('openNote', id),
   openGraphWindow: () => ipcRenderer.send('openGraphWindow'),
+  win: (a) => ipcRenderer.send('win', a),
+  checkUpdate: () => ipcRenderer.invoke('checkUpdate'),
 });

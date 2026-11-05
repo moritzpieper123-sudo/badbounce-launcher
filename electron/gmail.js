@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+const MODIFY = 'https://www.googleapis.com/auth/gmail.modify'; // only when Mo opts in: lets the launcher mark emails as read
 const file = () => path.join(app.getPath('userData'), 'gmail.json');
 let cfg = null;          // { clientId, clientSecret, refresh (encrypted b64), email }
 let access = null;       // { token, until }
@@ -32,7 +33,7 @@ async function postForm(url, body) {
 }
 
 /** Opens the Google sign-in in the browser and waits for the answer on 127.0.0.1 */
-function connect(clientId, clientSecret) {
+function connect(clientId, clientSecret, modify = false) {
   load();
   return new Promise((resolve, reject) => {
     const verifier = b64url(crypto.randomBytes(48));
@@ -51,7 +52,7 @@ function connect(clientId, clientSecret) {
         const port = server.address()?.port ?? redirectPort;
         const t = await postForm('https://oauth2.googleapis.com/token', { code, client_id: clientId, client_secret: clientSecret, redirect_uri: `http://127.0.0.1:${port}`, grant_type: 'authorization_code', code_verifier: verifier });
         if (!t.refresh_token) throw new Error('Google sent no refresh token. Remove the launcher under myaccount.google.com → Security → Third-party access and try again.');
-        cfg = { clientId, clientSecret, refresh: enc(t.refresh_token) };
+        cfg = { clientId, clientSecret, refresh: enc(t.refresh_token), scope: t.scope || (modify ? MODIFY : SCOPE), readLocal: cfg.readLocal || [] };
         access = { token: t.access_token, until: Date.now() + (t.expires_in - 60) * 1000 };
         const prof = await api('profile');
         cfg.email = prof.emailAddress; save();
@@ -63,7 +64,7 @@ function connect(clientId, clientSecret) {
     let redirectPort = 0;
     server.listen(0, '127.0.0.1', () => {
       redirectPort = server.address().port;
-      const q = new URLSearchParams({ client_id: clientId, redirect_uri: `http://127.0.0.1:${redirectPort}`, response_type: 'code', scope: SCOPE, access_type: 'offline', prompt: 'consent', code_challenge: challenge, code_challenge_method: 'S256', state: stateTok });
+      const q = new URLSearchParams({ client_id: clientId, redirect_uri: `http://127.0.0.1:${redirectPort}`, response_type: 'code', scope: modify ? MODIFY : SCOPE, access_type: 'offline', prompt: 'consent', code_challenge: challenge, code_challenge_method: 'S256', state: stateTok });
       shell.openExternal('https://accounts.google.com/o/oauth2/v2/auth?' + q.toString());
     });
     setTimeout(() => { try { server.close(); } catch { /* */ } reject(new Error('Timed out waiting for the Google sign-in (5 min)')); }, 5 * 60e3);
@@ -99,7 +100,10 @@ async function refresh() {
       items.push({ id: d.id, threadId: d.threadId, from: from.replace(/\s*<[^>]+>\s*$/, '').replace(/^"|"$/g, '') || from, fromAddr: (from.match(/<([^>]+)>/) || [, from])[1], subject: h('Subject') || '(no subject)', snippet: (d.snippet || '').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&'), date: new Date(+d.internalDate).toISOString(), unread: (d.labelIds || []).includes('UNREAD') });
     }
     const lab = await api('labels/INBOX');
-    cache = { connected: true, email: cfg.email, unread: lab.messagesUnread ?? items.filter((i) => i.unread).length, items, updated: new Date().toISOString(), error: null };
+    const localRead = new Set(cfg.readLocal || []);
+    let hidden = 0; for (const it of items) if (it.unread && localRead.has(it.id)) { it.unread = false; hidden++; }
+    cfg.readLocal = items.filter((i) => localRead.has(i.id)).map((i) => i.id); // forget ids that left the list
+    cache = { connected: true, email: cfg.email, canModify: canModify(), unread: Math.max(0, (lab.messagesUnread ?? items.filter((i) => i.unread).length + hidden) - hidden), items, updated: new Date().toISOString(), error: null };
   } catch (e) { cache = { ...cache, connected: !!cfg.refresh, email: cfg.email, error: String(e.message || e) }; }
   return cache;
 }
@@ -123,5 +127,24 @@ async function body(id) {
   return { id: d.id, from: h('From'), to: h('To'), subject: h('Subject') || '(no subject)', date: new Date(+d.internalDate).toISOString(), html, files };
 }
 function disconnect() { load(); cfg = {}; access = null; save(); cache = { connected: false, email: null, unread: 0, items: [], updated: null, error: null }; return cache; }
+const canModify = () => /gmail\.modify|mail\.google\.com/.test(cfg.scope || '');
+/** Mark an email as read: in Gmail when allowed, otherwise only inside the launcher. */
+async function markRead(id) {
+  load();
+  const it = cache.items.find((i) => i.id === id);
+  const was = it?.unread;
+  if (it) it.unread = false;
+  if (was) cache.unread = Math.max(0, cache.unread - 1);
+  if (canModify()) {
+    try {
+      const r = await net.fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}/modify`, { method: 'POST', headers: { Authorization: 'Bearer ' + (await token()), 'Content-Type': 'application/json' }, body: JSON.stringify({ removeLabelIds: ['UNREAD'] }) });
+      if (r.ok) return { gmail: true };
+    } catch (e) { console.error('markRead', e); }
+  }
+  cfg.readLocal = [...new Set([...(cfg.readLocal || []), id])]; save();
+  return { gmail: false };
+}
+/** Sign in again with the permission to mark emails as read. */
+function allowModify() { load(); if (!cfg.clientId) return Promise.reject(new Error('Connect Gmail first')); return connect(cfg.clientId, cfg.clientSecret, true); }
 function hasClient() { load(); return { clientId: cfg.clientId || '' }; }
-module.exports = { body, connect, refresh, disconnect, status: () => (load(), cache), hasClient };
+module.exports = { body, connect, refresh, disconnect, markRead, allowModify, status: () => (load(), { ...cache, canModify: canModify() }), hasClient };

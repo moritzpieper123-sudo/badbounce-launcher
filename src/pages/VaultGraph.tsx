@@ -41,7 +41,7 @@ function renderMd(md: string, has: (name: string) => string | null) {
 export default function VaultGraphPage({ solo = false }: { solo?: boolean }) {
   const { toast } = useApp();
   const [data, setData] = useState<VaultGraph | null>(null);
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(() => { try { const v = sessionStorage.getItem('bb-graph-q') || ''; sessionStorage.removeItem('bb-graph-q'); return v; } catch { return ''; } });
   const [panel, setPanel] = useState(false);
   const [opt, setOpt] = useState(() => { try { return { orphans: true, unresolved: true, tags: false, repel: 220, dist: 70, center: .06, labels: true, ...JSON.parse(localStorage.getItem('bb-graph') || '{}') }; } catch { return { orphans: true, unresolved: true, tags: false, repel: 220, dist: 70, center: .06, labels: true }; } });
   const [sel, setSel] = useState<N | null>(null);

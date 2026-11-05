@@ -28,6 +28,8 @@ export interface BB {
   mailDisconnect?(): Promise<void>;
   mailRefresh?(): Promise<void>;
   mailBody?(id: string): Promise<MailBody>;
+  mailRead?(id: string): Promise<{ gmail: boolean }>;
+  mailAllowModify?(): Promise<{ ok: boolean; error?: string }>;
   applyUpdate?(): Promise<boolean>;
   csvFetch?(): Promise<void>;
   csvShow?(): void;
@@ -39,6 +41,8 @@ export interface BB {
   noteText?(id: string): Promise<string>;
   openNote?(id: string): Promise<void>;
   openGraphWindow?(): void;
+  win?(a: 'min' | 'close' | 'full'): void;
+  checkUpdate?(): Promise<{ current: string; ready: string | null; error: string | null }>;
 }
 export interface CsvStatus { state: 'idle' | 'running' | 'login' | 'needs-you' | 'done' | 'error'; msg: string }
 export interface GraphNode { id: string; name: string; folder: string; tags: string[]; unresolved?: boolean; mtime?: number }
