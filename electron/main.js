@@ -55,7 +55,7 @@ function writeIdeasMd(st) {
     const lines = ['# Ideas', '', 'Written by the Badbounce Launcher. Open ideas for the next Gen (newest first). Edit ideas in the launcher, not here.', ''];
     if (!open.length) lines.push('_No open ideas._');
     for (const i of open) {
-      lines.push(`- ${i.text || '(no text)'}${i.konzept ? ` · Konzept ${i.konzept}` : ''} · ${i.createdAt.slice(0, 10)}`);
+      lines.push(`- ${i.text || '(no text)'}${i.newKonzept ? ' · NEW KONZEPT (run NewStyle)' : i.konzept ? ` · Konzept ${i.konzept}` : ''} · ${i.createdAt.slice(0, 10)}`);
       if (i.link) lines.push(`  - Link: ${i.link}`);
       if (i.file) lines.push(`  - File: Ideas/files/${i.file}`);
     }

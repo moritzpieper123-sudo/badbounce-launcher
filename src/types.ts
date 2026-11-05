@@ -39,6 +39,7 @@ export interface Idea {
   id: string;
   text: string;
   konzept: number | null;
+  newKonzept?: boolean; // idea for a brand-new Konzept (NewStyle round)
   link?: string;
   file?: string;     // stored file name (in vault Ideas/files)
   createdAt: string;

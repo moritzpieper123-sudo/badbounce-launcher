@@ -6,6 +6,21 @@ import { Icon, KChip } from '../ui';
 import { bb, isDesktop } from '../bridge';
 import type { Idea } from '../types';
 
+const KNUMS = Object.keys(KONZEPTE).map(Number);
+/** Konzept picker: any, an existing Konzept, or a brand-new one */
+function KSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return <select className="in" value={value} onChange={(e) => onChange(e.target.value)}>
+    <option value="">Any Konzept</option>
+    <option value="new">✦ New Konzept (NewStyle)</option>
+    {KNUMS.map((n) => <option key={n} value={n}>Konzept {n} · {KONZEPTE[n].name}</option>)}
+  </select>;
+}
+const kVal = (i: Pick<Idea, 'konzept' | 'newKonzept'>) => (i.newKonzept ? 'new' : i.konzept ? String(i.konzept) : '');
+const kFields = (v: string) => ({ konzept: v && v !== 'new' ? +v : null, newKonzept: v === 'new' || undefined });
+function IdeaK({ i }: { i: Idea }) {
+  return i.newKonzept ? <span className="chip" style={{ background: 'rgba(255,198,58,.18)', color: 'var(--yellow-text)' }}>✦ New Konzept</span> : <KChip k={i.konzept} />;
+}
+
 export default function Ideas() {
   const { snap, update, toast } = useApp();
   const [text, setText] = useState(''); const [k, setK] = useState<string>(''); const [link, setLink] = useState('');
@@ -19,17 +34,31 @@ export default function Ideas() {
     setBusy(true);
     let stored: string | undefined;
     if (file) stored = await bb.saveIdeaFile(file.name, await file.arrayBuffer());
-    const idea: Idea = { id: uid(), text: text.trim(), konzept: k ? +k : null, link: link.trim() || undefined, file: stored, createdAt: new Date().toISOString() };
+    const idea: Idea = { id: uid(), text: text.trim(), ...kFields(k), link: link.trim() || undefined, file: stored, createdAt: new Date().toISOString() };
     await update((st) => ({ ...st, ideas: [idea, ...st.ideas] }));
-    setText(''); setLink(''); setFile(null); setBusy(false);
+    setText(''); setLink(''); setK(''); setFile(null); setBusy(false);
     toast('Idea saved · Gen will see it in Ideas.md');
   };
+  const [edit, setEdit] = useState<{ id: string; text: string; k: string; link: string } | null>(null);
+  const saveEdit = async () => {
+    if (!edit) return;
+    await update((st) => ({ ...st, ideas: st.ideas.map((x) => (x.id === edit.id ? { ...x, text: edit.text.trim(), link: edit.link.trim() || undefined, ...kFields(edit.k) } : x)) }));
+    setEdit(null); toast('Idea updated');
+  };
   const open = snap.state.ideas.filter((i) => !i.used), used = snap.state.ideas.filter((i) => i.used);
-  const row = (i: Idea) => <div key={i.id} className="task" style={{ alignItems: 'center' }}>
+  const row = (i: Idea) => edit?.id === i.id ? <div key={i.id} className="task idea-edit" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+    <textarea className="in" rows={2} value={edit.text} autoFocus onChange={(e) => setEdit({ ...edit, text: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) saveEdit(); if (e.key === 'Escape') setEdit(null); }} />
+    <div className="form-row">
+      <label className="f" style={{ flex: '1 1 220px' }}>Konzept<KSelect value={edit.k} onChange={(v) => setEdit({ ...edit, k: v })} /></label>
+      <label className="f" style={{ flex: '3 1 260px' }}>Reference link<input className="in" value={edit.link} onChange={(e) => setEdit({ ...edit, link: e.target.value })} placeholder="TikTok video or sound link" /></label>
+    </div>
+    <div className="row"><button className="btn primary sm" onClick={saveEdit}><Icon name="check" size={14} /> Save</button><button className="btn sm" onClick={() => setEdit(null)}>Cancel</button><span className="small dim">Ctrl+Enter saves · Esc cancels</span></div>
+  </div> : <div key={i.id} className="task" style={{ alignItems: 'center' }}>
     <div style={{ flex: 1, minWidth: 0 }}>
       <div className="t" style={{ textDecoration: i.used ? 'line-through' : 'none', color: i.used ? 'var(--dim)' : undefined }}>{i.text || '(no text)'}</div>
-      <div className="row small muted" style={{ gap: 8, marginTop: 4, flexWrap: 'wrap' }}><KChip k={i.konzept} />{i.link && <button className="chip chip-btn" onClick={() => bb.openUrl(i.link!)}><Icon name="link" size={11} /> Link</button>}{i.file && <button className="chip chip-btn" onClick={() => bb.openVault('Ideas/files/' + i.file)}><Icon name="film" size={11} /> {i.file}</button>}<span>{new Date(i.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span></div>
+      <div className="row small muted" style={{ gap: 8, marginTop: 4, flexWrap: 'wrap' }}><IdeaK i={i} />{i.link && <button className="chip chip-btn" onClick={() => bb.openUrl(i.link!)}><Icon name="link" size={11} /> Link</button>}{i.file && <button className="chip chip-btn" onClick={() => bb.openVault('Ideas/files/' + i.file)}><Icon name="film" size={11} /> {i.file}</button>}<span>{new Date(i.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span></div>
     </div>
+    <button className="btn sm icon" title="Edit idea" aria-label="Edit idea" onClick={() => setEdit({ id: i.id, text: i.text, k: kVal(i), link: i.link ?? '' })}><Icon name="pen" size={13} /></button>
     <button className="btn sm" onClick={() => update((st) => ({ ...st, ideas: st.ideas.map((x) => (x.id === i.id ? { ...x, used: !x.used } : x)) }))}>{i.used ? 'Reopen' : 'Used'}</button>
     <button className="btn sm" aria-label="Delete idea" onClick={() => update((st) => ({ ...st, ideas: st.ideas.filter((x) => x.id !== i.id) }))}><Icon name="x" size={13} /></button>
   </div>;
@@ -39,7 +68,7 @@ export default function Ideas() {
       <h2>New idea</h2>
       <label className="f">Idea<textarea className="in" rows={2} placeholder="In one line, e.g. flag battle with the World Cup 2026 groups" value={text} onChange={(e) => setText(e.target.value)} /></label>
       <div className="form-row">
-        <label className="f" style={{ flex: '1 1 220px' }}>Konzept<select className="in" value={k} onChange={(e) => setK(e.target.value)}><option value="">Any Konzept</option>{[1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n} value={n}>Konzept {n} · {KONZEPTE[n].name}</option>)}</select></label>
+        <label className="f" style={{ flex: '1 1 220px' }}>Konzept<KSelect value={k} onChange={setK} /></label>
         <label className="f" style={{ flex: '3 1 300px' }}>Reference link (optional)<input className="in" placeholder="TikTok video or sound link" value={link} onChange={(e) => setLink(e.target.value)} /></label>
       </div>
       <div className="f">Reference video (optional)
