@@ -7,12 +7,18 @@ import { sb, pullRow, pushRow, subscribeRow, uid, type CloudVideo } from './clie
 const emptyState = (): AppState => ({ version: 1, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } });
 let lastVideos: CloudVideo[] = [];
 let projectUrl = DEFAULT_SETTINGS.projectUrl;
-/** claude.ai links: try the Claude app first (claude://), fall back to the website if the app did not open */
+/** Links to apps Mo has on the phone: try the app (URL scheme) first, fall back to the website if the app did not open */
+const APP_SCHEMES: [RegExp, (u: string) => string][] = [
+  [/^https:\/\/claude\.ai\//, (u) => u.replace(/^https:\/\//, 'claude://')],
+  [/^https:\/\/chatgpt\.com/, () => 'chatgpt://'],
+  [/^https:\/\/gemini\.google\.com/, () => 'googlegemini://'],
+];
 function openLink(u: string) {
-  if (/^https:\/\/claude\.ai\//.test(u)) {
+  const hit = APP_SCHEMES.find(([re]) => re.test(u));
+  if (hit) {
     let left = false; const mark = () => { left = true; };
     document.addEventListener('visibilitychange', mark, { once: true }); window.addEventListener('pagehide', mark, { once: true });
-    window.location.href = u.replace(/^https:\/\//, 'claude://');
+    window.location.href = hit[1](u);
     setTimeout(() => { if (!left && !document.hidden) window.open(u, '_blank'); }, 1600);
     return;
   }
