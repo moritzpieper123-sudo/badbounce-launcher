@@ -86,4 +86,11 @@ function App() {
     </AppCtx.Provider>
   );
 }
+// iOS ignores user-scalable=no in Safari: block pinch and double-tap zoom by hand (phone only)
+if (!isDesktop) {
+  for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+  document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  let lastTouch = 0;
+  document.addEventListener('touchend', (e) => { const n = Date.now(); if (n - lastTouch < 300 && !(e.target as HTMLElement).closest('input,textarea,select')) e.preventDefault(); lastTouch = n; }, { passive: false });
+}
 createRoot(document.getElementById('root')!).render(<Gate><App /></Gate>);

@@ -228,7 +228,13 @@ function snapshot() {
 ipcMain.handle('snapshot', () => snapshot());
 ipcMain.handle('save', (_e, st) => { saveState(st); broadcast(); });
 ipcMain.handle('copy', (_e, t) => clipboard.writeText(String(t)));
-ipcMain.handle('openUrl', (_e, u) => { if (/^https?:\/\//.test(u)) shell.openExternal(u); });
+// claude.ai links open in the Claude desktop app when it is installed (claude:// protocol), else in the browser
+function openLink(u) {
+  if (!/^https?:\/\//.test(u)) return;
+  if (/^https:\/\/claude\.ai\//.test(u) && app.getApplicationNameForProtocol('claude://')) return shell.openExternal(u.replace(/^https:\/\//, 'claude://')).catch(() => shell.openExternal(u));
+  return shell.openExternal(u);
+}
+ipcMain.handle('openUrl', (_e, u) => openLink(u));
 ipcMain.handle('openPath', (_e, p) => shell.openPath(p));
 ipcMain.handle('openVault', (_e, sub) => { const p = path.join(vault(), sub || ''); if (fs.existsSync(p)) return shell.openPath(p); fs.mkdirSync(p, { recursive: true }); return shell.openPath(p); });
 ipcMain.handle('uploadPack', (_e, num) => {
@@ -252,7 +258,7 @@ ipcMain.handle('saveIdeaFile', (_e, name, data) => {
   return safe;
 });
 ipcMain.handle('backupNow', () => { const f = backupNow(); broadcast(); return f; });
-ipcMain.handle('runGen', (_e, n) => { clipboard.writeText(n > 1 ? `Gen x${n}` : 'Gen'); shell.openExternal(loadState().settings.projectUrl); });
+ipcMain.handle('runGen', (_e, n) => { clipboard.writeText(n > 1 ? `Gen x${n}` : 'Gen'); openLink(loadState().settings.projectUrl); });
 ipcMain.handle('setAutostart', (_e, on) => setAutostart(on));
 ipcMain.handle('setVault', (_e, p) => { const c = readCfg(); c.vaultPath = p; writeCfg(c); broadcast(); });
 ipcMain.on('islandHover', (_e, on) => { if (islandWin) islandWin.setIgnoreMouseEvents(!on, { forward: true }); });

@@ -6,6 +6,18 @@ import { sb, pullRow, pushRow, subscribeRow, uid, type CloudVideo } from './clie
 
 const emptyState = (): AppState => ({ version: 1, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } });
 let lastVideos: CloudVideo[] = [];
+let projectUrl = DEFAULT_SETTINGS.projectUrl;
+/** claude.ai links: try the Claude app first (claude://), fall back to the website if the app did not open */
+function openLink(u: string) {
+  if (/^https:\/\/claude\.ai\//.test(u)) {
+    let left = false; const mark = () => { left = true; };
+    document.addEventListener('visibilitychange', mark, { once: true }); window.addEventListener('pagehide', mark, { once: true });
+    window.location.href = u.replace(/^https:\/\//, 'claude://');
+    setTimeout(() => { if (!left && !document.hidden) window.open(u, '_blank'); }, 1600);
+    return;
+  }
+  window.open(u, '_blank');
+}
 const signed = new Map<string, { url: string; until: number }>();
 
 async function signAll(paths: string[]) {
@@ -27,6 +39,7 @@ export const webBridge: BB = {
     const videos: Video[] = lastVideos.map((v) => ({ ...v, folder: '', thumbFile: urlOf(v.thumbPath), videoFile: v.videoPath }));
     const st = row?.state && 'version' in row.state ? (row.state as AppState) : emptyState();
     st.settings = { ...DEFAULT_SETTINGS, ...st.settings };
+    projectUrl = st.settings.projectUrl || projectUrl;
     return { vaultPath: '', vaultOk: true, videos, state: st, render: row?.render ?? null, fullscreen: false, now: new Date().toISOString() };
   },
   async saveState(state) { await pushRow({ state }, 'phone'); },
@@ -46,7 +59,7 @@ export const webBridge: BB = {
     return { ok: true, folder: 'the share sheet' };
   },
   async copyText(t) { try { await navigator.clipboard.writeText(t); } catch { /* ignore */ } },
-  async openUrl(u) { window.open(u, '_blank'); },
+  async openUrl(u) { openLink(u); },
   async openPath() { /* PC only */ },
   async openVault() { /* PC only */ },
   async saveIdeaFile(name, data) {
@@ -63,7 +76,7 @@ export const webBridge: BB = {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
     return name;
   },
-  async runGen(n) { /* copy + open Claude */ try { await navigator.clipboard.writeText(n > 1 ? `Gen x${n}` : 'Gen'); } catch { /* ignore */ } },
+  async runGen(n) { try { await navigator.clipboard.writeText(n > 1 ? `Gen x${n}` : 'Gen'); } catch { /* ignore */ } openLink(projectUrl); },
   async setAutostart() { /* PC only */ },
   fileUrl(p) { return p; },
   islandHover() { /* PC only */ },

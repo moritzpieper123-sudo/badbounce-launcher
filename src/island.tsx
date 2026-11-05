@@ -86,8 +86,8 @@ function Island() {
     <div className="island" style={{ width, height, borderRadius: radius }} onMouseEnter={enter} onMouseLeave={leave}>
       {/* the two dots: same spot in every state, click = open launcher */}
       <button className="isl-dots" onClick={() => { setOpen(false); setAlert(null); bb.islandHover(false); bb.showMain('today'); }} title="Open launcher" aria-label="Open launcher">
-        <span className={st.mood === 'due' || st.mood === 'overdue' ? 'dot pulse' : 'dot'} style={{ background: mood, boxShadow: `0 0 8px ${mood}` }} />
-        <span className={st.mood === 'due' || st.mood === 'overdue' ? 'dot pulse' : 'dot'} style={{ background: mood, boxShadow: `0 0 8px ${mood}` }} />
+        <span className={st.mood === 'due' ? 'dot pulse' : 'dot'} style={{ background: mood, boxShadow: `0 0 8px ${mood}` }} />
+        <span className={st.mood === 'due' ? 'dot pulse' : 'dot'} style={{ background: mood, boxShadow: `0 0 8px ${mood}` }} />
       </button>
 
       {/* strip around the dots */}

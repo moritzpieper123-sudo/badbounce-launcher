@@ -230,7 +230,10 @@ export function islandStatus(snap: Snapshot) {
   const tasks = allTasks(snap).filter((t) => t.col !== 'done' && (!t.due || t.due <= today));
   const overdue = todaySlots.some((s) => s.state === 'overdue');
   const open = todaySlots.filter((s) => !s.uploaded).length + tasks.filter((t) => !t.auto?.startsWith('up:')).length;
-  const mood: IslandMood = overdue ? 'overdue' : open > 0 ? 'due' : todaySlots.length ? 'done' : 'idle';
+  // yellow blink ONLY when the next upload slot has no video yet (tasks never make it blink)
+  const nextSlot = buildPlan(snap, now, 2).find((s) => !s.uploaded && s.state !== 'missed');
+  const needVideo = !!nextSlot && !nextSlot.video;
+  const mood: IslandMood = needVideo ? 'due' : overdue ? 'overdue' : todaySlots.length ? 'done' : 'idle';
   return { mood, todaySlots, tasks, open };
 }
 
