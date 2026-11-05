@@ -724,3 +724,43 @@ main.content > .grid > *:nth-child(4) { animation-delay: .22s; } main.content > 
 .dk-card.drag { opacity: .3; }
 .dk-card.ghost { position: fixed; pointer-events: none; z-index: 20; background: #1A2440; box-shadow: 0 10px 24px rgba(0,0,0,.6); transform: rotate(-2deg); }
 .dk-empty { font-size: 11px; color: var(--dim); text-align: center; padding: 10px 0; }
+
+/* dock v2: icons, rings and dots instead of words */
+.isl-tile.dk.dk-gen { flex-direction: row; align-items: center; gap: 12px; flex: .9; }
+.dk-ring { position: relative; flex-shrink: 0; }
+.dk-ring > svg { position: absolute; inset: 0; }
+.dk-ring > span { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font-size: 12px; }
+.dk-genmid { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.dk-play-row { display: flex; align-items: center; gap: 8px; }
+.dk-pm { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(170,195,240,.2); background: rgba(170,195,240,.08); color: #F4F6FF; font-size: 15px; cursor: pointer; display: grid; place-items: center; padding: 0; }
+.dk-pm:hover { background: rgba(170,195,240,.2); }
+.dk-play { position: relative; width: 52px; height: 52px; border-radius: 50%; border: 0; cursor: pointer; display: grid; place-items: center; background: radial-gradient(circle at 35% 30%, #FFE59A, #FFC63A 60%, #E9A915); box-shadow: 0 0 22px rgba(255,198,58,.55), inset 0 1px 0 rgba(255,255,255,.6); transition: transform .15s; }
+.dk-play:hover { transform: scale(1.07); }
+.dk-play:active { transform: scale(.95); }
+.dk-play i { position: absolute; right: -6px; bottom: -4px; font-style: normal; font-size: 11px; font-weight: 800; color: #F4F6FF; background: #12152A; border: 1px solid rgba(255,198,58,.6); border-radius: 999px; padding: 1px 6px; }
+.dk-kdots { display: flex; gap: 5px; }
+.dk-kd { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 800; color: #0B0E1A; }
+.isl-tile.dk.dk-up { flex-direction: row; align-items: center; gap: 12px; flex: 1.1; }
+.dk-next { display: flex; gap: 8px; align-items: stretch; }
+.dk-next.empty { width: 46px; justify-content: center; align-items: center; }
+.dk-thumb { position: relative; width: 46px; height: 80px; border-radius: 10px; background: #000 center/cover; border: 1px solid rgba(255,217,120,.35); display: grid; place-items: center; overflow: hidden; }
+.dk-thumb b { position: absolute; left: 3px; bottom: 3px; font-size: 10px; background: rgba(0,0,0,.7); padding: 0 4px; border-radius: 5px; }
+.dk-nextside { display: flex; flex-direction: column; gap: 4px; align-items: center; justify-content: space-between; }
+.dk-count { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 800; }
+.dk-ib { width: 26px; height: 26px; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: pointer; background: rgba(170,195,240,.14); padding: 0; }
+.dk-ib.y { background: linear-gradient(180deg, #FFD978, #FFC63A); box-shadow: 0 0 10px rgba(255,198,58,.45); }
+.dk-ib:hover { filter: brightness(1.15); }
+.dk-week { flex: 1; display: flex; justify-content: space-around; gap: 6px; }
+.dk-dcol { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 6px; border-radius: 12px; }
+.dk-dcol.today { background: rgba(255,255,255,.05); }
+.dk-wd { font-size: 10px; font-weight: 700; color: var(--dim); height: 12px; }
+.dk-dcol.today .dk-wd { color: #FFD978; font-size: 8px; }
+.dk-bub { width: 22px; height: 22px; border-radius: 50%; border: 2px solid; display: grid; place-items: center; }
+.dk-bub small { font-size: 9px; font-weight: 800; color: #F4F6FF; }
+.dk-rest { color: var(--dim); font-size: 12px; }
+.dk-ch { justify-content: space-between; }
+.dk-ch .dk-ci { margin-left: 0; width: 15px; height: 15px; border-radius: 50%; border: 2px solid; display: grid; place-items: center; }
+.dk-ch b { font-size: 11px; color: var(--dim); }
+.dk-col { min-height: 96px; }
+.dk-card em { color: #FF8F7A; font-weight: 800; }
+.dk-more { font-size: 10px; color: var(--dim); text-align: center; }
