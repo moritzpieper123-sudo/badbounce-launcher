@@ -1,7 +1,7 @@
 import React from 'react';
 import { useApp } from '../ctx';
 import { addDays, allTasks, buildPlan, dayNumber, fmtDay, fmtNum, kpis, phaseLabel, ymd, parseYmd, konzeptTable, KONZEPTE, isReady, weeklyReview } from '../logic';
-import { Rings, Spark, Icon } from '../ui';
+import { Rings, Spark, Icon, Count } from '../ui';
 import { Header, NextUpload, SlotList, TaskRow, BufferMeter } from './parts';
 import { bb } from '../bridge';
 
@@ -37,12 +37,12 @@ export default function Today() {
     <section className="grid g-kpi" aria-label="Key numbers">
       <div className="glass card lift kpi t-frost">
         <span className="l"><Icon name="check" size={15} />Followers</span>
-        <div className="v num">{fmtNum(k.followers)}</div>
+        <div className="v num"><Count value={k.followers} format={fmtNum} /></div>
         <div className="kfoot"><span className="small dim">{k.followers7 != null ? <span className="delta">↑ {k.followers7} · 7d</span> : 'Goal 10,000 for Creator Rewards'}</span><Spark values={days.filter((d) => d.followers != null).slice(-14).map((d) => d.followers!)} color="var(--glow)" height={40} /></div>
       </div>
       <div className="glass card lift kpi t-yellow">
         <span className="l"><Icon name="play" size={14} />Views · last 30 days</span>
-        <div className="v num">{fmtNum(k.hasData ? k.views30 : null)}</div>
+        <div className="v num"><Count value={k.hasData ? k.views30 : null} format={fmtNum} /></div>
         <div className="kfoot"><span className="small dim">Goal 100,000{k.views30 >= 100000 ? ' ✓' : ''}</span><Spark values={days.slice(-14).map((d) => d.views || 0)} color="#FFC63A" height={40} /></div>
       </div>
       <div className="glass card lift kpi t-navy">
@@ -94,7 +94,7 @@ export default function Today() {
       <div className="weekbars" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0,1fr))', gap: 14, alignItems: 'end', height: 170 }}>
         {week.map((d, i) => { const isT = i === 6; const v = barVals[i]; return <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, height: '100%', justifyContent: 'flex-end' }}>
           <span className="small" style={{ color: isT ? 'var(--glow)' : 'var(--dim)', fontWeight: 600 }}>{hasWeek ? (weekVals[i] == null ? '' : fmtNum(weekVals[i])) : v}</span>
-          <div style={{ width: '100%', maxWidth: 64, height: Math.max(6, (v / maxBar) * 120), borderRadius: 14, background: isT ? 'var(--bar-hl)' : 'var(--bar)', boxShadow: isT ? '0 0 34px var(--hl-glow)' : 'inset 0 1px 0 rgba(var(--wrgb),.18)' }} />
+          <div className="bar-grow" style={{ animationDelay: `${i * 60}ms`, width: '100%', maxWidth: 64, height: Math.max(6, (v / maxBar) * 120), borderRadius: 14, background: isT ? 'var(--bar-hl)' : 'var(--bar)', boxShadow: isT ? '0 0 34px var(--hl-glow)' : 'inset 0 1px 0 rgba(var(--wrgb),.18)' }} />
           <span className="small" style={{ color: isT ? 'var(--glow)' : 'var(--dim)' }}>{isT ? 'Today' : d.toLocaleDateString('en-GB', { weekday: 'short' })}</span>
         </div>; })}
       </div>

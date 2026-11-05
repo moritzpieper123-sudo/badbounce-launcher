@@ -7,6 +7,8 @@ const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
 const gmail = require('./gmail');
 const updater = require('./updater');
+const graph = require('./graph');
+const csvfetch = require('./csvfetch');
 
 const DEFAULT_SETTINGS = { day1: '2026-11-05', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
 const HIDDEN = process.argv.includes('--hidden');
@@ -233,6 +235,25 @@ ipcMain.handle('mailDisconnect', () => { gmail.disconnect(); broadcast(); });
 ipcMain.handle('mailBody', async (_e, id) => { try { return { ok: true, ...(await gmail.body(String(id))) }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
 function restartWithUpdate(hidden) { if (updater.apply(vault())) { quitting = true; app.relaunch({ args: hidden ? ['--hidden'] : [] }); app.exit(0); return true; } broadcast(); return false; }
 ipcMain.handle('applyUpdate', () => restartWithUpdate(false));
+const allWins = () => BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && w !== islandWin);
+const sendAll = (ch, ...a) => { for (const w of allWins()) w.webContents.send(ch, ...a); };
+/* vault graph (Obsidian view) */
+let graphWatched = '';
+ipcMain.handle('vaultGraph', () => { const v = vault(); if (graphWatched !== v) { graphWatched = v; graph.watch(v, () => sendAll('graphChanged')); } return graph.build(v); });
+ipcMain.handle('noteText', (_e, id) => graph.noteText(vault(), String(id)));
+ipcMain.handle('openNote', async (_e, id) => { const abs = path.resolve(vault(), String(id)); if (!abs.startsWith(path.resolve(vault()))) return; try { await shell.openExternal('obsidian://open?path=' + encodeURIComponent(abs)); } catch { shell.openPath(abs); } });
+let graphWin = null;
+ipcMain.on('openGraphWindow', () => {
+  if (graphWin && !graphWin.isDestroyed()) { graphWin.show(); graphWin.focus(); return; }
+  graphWin = new BrowserWindow({ width: 1200, height: 820, minWidth: 600, minHeight: 400, backgroundColor: '#04050A', title: 'Vault graph · Badbounce', icon: iconPath(), autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false } });
+  if (DEV_URL) graphWin.loadURL(`${DEV_URL}/index.html#vault-solo`); else graphWin.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), { hash: 'vault-solo' });
+  graphWin.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  graphWin.on('closed', () => { graphWin = null; });
+});
+/* background TikTok CSV fetch */
+ipcMain.handle('csvFetch', () => csvfetch.start({ status: (st) => sendAll('csvStatus', st), files: (f) => sendAll('csvFiles', f) }));
+ipcMain.on('csvShow', () => csvfetch.show());
+ipcMain.on('csvCancel', () => csvfetch.cancel((st) => sendAll('csvStatus', st)));
 ipcMain.handle('mailRefresh', async () => { await gmail.refresh(); broadcast(); });
 ipcMain.handle('save', (_e, st) => { saveState(st); broadcast(); });
 ipcMain.handle('copy', (_e, t) => clipboard.writeText(String(t)));
@@ -316,7 +337,8 @@ else {
       try {
         if (process.env.BB_PAGE) mainWin.webContents.send('navigate', process.env.BB_PAGE);
         if (process.env.BB_ISLAND_OPEN) islandWin.webContents.send('navigate', 'toggle');
-        await new Promise((r) => setTimeout(r, 1500));
+        await new Promise((r) => setTimeout(r, +(process.env.BB_SHOT_WAIT || 1500)));
+        if (process.env.BB_JS) { await mainWin.webContents.executeJavaScript(process.env.BB_JS); await new Promise((r) => setTimeout(r, 1500)); }
         fs.writeFileSync(process.env.BB_SHOT, (await mainWin.webContents.capturePage()).toPNG());
         fs.writeFileSync(process.env.BB_SHOT.replace('.png', '-island.png'), (await islandWin.webContents.capturePage()).toPNG());
         console.log('BB_SNAPSHOT', JSON.stringify(snapshot()).slice(0, 600));

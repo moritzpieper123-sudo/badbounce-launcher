@@ -4,6 +4,19 @@ import { Header } from './parts';
 import { bb, isDesktop } from '../bridge';
 import { SyncCard } from '../cloud/SyncCard';
 import type { Settings as S } from '../types';
+import { MODES, setMode, sunTimes, useTheme, type Mode } from '../theme';
+
+function Appearance() {
+  const { mode, theme } = useTheme();
+  const t = sunTimes(new Date()), f = (d: Date) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const shift = (d: Date, m: number) => new Date(d.getTime() + m * 60e3);
+  const label: Record<Mode, string> = { auto: 'Auto', dark: 'Dark', medium: 'Medium', light: 'Light' };
+  return <div className="glass card">
+    <div className="between"><h2>Appearance</h2><span className="small dim">Now: {theme === 'dark' ? 'night' : theme === 'medium' ? 'dusk' : 'day'}</span></div>
+    <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>{MODES.map((m) => <button key={m} className={`btn sm ${mode === m ? 'white' : ''}`} onClick={() => setMode(m)}>{label[m]}</button>)}</div>
+    <div className="small muted" style={{ lineHeight: 1.6 }}>Auto follows the sun in Hamm (NRW). Today: sunrise {f(t.rise)}, sunset {f(t.set)}.<br />Dark until {f(shift(t.rise, -45))} · medium until {f(shift(t.rise, 45))} · light until {f(shift(t.set, -45))} · medium until {f(shift(t.set, 45))} · then dark.</div>
+  </div>;
+}
 
 export default function Settings() {
   const { snap, update, toast } = useApp();
@@ -20,6 +33,7 @@ export default function Settings() {
         <label className="f">CSV reminder day<select className="in" value={s.csvWeekday} onChange={(e) => set({ csvWeekday: +e.target.value })}>{['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => <option key={d} value={i}>{d}</option>)}</select></label>
         <label className="f">Comment reminder after upload (minutes)<input className="in" type="number" min={5} max={120} value={s.commentReminderMin} onChange={(e) => set({ commentReminderMin: +e.target.value || 20 })} /></label>
       </div>
+      <Appearance />
       {isDesktop && <div className="glass card">
         <h2>Dynamic Island</h2>
         <Toggle on={s.islandEnabled} onChange={(v) => set({ islandEnabled: v })} label="Show the island" hint="Ctrl+Alt+B opens it any time" />

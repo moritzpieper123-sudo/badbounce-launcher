@@ -1,10 +1,11 @@
 import gsap from 'gsap';
 import React, { useRef, useEffect, useState } from 'react';
 import { useApp } from '../ctx';
-import { addDays, consistency, fmtNum, konzeptTable, kpis, mergeStats, MILESTONES, parseTikTokCsv, slotTable, weeklyReview, ymd, KONZEPTE, kColor, type CsvResult } from '../logic';
+import { addDays, consistency, fmtNum, konzeptTable, kpis, MILESTONES, slotTable, weeklyReview, ymd, KONZEPTE, kColor, type CsvResult } from '../logic';
 import { Header } from './parts';
-import { Icon, Rings } from '../ui';
-import { bb } from '../bridge';
+import { Icon, Rings, Count } from '../ui';
+import { bb, isDesktop } from '../bridge';
+import { importCsvTexts } from '../csvImport';
 import { TikTokLogo } from '../logos';
 
 export default function Analytics() {
@@ -20,23 +21,9 @@ export default function Analytics() {
   const maxSlot = Math.max(1, ...sl.map((s) => s.avg));
 
   const importFiles = async (files: FileList | File[]) => {
-    const res: CsvResult[] = [];
-    for (const f of Array.from(files)) {
-      if (!/\.(csv|txt)$/i.test(f.name)) { toast(`${f.name}: please export as CSV`); continue; }
-      res.push(parseTikTokCsv(await f.text()));
-    }
-    if (!res.length) return;
-    setLast(res);
-    let celebrate: number[] = [];
-    await update((st) => {
-      const stats = mergeStats(st.stats, res);
-      const fol = stats.days.filter((d) => d.followers != null).pop()?.followers ?? 0;
-      celebrate = MILESTONES.filter((m) => fol >= m && !st.milestonesSeen.includes(m));
-      return { ...st, stats, milestonesSeen: [...st.milestonesSeen, ...celebrate] };
-    });
-    const top = celebrate[celebrate.length - 1];
-    if (top) bb.islandToast(`${fmtNum(top)} followers!`, 'Milestone reached');
-    toast(`Imported ${res.reduce((s, r) => s + r.rows, 0)} rows from ${res.length} file${res.length > 1 ? 's' : ''}`);
+    const list = await Promise.all(Array.from(files).map(async (f) => ({ name: f.name, text: /\.(csv|txt)$/i.test(f.name) ? await f.text() : '' })));
+    const res = await importCsvTexts(list, update, toast);
+    if (res.length) setLast(res);
   };
 
   return <>
@@ -49,8 +36,9 @@ export default function Analytics() {
         <span className="drop-ico"><Icon name="csv" size={20} color="var(--yellow)" /></span>
         <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
           <b style={{ color: 'var(--text)' }}>Weekly CSV import</b>
-          <span className="small dim" style={{ display: 'block' }}>TikTok Studio → Analytics → Download data. Drop all CSV files here at once, or click to choose.</span>
+          <span className="small dim" style={{ display: 'block' }}>TikTok Studio → Analytics → Download data. Fetch it automatically, or drop the CSV files here / click to choose.</span>
         </span>
+        {isDesktop && bb.csvFetch && <button type="button" className="btn sm accent" onClick={(e) => { e.preventDefault(); bb.csvFetch?.(); toast('Fetching the CSV in the background'); }}><Icon name="download" size={14} sw={2.4} /> Fetch automatically</button>}
         <button type="button" className="btn sm" onClick={(e) => { e.preventDefault(); bb.openUrl('https://www.tiktok.com/tiktokstudio/analytics'); }}><TikTokLogo size={14} /> TikTok Studio</button>
         <input type="file" accept=".csv,text/csv" multiple style={{ display: 'none' }} onChange={(e) => e.target.files && importFiles(e.target.files)} />
       </label>
@@ -68,7 +56,7 @@ export default function Analytics() {
         </div>
         <span className="small dim">Views in 30 days · only videos over 1 min pay</span>
       </div>
-      <div className="glass card kpi"><span className="l">Views · last 7 days</span><span className="v">{fmtNum(k.hasData ? k.views7 : null)}</span><span className="small" style={{ color: k.views7 >= k.viewsPrev7 ? 'var(--green)' : 'var(--red)' }}>{k.viewsPrev7 >= 100 ? `${k.views7 >= k.viewsPrev7 ? '+' : ''}${(((k.views7 - k.viewsPrev7) / k.viewsPrev7) * 100).toFixed(0)}% vs previous week` : <span className="dim">No previous week to compare yet</span>}</span></div>
+      <div className="glass card kpi"><span className="l">Views · last 7 days</span><span className="v"><Count value={k.hasData ? k.views7 : null} format={fmtNum} /></span><span className="small" style={{ color: k.views7 >= k.viewsPrev7 ? 'var(--green)' : 'var(--red)' }}>{k.viewsPrev7 >= 100 ? `${k.views7 >= k.viewsPrev7 ? '+' : ''}${(((k.views7 - k.viewsPrev7) / k.viewsPrev7) * 100).toFixed(0)}% vs previous week` : <span className="dim">No previous week to compare yet</span>}</span></div>
       <div className="glass card kpi"><span className="l">New followers per 1K views</span><span className="v">{k.followersPer1k != null ? k.followersPer1k.toFixed(1) : '–'}</span><span className="small dim">How well views turn into followers</span></div>
       <div className="glass card kpi"><span className="l">Shares · saves per 1K views</span><span className="v">{k.sharesPer1k != null ? k.sharesPer1k.toFixed(1) : '–'}<span className="dim" style={{ fontWeight: 500 }}> · </span>{k.savesPer1k != null ? k.savesPer1k.toFixed(1) : '–'}</span><span className="small dim">Stronger reach signal than likes</span></div>
       <div className="glass card kpi"><span className="l">Watched to the end</span><span className="v">{k.fullWatch != null ? `${k.fullWatch.toFixed(0)}%` : '–'}</span><span className="small dim">{k.avgWatch != null ? `Avg watch time ${k.avgWatch.toFixed(1)} s` : 'Needs the content CSV'}</span></div>
@@ -78,7 +66,7 @@ export default function Analytics() {
       <div className="between"><h2>Views per day</h2><span className="small dim">{range} days · peak {fmtNum(maxV > 1 ? maxV : 0)}</span></div>
       {days.length ? <>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: range > 30 ? 2 : 6, height: 160 }}>
-          {series.map((s, i) => <div key={i} title={`${s.d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}: ${fmtNum(s.v)} views`} style={{ flex: 1, height: Math.max(3, (s.v / maxV) * 150), borderRadius: range > 30 ? 3 : 8, boxShadow: i === series.length - 1 ? '0 0 20px var(--hl-glow)' : 'none', background: i === series.length - 1 ? 'var(--bar-hl)' : s.v === maxV ? 'rgba(170,195,240,.6)' : 'rgba(170,195,240,.28)' }} />)}
+          {series.map((s, i) => <div key={i} title={`${s.d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}: ${fmtNum(s.v)} views`} className="bar-grow" style={{ animationDelay: `${Math.min(i, 40) * 15}ms`, flex: 1, height: Math.max(3, (s.v / maxV) * 150), borderRadius: range > 30 ? 3 : 8, boxShadow: i === series.length - 1 ? '0 0 20px var(--hl-glow)' : 'none', background: i === series.length - 1 ? 'var(--bar-hl)' : s.v === maxV ? 'rgba(170,195,240,.6)' : 'rgba(170,195,240,.28)' }} />)}
         </div>
         <div className="between small dim"><span>{series[0].d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span><span>Today</span></div>
       </> : <div className="empty">The chart fills after the first CSV import.</div>}

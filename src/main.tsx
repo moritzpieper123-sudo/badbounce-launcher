@@ -5,13 +5,17 @@ import './styles.css';
 import { useSnapshot } from './store';
 import { AppCtx } from './ctx';
 import { Background, Icon, Toast, useNow, ThemeButton } from './ui';
+import './theme';
 import { bb, isDesktop } from './bridge';
 import { Gate, ShareSheet } from './cloud/Gate';
 import { cloudConfigured } from './cloud/client';
 import { listenPhone, syncTick } from './cloud/pcSync';
 import { useRef } from 'react';
 import { csvDue, bufferInfo, allTasks, ymd } from './logic';
-import type { AppState } from './types';
+import type { AppState, Snapshot } from './types';
+import type { CsvStatus } from './bridge';
+import { importCsvTexts } from './csvImport';
+import VaultGraphPage from './pages/VaultGraph';
 import Today from './pages/Today';
 import Schedule from './pages/Schedule';
 import Board from './pages/Board';
@@ -32,8 +36,9 @@ const PAGES = [
   { id: 'library', label: 'Library', short: 'Library', icon: 'grid' },
   { id: 'ideas', label: 'Idea inbox', short: 'Ideas', icon: 'bulb' },
   { id: 'mail', label: 'Inbox', short: 'Inbox', icon: 'mail' },
+  { id: 'vault', label: 'Vault graph', short: 'Vault', icon: 'graph', desktop: true },
   { id: 'tools', label: 'Tools', short: 'Tools', icon: 'tools' },
-];
+].filter((p) => !p.desktop || isDesktop);
 const PHONE_NAV = ['today', 'schedule', 'board', 'mail'];
 const Logo = ({ id }: { id: string }) => <svg className="brand" viewBox="0 0 40 40" aria-hidden="true">
   <defs><radialGradient id={`bb-ball-${id}`} cx=".42" cy=".38" r=".6"><stop offset="0" stopColor="#fff" /><stop offset=".55" stopColor="#F4F6FF" /><stop offset="1" stopColor="#AAC3F0" /></radialGradient>
@@ -49,15 +54,23 @@ function App() {
   const [page, setPage] = useState(() => (location.hash.slice(1) || 'today'));
   const [msg, setMsg] = useState<string | null>(null);
   const [more, setMore] = useState(false);
+  const [csv, setCsv] = useState<CsvStatus>({ state: 'idle', msg: '' });
   const go = useCallback((p: string) => { setPage(p); location.hash = p; window.scrollTo(0, 0); }, []);
   useEffect(() => bb.onNavigate((p) => go(p)), [go]);
+  useEffect(() => { const h = () => { const p = location.hash.slice(1); if (p) setPage(p); }; addEventListener('hashchange', h); return () => removeEventListener('hashchange', h); }, []);
   const toast = useCallback((m: string) => setMsg(m), []);
+  // background CSV fetch: status + the files it brings back
+  const updRef = useRef(update); updRef.current = update;
+  useEffect(() => bb.onCsvStatus?.((st) => { setCsv(st); if (st.state === 'error' || st.state === 'login' || st.state === 'needs-you') setMsg(st.msg); }), []);
+  useEffect(() => bb.onCsvFiles?.(async (files) => { await importCsvTexts(files, updRef.current, setMsg); }), []);
   // PC: keep the phone in sync
   const snapRef = useRef(snap); snapRef.current = snap;
   const apply = useCallback((st: AppState) => update(() => st), [update]);
   useEffect(() => { if (!isDesktop || !cloudConfigured) return; return listenPhone(() => snapRef.current, apply); }, [apply]);
   useEffect(() => { if (!isDesktop || !cloudConfigured || !snap) return; const t = setTimeout(() => syncTick(snap, apply), 2500); return () => clearTimeout(t); }, [snap, apply]);
   if (!snap) return <><Background /><div style={{ padding: 40, position: 'relative' }} className="muted">Loading…</div></>;
+  const ctx = { snap, update, toast, go };
+  if (page === 'vault-solo') return <AppCtx.Provider value={ctx}><Background /><div className="graph-solo" style={{ position: 'relative', padding: 16 }}><VaultGraphPage solo /></div><Toast msg={msg} onDone={() => setMsg(null)} /></AppCtx.Provider>;
   const due = csvDue(snap);
   const buf = bufferInfo(snap);
   const today = ymd(new Date(snap.now));
@@ -65,40 +78,55 @@ function App() {
   const counts: Record<string, number> = { board: dueTasks, mail: snap.mail?.unread ?? 0 };
   const cur = PAGES.find((p) => p.id === page) ?? { label: 'Settings', short: 'Settings' };
   const backup = async () => { const p = await bb.backupNow(); update((s) => ({ ...s, lastBackup: new Date().toISOString() })); toast(`Saved backup: ${p.split(/[\\/]/).pop()}`); };
-  const Page = { today: Today, schedule: Schedule, board: Board, upload: Upload, analytics: Analytics, library: Library, ideas: Ideas, mail: Mail, tools: Tools, settings: Settings }[page] || Today;
+  const fetchCsv = () => { if (!bb.csvFetch) { go('analytics'); return; } setCsv({ state: 'running', msg: 'Starting…' }); bb.csvFetch(); };
+  const Page = { today: Today, schedule: Schedule, board: Board, upload: Upload, analytics: Analytics, library: Library, ideas: Ideas, mail: Mail, tools: Tools, settings: Settings, vault: VaultGraphPage }[page] || Today;
+  const notes = notifications(snap, { due, buf, dueTasks, csv });
+  const bellProps = { notes, go, fetchCsv, csv };
+  const navIdx = PAGES.findIndex((p) => p.id === page);
   return (
-    <AppCtx.Provider value={{ snap, update, toast, go }}>
+    <AppCtx.Provider value={ctx}>
       <Background />
+      <aside className="glass vrail hide-phone" aria-label="Main">
+        <button className="brand-btn" onClick={() => go('today')} aria-label="Today"><Logo id="pc" /></button>
+        <nav className="vnav">
+          <i className="vind" style={{ transform: `translateY(${Math.max(0, navIdx) * 50}px)`, opacity: navIdx < 0 ? 0 : 1 }} />
+          {PAGES.map((p) => <button key={p.id} className={`vbtn ${page === p.id ? 'on' : ''}`} onClick={() => go(p.id)} aria-label={p.label}>
+            <Icon name={p.icon} size={19} />
+            {counts[p.id] > 0 && <span className="vcount">{Math.min(99, counts[p.id])}</span>}
+            {p.id === 'analytics' && due && <span className="vdot" />}
+            <span className="tip">{p.label}</span>
+          </button>)}
+        </nav>
+        <div className="vfoot">
+          <button className="vbtn" onClick={backup} aria-label="Save backup now"><Icon name="save" size={18} /><span className="tip">Save backup now</span></button>
+          <button className={`vbtn ${page === 'settings' ? 'on' : ''}`} style={page === 'settings' ? { background: 'var(--hl)', boxShadow: '0 0 24px var(--hl-glow)' } : undefined} onClick={() => go('settings')} aria-label="Settings"><Icon name="gear" size={18} /><span className="tip">Settings</span></button>
+        </div>
+      </aside>
       <div className="shell">
-        <header className="glass topbar hide-phone">
-          <div className="tb-row">
-            <button className="tb-brand" onClick={() => go('today')} aria-label="Today"><Logo id="pc" /><span>Badbounce</span></button>
-            <nav className="pills" aria-label="Main">
-              {PAGES.map((p) => <button key={p.id} className={`pill ${page === p.id ? 'on' : ''}`} onClick={() => go(p.id)} title={p.label}>
-                <Icon name={p.icon} size={15} /><span className="pl">{p.short}</span>
-                {counts[p.id] > 0 && <span className="pcount">{Math.min(99, counts[p.id])}</span>}
-                {p.id === 'analytics' && due && <span className="pdot" />}
-              </button>)}
-            </nav>
-            <div className="tb-actions">
-              {snap.update?.ready && <button className="iconbtn upd" onClick={async () => { toast(`Installing update ${snap.update!.ready}…`); if (!(await bb.applyUpdate?.())) toast('Update failed, try again later'); }} title={`Update ${snap.update.ready} ready · click to restart`} aria-label="Install update"><Icon name="sparkle" size={17} /></button>}
-              <button className="btn accent" onClick={() => go('ideas')}><Icon name="plus" size={15} sw={2.4} /> Idea</button>
-              <ThemeButton />
-              <button className="iconbtn" onClick={backup} title="Save backup now" aria-label="Save backup now"><Icon name="save" size={17} /></button>
-              <button className={`iconbtn ${page === 'settings' ? 'on' : ''}`} onClick={() => go('settings')} title="Settings" aria-label="Settings"><Icon name="gear" size={17} /></button>
-              <span className="avatar" title="Mo">MO</span>
+        <header className="topline hide-phone">
+          <div className="tl-left">
+            <div className="glass tpill ws">
+              <span className="ws-av"><i className={snap.vaultOk ? '' : 'bad'} /></span>
+              <span className="ws-name"><b>Badbounce</b><small>@badb0unce</small></span>
+              <span className="crumb"><span>Launcher</span><span>›</span><b>{cur.short}</b></span>
             </div>
           </div>
-          <div className="tb-crumbs">
-            <span>Launcher</span><span className="sep">›</span><b>{cur.short}</b>
-            <span style={{ flex: 1 }} />
-            <StatusLine ok={snap.vaultOk} />
+          <Search snap={snap} go={go} />
+          <div className="tl-right">
+            {csv.state !== 'idle' && csv.state !== 'done' && <CsvPill csv={csv} />}
+            {snap.update?.ready && <button className="glass round" style={{ color: 'var(--yellow-text)' }} onClick={async () => { toast(`Installing update ${snap.update!.ready}…`); if (!(await bb.applyUpdate?.())) toast('Update failed, try again later'); }} title={`Update ${snap.update.ready} ready · click to restart`} aria-label="Install update"><Icon name="sparkle" size={17} /></button>}
+            <button className="btn accent pillbtn" onClick={() => go('ideas')}><Icon name="plus" size={15} sw={2.4} /> Idea</button>
+            <ThemeButton className="glass theme-pill" label />
+            <Clock ok={snap.vaultOk} />
+            <Bell {...bellProps} />
+            <span className="avatar" title="Mo">MO</span>
           </div>
         </header>
         <header className="ptop phone-only">
           <button className="tb-brand" onClick={() => go('today')} aria-label="Today"><Logo id="ph" /></button>
           <div className="ptitle"><span>Badbounce</span><b>{cur.short}</b></div>
           <ThemeButton className="iconbtn sm" />
+          <Bell {...bellProps} small />
           <button className="btn sm accent" onClick={() => go('ideas')} aria-label="New idea"><Icon name="plus" size={14} sw={2.6} /> Idea</button>
         </header>
         <nav className="glass pnav phone-only" aria-label="Main">
@@ -119,11 +147,12 @@ function App() {
               </button>)}
           </div>
         </div>}
-        <main className="content">
+        <main className="content" key={page}>
           {!snap.vaultOk && <div className="glass card" style={{ borderColor: 'rgba(255,143,122,.5)' }}><b>Vault not found.</b><span className="muted">Expected the Badbounce folder at {snap.vaultPath}. Change it in Settings (gear icon).</span></div>}
-          {(due || buf.days < 1) && (
+          {(due || buf.days < 1) && page !== 'vault' && (
             <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-              {due && <button className="btn sm pill-alert" onClick={() => go('analytics')}><Icon name="csv" size={15} /> Weekly TikTok CSV is due · import now</button>}
+              {due && <button className="btn sm pill-alert" onClick={fetchCsv} disabled={csv.state === 'running'}><Icon name="download" size={15} /> Weekly TikTok CSV is due · {isDesktop ? 'fetch it automatically' : 'import on the PC'}</button>}
+              {due && isDesktop && <button className="btn sm" onClick={() => go('analytics')}><Icon name="csv" size={15} /> Import by hand</button>}
               {buf.days < 1 && buf.missing2 > 0 && <button className="btn sm pill-alert" onClick={() => bb.runGen(buf.missing2)}><Icon name="film" size={15} /> Buffer under 1 day · Gen x{buf.missing2}</button>}
             </div>
           )}
@@ -135,9 +164,93 @@ function App() {
     </AppCtx.Provider>
   );
 }
-function StatusLine({ ok }: { ok: boolean }) {
-  const now = useNow(30000);
-  return <span className="status"><i className={ok ? '' : 'bad'} />{isDesktop ? (ok ? 'Vault connected' : 'Vault missing') : 'Synced with PC'} · {now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>;
+
+/* ---------- top bar pieces ---------- */
+interface Note { key: string; icon: string; title: string; sub: string; y?: boolean; act?: () => void; extra?: React.ReactNode }
+function notifications(snap: Snapshot, o: { due: boolean; buf: ReturnType<typeof bufferInfo>; dueTasks: number; csv: CsvStatus }): (Note & { kind: string })[] {
+  const out: (Note & { kind: string })[] = [];
+  if (o.due) out.push({ kind: 'csv', key: 'csv', icon: 'csv', y: true, title: 'Weekly TikTok CSV is due', sub: o.csv.state === 'running' ? o.csv.msg : 'Fetch it in the background, or import it by hand' });
+  if (o.buf.days < 1 && o.buf.missing2 > 0) out.push({ kind: 'gen', key: 'buf', icon: 'film', y: true, title: `Buffer under 1 day`, sub: `Make ${o.buf.missing2} video${o.buf.missing2 > 1 ? 's' : ''} with Gen` });
+  if (o.dueTasks) out.push({ kind: 'board', key: 'tasks', icon: 'check', title: `${o.dueTasks} task${o.dueTasks > 1 ? 's' : ''} due`, sub: 'Today and late' });
+  if (snap.mail?.unread) out.push({ kind: 'mail', key: 'mail', icon: 'mail', title: `${snap.mail.unread} unread email${snap.mail.unread > 1 ? 's' : ''}`, sub: snap.mail.items.find((m) => m.unread)?.subject ?? '' });
+  if (snap.update?.ready) out.push({ kind: 'update', key: 'upd', icon: 'sparkle', y: true, title: `Update ${snap.update.ready} is ready`, sub: 'Restarts the launcher' });
+  return out;
+}
+function Bell({ notes, go, fetchCsv, csv, small }: { notes: ReturnType<typeof notifications>; go: (p: string) => void; fetchCsv: () => void; csv: CsvStatus; small?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (!open) return; const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); }; addEventListener('mousedown', h); return () => removeEventListener('mousedown', h); }, [open]);
+  const n = notes.length, hot = notes.some((x) => x.y);
+  const act = (k: string) => { setOpen(false); if (k === 'board') go('board'); else if (k === 'mail') go('mail'); else if (k === 'gen') go('today'); else if (k === 'update') bb.applyUpdate?.(); };
+  return <div ref={ref} style={{ position: 'relative' }}>
+    <button className={small ? 'iconbtn sm' : `glass round ${hot ? 'ring-on' : ''}`} onClick={() => setOpen((o) => !o)} aria-label={`${n} notifications`} title="Notifications" style={small ? { position: 'relative' } : undefined}>
+      <Icon name="bell" size={small ? 16 : 18} />{n > 0 && <span className="vcount" style={small ? { position: 'absolute', top: -6, right: -6, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: 'var(--yellow)', color: 'var(--accent-ink)', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' } : undefined}>{n}</span>}
+    </button>
+    {open && <div className="glass dropdown right" style={small ? { position: 'fixed', top: 64, left: 12, right: 12, width: 'auto' } : undefined}>
+      <div className="dd-head">Notifications</div>
+      {!n && <div className="dd-item" style={{ cursor: 'default' }}><span className="dd-ico"><Icon name="check" size={16} /></span><span className="dd-txt"><span>All clear</span><small>Nothing needs you right now</small></span></div>}
+      {notes.map((x) => <React.Fragment key={x.key}>
+        <button className="dd-item" onClick={() => (x.kind === 'csv' ? undefined : act(x.kind))} style={x.kind === 'csv' ? { cursor: 'default' } : undefined}>
+          <span className={`dd-ico ${x.y ? 'y' : ''}`}><Icon name={x.icon} size={16} /></span>
+          <span className="dd-txt"><span>{x.title}</span><small>{x.sub}</small></span>
+        </button>
+        {x.kind === 'csv' && <div className="dd-acts">
+          {isDesktop ? <>
+            <button className="btn sm accent" disabled={csv.state === 'running' || csv.state === 'login'} onClick={() => { fetchCsv(); setOpen(false); }}><Icon name="download" size={14} sw={2.4} /> {csv.state === 'running' ? 'Fetching…' : 'Fetch automatically'}</button>
+            <button className="btn sm" onClick={() => { setOpen(false); go('analytics'); }}>Import by hand</button>
+          </> : <span className="small dim">The automatic fetch runs on the PC launcher.</span>}
+        </div>}
+        {x.kind === 'gen' && <div className="dd-acts"><button className="btn sm accent" onClick={() => { setOpen(false); bb.runGen(1); }}><Icon name="film" size={14} /> Run Gen</button></div>}
+      </React.Fragment>)}
+    </div>}
+  </div>;
+}
+function CsvPill({ csv }: { csv: CsvStatus }) {
+  const need = csv.state === 'login' || csv.state === 'needs-you' || csv.state === 'error';
+  return <button className={`glass fetch-pill ${need ? 'need' : ''}`} onClick={() => (need ? bb.csvShow?.() : undefined)} title={csv.msg}>
+    {need ? <Icon name="csv" size={15} /> : <Icon name="download" size={15} />}
+    {csv.state === 'running' ? <><span>CSV · {csv.msg}</span><span className="spin" style={{ width: 12, height: 12, border: '2px solid rgba(255,255,255,.25)', borderTopColor: 'var(--yellow)', borderRadius: '50%' }} /></> : <span>{csv.state === 'login' ? 'Log in to TikTok' : csv.state === 'needs-you' ? 'CSV needs one click' : 'CSV fetch failed'}</span>}
+    {need && <span className="small dim" onClick={(e) => { e.stopPropagation(); bb.csvCancel?.(); }} style={{ marginLeft: 4 }}>✕</span>}
+  </button>;
+}
+function Clock({ ok }: { ok: boolean }) {
+  const now = useNow(15000);
+  return <div className="glass tpill clock" title={isDesktop ? (ok ? 'Vault connected' : 'Vault missing') : 'Synced with PC'}>
+    <b>{now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</b>
+    <small>{now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</small>
+  </div>;
+}
+function Search({ snap, go }: { snap: Snapshot; go: (p: string) => void }) {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const [sel, setSel] = useState(0);
+  const inp = useRef<HTMLInputElement>(null);
+  useEffect(() => { const h = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); inp.current?.focus(); setOpen(true); } }; addEventListener('keydown', h); return () => removeEventListener('keydown', h); }, []);
+  const t = q.trim().toLowerCase();
+  type R = { k: string; icon: string; title: string; sub: string; go: () => void };
+  const res: R[] = [];
+  if (t) {
+    for (const p of PAGES) if (p.label.toLowerCase().includes(t)) res.push({ k: 'p' + p.id, icon: p.icon, title: p.label, sub: 'Page', go: () => go(p.id) });
+    for (const x of allTasks(snap)) if (x.title.toLowerCase().includes(t)) res.push({ k: 't' + x.id, icon: 'check', title: x.title, sub: `Task · ${x.col === 'done' ? 'done' : x.col === 'prog' ? 'in progress' : 'to do'}`, go: () => go('board') });
+    for (const v of snap.videos) if (`#${v.num} ${v.title}`.toLowerCase().includes(t)) res.push({ k: 'v' + v.num, icon: 'film', title: `#${v.num} ${v.title}`, sub: 'Video', go: () => go('library') });
+    for (const i of snap.state.ideas) if ((i.text || '').toLowerCase().includes(t)) res.push({ k: 'i' + i.id, icon: 'bulb', title: i.text, sub: 'Idea', go: () => go('ideas') });
+    for (const m of snap.mail?.items ?? []) if (`${m.from} ${m.subject}`.toLowerCase().includes(t)) res.push({ k: 'm' + m.id, icon: 'mail', title: m.subject, sub: m.from, go: () => go('mail') });
+  }
+  const list = res.slice(0, 9);
+  const pick = (r?: R) => { if (!r) return; r.go(); setQ(''); setOpen(false); inp.current?.blur(); };
+  return <div className="search">
+    <label className="glass tpill">
+      <Icon name="search" size={16} />
+      <input ref={inp} value={q} placeholder="Search tasks, videos, ideas, mail…" onChange={(e) => { setQ(e.target.value); setSel(0); setOpen(true); }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => { if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(list.length - 1, s + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(0, s - 1)); } else if (e.key === 'Enter') pick(list[sel]); else if (e.key === 'Escape') { setQ(''); inp.current?.blur(); } }} />
+      <span className="kbd">Ctrl K</span>
+    </label>
+    {open && t && <div className="glass dropdown">
+      {list.length ? list.map((r, i) => <button key={r.k} className={`dd-item ${i === sel ? 'sel' : ''}`} onMouseDown={(e) => { e.preventDefault(); pick(r); }} onMouseEnter={() => setSel(i)}>
+        <span className="dd-ico"><Icon name={r.icon} size={15} /></span><span className="dd-txt"><span>{r.title}</span><small>{r.sub}</small></span>
+      </button>) : <div className="dd-item" style={{ cursor: 'default' }}><span className="dd-txt"><span>No results</span><small>Try another word</small></span></div>}
+    </div>}
+  </div>;
 }
 // phone: GitHub Pages caches the page ~10 min; check for a newer build when the app comes to the front
 if (!isDesktop) {

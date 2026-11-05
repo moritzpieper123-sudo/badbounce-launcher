@@ -29,7 +29,20 @@ export interface BB {
   mailRefresh?(): Promise<void>;
   mailBody?(id: string): Promise<MailBody>;
   applyUpdate?(): Promise<boolean>;
+  csvFetch?(): Promise<void>;
+  csvShow?(): void;
+  csvCancel?(): void;
+  onCsvStatus?(cb: (s: CsvStatus) => void): () => void;
+  onCsvFiles?(cb: (files: { name: string; text: string }[]) => void): () => void;
+  vaultGraph?(): Promise<VaultGraph>;
+  onGraphChanged?(cb: () => void): () => void;
+  noteText?(id: string): Promise<string>;
+  openNote?(id: string): Promise<void>;
+  openGraphWindow?(): void;
 }
+export interface CsvStatus { state: 'idle' | 'running' | 'login' | 'needs-you' | 'done' | 'error'; msg: string }
+export interface GraphNode { id: string; name: string; folder: string; tags: string[]; unresolved?: boolean; mtime?: number }
+export interface VaultGraph { ok: boolean; vaultName: string; nodes: GraphNode[]; links: { s: string; t: string }[]; error?: string }
 
 declare global { interface Window { bb?: BB } }
 

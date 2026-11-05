@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { kColor, kName } from './logic';
+import { MODES, setMode, themeFor, useTheme, type Mode, type Theme } from './theme';
 
 const P: Record<string, React.ReactNode> = {
   home: <path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
@@ -27,6 +28,11 @@ const P: Record<string, React.ReactNode> = {
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
   half: <><circle cx="12" cy="12" r="8.5" /><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" fill="currentColor" /></>,
   moon: <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />,
+  auto: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4" /><path d="M15 12a3 3 0 0 1-3 3" strokeWidth="2.6" /></>,
+  search: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></>,
+  graph: <><circle cx="6" cy="6" r="2.5" /><circle cx="18" cy="8" r="2.5" /><circle cx="9" cy="18" r="2.5" /><circle cx="18" cy="18" r="1.6" /><path d="M8.3 7l7.4.8M7 8.3l1.5 7.3M16.2 9.8l-5.6 6.6M11.5 18h4.9" /></>,
+  download: <path d="M12 4v12M7 11l5 5 5-5M4 20h16" />,
+  external: <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />,
   more: <><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></>,
 };
 export function Icon({ name, size = 20, color = 'currentColor', sw = 2 }: { name: keyof typeof P | string; size?: number; color?: string; sw?: number }) {
@@ -76,31 +82,30 @@ export function useNow(ms = 30000) {
   useEffect(() => { const t = setInterval(() => setN(new Date()), ms); return () => clearInterval(t); }, [ms]);
   return n;
 }
-const BALLS: [number, number, number, number, number, number, boolean?][] = [
-  // left %, top %, size px, drift x, drift y, seconds, yellow
-  [3, 44, 34, 40, 60, 19], [16, 62, 22, -30, 50, 23], [27, 34, 16, 50, -40, 17], [36, 78, 28, 30, -60, 21],
-  [47, 12, 20, -40, 50, 25], [58, 52, 38, 40, 40, 27], [66, 28, 18, -50, 60, 18], [74, 68, 26, -30, -50, 22, true],
-  [83, 20, 30, 30, 70, 24], [90, 48, 18, -40, 40, 20], [52, 86, 16, 40, -30, 16], [5, 88, 24, 50, -40, 26],
-  [70, 42, 14, 30, 30, 15, true], [40, 52, 12, -30, 40, 14],
-];
+/* Background = the Badbounce world as a scene (night / dusk / day), like a photo behind floating glass.
+   All three layers are stacked; the theme fades the right one in. */
 export function Background() {
   return <div className="bg" aria-hidden="true">
-    <i className="glow-warm" />
-    <i className="glow-teal" />
-    <div className="ring" />
-    <div className="rail-line" />
-    {BALLS.map(([l, t, s, dx, dy, d, y], i) => <i key={i} className={`ball ${y ? 'y' : ''} ${t < 40 ? 'hi' : ''}`} style={{ left: `${l}%`, top: `${t}%`, ['--s' as string]: `${s}px`, ['--dx' as string]: `${dx}px`, ['--dy' as string]: `${dy}px`, ['--d' as string]: `${d}s` }} />)}
-    {Array.from({ length: 26 }, (_, i) => <i key={'d' + i} className="dust" style={{ left: `${(i * 37) % 100}%`, top: `${(i * 61) % 100}%`, opacity: .2 + ((i * 7) % 5) / 10 }} />)}
-    <svg className="waves" viewBox="0 0 2880 320" preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="wv1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style={{ stopColor: 'var(--wave)', stopOpacity: .16 }} /><stop offset="1" style={{ stopColor: 'var(--wave)', stopOpacity: 0 }} /></linearGradient>
-        <linearGradient id="wv2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style={{ stopColor: 'var(--wave)', stopOpacity: .09 }} /><stop offset="1" style={{ stopColor: 'var(--wave)', stopOpacity: 0 }} /></linearGradient>
-      </defs>
-      <path className="w2" fill="url(#wv2)" d="M0 120 C360 40 720 200 1080 120 S1800 40 2160 120 S2700 200 2880 120 V320 H0Z" />
-      <path className="w1" fill="url(#wv1)" d="M0 190 C320 120 640 250 960 190 S1600 120 1920 190 S2560 250 2880 190 V320 H0Z" />
-      <path className="w1" fill="none" style={{ stroke: 'var(--wave-line)' }} strokeWidth="2" d="M0 190 C320 120 640 250 960 190 S1600 120 1920 190 S2560 250 2880 190" />
-    </svg>
+    <i className="scene s-dark" /><i className="scene s-medium" /><i className="scene s-light" />
+    <i className="bg-shade" />
+    {Array.from({ length: 18 }, (_, i) => <i key={'d' + i} className="dust" style={{ left: `${(i * 37) % 100}%`, top: `${(i * 61) % 100}%`, ['--d' as string]: `${14 + (i % 5) * 4}s`, opacity: .2 + ((i * 7) % 5) / 10 }} />)}
   </div>;
+}
+/** Number that counts up when it first appears. */
+export function Count({ value, format = (n: number) => String(Math.round(n)) }: { value: number | null | undefined; format?: (n: number) => string }) {
+  const [v, setV] = useState(() => (value == null || matchMedia('(prefers-reduced-motion: reduce)').matches ? value ?? 0 : 0));
+  const prev = React.useRef(v);
+  useEffect(() => {
+    if (value == null) return;
+    const from = prev.current, to = value, t0 = performance.now(), dur = 900;
+    if (from === to) return;
+    let raf = 0;
+    const step = (t: number) => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); const x = from + (to - from) * e; setV(x); prev.current = x; if (k < 1) raf = requestAnimationFrame(step); };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  if (value == null) return <>–</>;
+  return <>{format(Number.isInteger(value) ? Math.round(v) : v)}</>;
 }
 export const Stages = ({ n }: { n: number }) => (
   <div className="stages" title="Idea · Frame · Rendered · Thumbnail + description · Uploaded" aria-label={`${n} of 5 stages done`}>
@@ -108,23 +113,24 @@ export const Stages = ({ n }: { n: number }) => (
   </div>
 );
 
-/* ---------- theme: dark / light with a circular wipe ---------- */
-type Theme = 'dark' | 'medium' | 'light';
-const THEMES: Theme[] = ['dark', 'medium', 'light'];
-const readTheme = (): Theme => { try { const t = localStorage.getItem('bb-theme') as Theme; return THEMES.includes(t) ? t : 'medium'; } catch { return 'medium'; } };
-if (!document.body.classList.contains('island-body')) document.documentElement.dataset.theme = readTheme();
-export function ThemeButton({ className = 'iconbtn' }: { className?: string }) {
-  const [theme, setTheme] = useState(readTheme);
+/* ---------- theme button: Auto (sun) / Dark / Medium / Light, with a circular wipe ---------- */
+const MODE_ICON: Record<Mode, string> = { auto: 'auto', dark: 'moon', medium: 'half', light: 'sun' };
+const MODE_LABEL: Record<Mode, string> = { auto: 'Auto', dark: 'Dark', medium: 'Medium', light: 'Light' };
+const THEME_WORD: Record<Theme, string> = { dark: 'night', medium: 'dusk', light: 'day' };
+export function ThemeButton({ className = 'iconbtn', label = false }: { className?: string; label?: boolean }) {
+  const { mode, theme } = useTheme();
+  const nxt = MODES[(MODES.indexOf(mode) + 1) % MODES.length];
   const toggle = (e: React.MouseEvent) => {
-    const next = THEMES[(THEMES.indexOf(theme) + 1) % 3];
-    const apply = () => { document.documentElement.dataset.theme = next; setTheme(next); try { localStorage.setItem('bb-theme', next); } catch { /* ignore */ } };
+    const apply = () => setMode(nxt);
     const doc = document as Document & { startViewTransition?: (cb: () => void) => { ready: Promise<void> } };
-    if (!doc.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) return apply();
+    if (!doc.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || themeFor(nxt) === theme) return apply();
     const x = e.clientX, y = e.clientY, r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
     doc.startViewTransition(apply).ready.then(() => document.documentElement.animate(
       { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
-      { duration: 700, easing: 'cubic-bezier(.45,0,.2,1)', pseudoElement: '::view-transition-new(root)' }));
+      { duration: 750, easing: 'cubic-bezier(.45,0,.2,1)', pseudoElement: '::view-transition-new(root)' }));
   };
-  const nxt = THEMES[(THEMES.indexOf(theme) + 1) % 3];
-  return <button className={className} onClick={toggle} title={`Switch to ${nxt} mode`} aria-label={`Switch to ${nxt} mode`}><Icon name={nxt === 'light' ? 'sun' : nxt === 'medium' ? 'half' : 'moon'} size={17} /></button>;
+  const title = `${MODE_LABEL[mode]}${mode === 'auto' ? ` (${THEME_WORD[theme]} in Hamm)` : ''} · click for ${MODE_LABEL[nxt]}`;
+  return <button className={className} onClick={toggle} title={title} aria-label={title}>
+    <Icon name={MODE_ICON[mode]} size={16} />{label && <span>{MODE_LABEL[mode]}{mode === 'auto' && <small> · {THEME_WORD[theme]}</small>}</span>}
+  </button>;
 }
