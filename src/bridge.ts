@@ -32,6 +32,9 @@ export interface BB {
   mailAllowModify?(): Promise<{ ok: boolean; error?: string }>;
   applyUpdate?(): Promise<boolean>;
   csvFetch?(): Promise<void>;
+  mediaNow?(): Promise<MediaNow | null>;
+  mediaCmd?(c: string): void;
+  onMedia?(cb: (m: MediaNow | null) => void): () => void;
   csvShow?(): void;
   csvCancel?(): void;
   onCsvStatus?(cb: (s: CsvStatus) => void): () => void;
@@ -88,3 +91,5 @@ const fallback: BB = {
 /** true inside the Windows app (vault, island, folders); false on phone / iPad */
 export const isDesktop = !!window.bb;
 export const bb: BB = window.bb ?? (cloudConfigured ? webBridge : fallback);
+
+export interface MediaNow { app: string; title: string; artist: string; album?: string; playing: boolean; pos: number; dur: number; at: number; cover: string | null }

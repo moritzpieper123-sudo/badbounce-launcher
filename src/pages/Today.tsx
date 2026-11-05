@@ -3,6 +3,7 @@ import { useApp } from '../ctx';
 import { addDays, allTasks, buildPlan, dayNumber, fmtDay, fmtNum, kpis, phaseLabel, ymd, parseYmd, konzeptTable, KONZEPTE, isReady, weeklyReview, ROTATION, kColor, uid } from '../logic';
 import { Rings, Spark, Icon, Count } from '../ui';
 import { Header, NextUpload, BufferMeter, DueLabel } from './parts';
+import { NowPlaying } from '../music';
 import { useTaskDrag, DropBar, COLS } from '../taskDrag';
 import type { Task } from '../types';
 import { bb, isDesktop } from '../bridge';
@@ -32,7 +33,7 @@ export default function Today() {
   const rev = isMonday ? weeklyReview(snap) : null;
   return <>
     <Header title={`${greet}, Mo`} sub={sub} right={<>
-      <button className="btn" onClick={() => go('schedule')}><Icon name="calendar" size={15} /> Schedule</button>
+      <NowPlaying />
       <button className="btn accent" onClick={() => go('board')}><Icon name="plus" size={15} sw={2.4} /> New task</button>
     </>} />
 

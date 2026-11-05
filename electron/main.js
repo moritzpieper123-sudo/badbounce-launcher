@@ -9,6 +9,7 @@ const gmail = require('./gmail');
 const updater = require('./updater');
 const graph = require('./graph');
 const csvfetch = require('./csvfetch');
+const media = require('./media');
 
 const DEFAULT_SETTINGS = { day1: '2026-11-05', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
 const HIDDEN = process.argv.includes('--hidden');
@@ -307,6 +308,8 @@ ipcMain.handle('backupNow', () => { const f = backupNow(); broadcast(); return f
 ipcMain.handle('runGen', (_e, n) => { clipboard.writeText(n > 1 ? `Gen x${n}` : 'Gen'); openLink(loadState().settings.projectUrl); });
 ipcMain.handle('setAutostart', (_e, on) => setAutostart(on));
 ipcMain.handle('setVault', (_e, p) => { const c = readCfg(); c.vaultPath = p; writeCfg(c); broadcast(); });
+ipcMain.handle('mediaNow', () => media.status());
+ipcMain.on('mediaCmd', (_e, c) => media.command(c));
 ipcMain.on('islandHover', (_e, on) => { if (islandWin) islandWin.setIgnoreMouseEvents(!on, { forward: true }); });
 ipcMain.on('islandSize', () => { /* window keeps a fixed size; the pill is drawn inside */ });
 ipcMain.on('showMain', (_e, page) => showMain(page));
@@ -366,6 +369,8 @@ else {
     globalShortcut.register('Control+Alt+B', () => { if (islandWin) { islandWin.setIgnoreMouseEvents(false); islandWin.webContents.send('navigate', 'toggle'); } });
     const st = loadState(); setAutostart(st.settings.autostart);
     startFullscreenWatch();
+    media.start((m) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('media', m); });
+    app.on('before-quit', () => media.stop());
     autoBackup(); setInterval(autoBackup, 3600000);
     // re-scan the vault every 20 s so new Gen results appear on their own
     setInterval(broadcast, 20000);
