@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import gsap from 'gsap';
+import React, { useRef, useEffect, useState } from 'react';
 import { useApp } from '../ctx';
 import { addDays, consistency, fmtNum, konzeptTable, kpis, mergeStats, MILESTONES, parseTikTokCsv, slotTable, weeklyReview, ymd, KONZEPTE, kColor, type CsvResult } from '../logic';
 import { Header } from './parts';
@@ -59,10 +60,10 @@ export default function Analytics() {
     <section className="grid g-kpi">
       <div className="glass card kpi"><span className="l">Creator Rewards</span>
         <div className="row" style={{ gap: 14 }}>
-          <Rings size={76} rings={[{ frac: (k.followers ?? 0) / 10000, color: '#F4F6FF' }, { frac: k.views30 / 100000, color: '#FFC63A' }]} />
+          <Rings size={76} rings={[{ frac: (k.followers ?? 0) / 10000, color: 'var(--glow)' }, { frac: k.views30 / 100000, color: '#FFC63A' }]} />
           <div className="small" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <span><b style={{ color: 'var(--glow)' }}>{fmtNum(k.followers ?? 0)}</b><span className="dim"> / 10K followers</span></span>
-            <span><b style={{ color: 'var(--yellow)' }}>{fmtNum(k.views30)}</b><span className="dim"> / 100K views</span></span>
+            <span><b style={{ color: 'var(--yellow-text)' }}>{fmtNum(k.views30)}</b><span className="dim"> / 100K views</span></span>
           </div>
         </div>
         <span className="small dim">Views in 30 days · only videos over 1 min pay</span>
@@ -77,7 +78,7 @@ export default function Analytics() {
       <div className="between"><h2>Views per day</h2><span className="small dim">{range} days · peak {fmtNum(maxV > 1 ? maxV : 0)}</span></div>
       {days.length ? <>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: range > 30 ? 2 : 6, height: 160 }}>
-          {series.map((s, i) => <div key={i} title={`${s.d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}: ${fmtNum(s.v)} views`} style={{ flex: 1, height: Math.max(3, (s.v / maxV) * 150), borderRadius: range > 30 ? 3 : 8, background: i === series.length - 1 ? 'linear-gradient(180deg,#FFD978,#FFC63A)' : s.v === maxV ? 'rgba(170,195,240,.6)' : 'rgba(170,195,240,.28)' }} />)}
+          {series.map((s, i) => <div key={i} title={`${s.d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}: ${fmtNum(s.v)} views`} style={{ flex: 1, height: Math.max(3, (s.v / maxV) * 150), borderRadius: range > 30 ? 3 : 8, boxShadow: i === series.length - 1 ? '0 0 20px var(--hl-glow)' : 'none', background: i === series.length - 1 ? 'var(--bar-hl)' : s.v === maxV ? 'rgba(170,195,240,.6)' : 'rgba(170,195,240,.28)' }} />)}
         </div>
         <div className="between small dim"><span>{series[0].d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span><span>Today</span></div>
       </> : <div className="empty">The chart fills after the first CSV import.</div>}
@@ -100,9 +101,9 @@ export default function Analytics() {
 
     <section className="grid g-2">
       <div className="glass card">
-        <div className="between"><h2>Consistency</h2><span style={{ fontWeight: 700, color: 'var(--yellow)' }}>{cons.streak} day streak</span></div>
+        <div className="between"><h2>Consistency</h2><span style={{ fontWeight: 700, color: 'var(--yellow-text)' }}>{cons.streak} day streak</span></div>
         <div className="heat" role="img" aria-label="Days the plan was kept">
-          {cons.days.map((d) => { const bg = d.planned < 0 ? 'rgba(255,255,255,.04)' : d.planned === 0 ? 'rgba(170,195,240,.15)' : d.done >= d.planned ? '#7FD9A8' : d.done > 0 ? '#FFC63A' : d.date === ymd(now) ? 'rgba(255,255,255,.12)' : '#FF8F7A'; return <div key={d.date} title={`${d.date}: ${d.done}/${d.planned < 0 ? 0 : d.planned}`} style={{ background: bg }} />; })}
+          {cons.days.map((d) => { const bg = d.planned < 0 ? 'rgba(var(--wrgb),.04)' : d.planned === 0 ? 'rgba(170,195,240,.15)' : d.done >= d.planned ? '#7FD9A8' : d.done > 0 ? '#FFC63A' : d.date === ymd(now) ? 'rgba(var(--wrgb),.12)' : '#FF8F7A'; return <div key={d.date} title={`${d.date}: ${d.done}/${d.planned < 0 ? 0 : d.planned}`} style={{ background: bg }} />; })}
         </div>
         <div className="row small dim" style={{ flexWrap: 'wrap', gap: 12 }}>
           {[['#7FD9A8', 'all posted'], ['#FFC63A', 'some'], ['#FF8F7A', 'none'], ['rgba(170,195,240,.4)', 'warm-up']].map(([c, l]) => <span key={l} className="row" style={{ gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: c }} />{l}</span>)}
@@ -137,21 +138,50 @@ function Milestones({ followers, gain7 }: { followers: number | null; gain7: num
         <div className="small muted">{next ? `${fmtNum(next - f)} to go${weeks ? ` · about ${weeks} week${weeks === 1 ? '' : 's'} at this week's pace` : ''}` : 'Time for new goals, Sir.'}</div>
       </div>
     </div>
-    <div className="ms-track">
-      <div className="ms-line"><div style={{ width: `${lineW}%` }} /></div>
-      {MILESTONES.map((m, i) => { const hit = f >= m; return <div key={m} className={`ms-node ${hit ? 'hit' : i === ni ? 'ms-next' : ''}`}>
-        <span className="ms-dot">{hit && <svg width="12" height="12" viewBox="0 0 24 24"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.7-6.2 3.7 1.6-7L2 9.2l7.1-.6z" fill="#1A1404" /></svg>}</span>
-        <span className="num">{fmtNum(m)}</span>
-      </div>; })}
-    </div>
+    <RouteTracker stops={MILESTONES.map((m) => ({ label: fmtNum(m), hit: f >= m }))} progress={ni < 0 ? 1 : ni === 0 ? 0 : (ni - 1 + part) / (MILESTONES.length - 1)} />
   </div>;
 }
 
 function Ring({ value }: { value: number }) {
   const r = 30, c = 2 * Math.PI * r, v = Math.max(0, Math.min(1, value));
   return <svg width="76" height="76" viewBox="0 0 76 76" role="img" aria-label={`${Math.round(v * 100)}% to next milestone`} style={{ flexShrink: 0 }}>
-    <circle cx="38" cy="38" r={r} fill="none" stroke="rgba(255,255,255,.1)" strokeWidth="7" />
+    <circle cx="38" cy="38" r={r} fill="none" style={{ stroke: 'rgba(var(--wrgb),.1)' }} strokeWidth="7" />
     <circle cx="38" cy="38" r={r} fill="none" stroke="#FFC63A" strokeWidth="7" strokeLinecap="round" strokeDasharray={`${c * v} ${c}`} transform="rotate(-90 38 38)" style={{ filter: 'drop-shadow(0 0 6px rgba(255,198,58,.6))' }} />
-    <text x="38" y="43" textAnchor="middle" fill="#fff" fontSize="15" fontWeight="700">{Math.round(v * 100)}%</text>
+    <text x="38" y="43" textAnchor="middle" style={{ fill: 'var(--text)' }} fontSize="15" fontWeight="700">{Math.round(v * 100)}%</text>
   </svg>;
+}
+
+/** Stage tracker: a route line with checkpoints; a glowing ball travels along the SVG path to the current progress (GSAP). */
+const ROUTE = 'M20 70 C 120 20, 200 20, 300 55 S 480 100, 560 60 S 760 10, 860 50 S 960 80, 980 60';
+function RouteTracker({ stops, progress }: { stops: { label: string; hit: boolean }[]; progress: number }) {
+  const path = useRef<SVGPathElement>(null), done = useRef<SVGPathElement>(null), ball = useRef<SVGGElement>(null);
+  const [pts, setPts] = useState<{ x: number; y: number }[]>([]);
+  useEffect(() => {
+    const p = path.current; if (!p) return;
+    const L = p.getTotalLength();
+    setPts(stops.map((_, i) => { const q = p.getPointAtLength((i / (stops.length - 1)) * L); return { x: q.x, y: q.y }; }));
+    const st = { t: 0 };
+    const place = () => {
+      const l = st.t * L, q = p.getPointAtLength(l), q2 = p.getPointAtLength(Math.min(L, l + 1));
+      ball.current?.setAttribute('transform', `translate(${q.x} ${q.y}) rotate(${Math.atan2(q2.y - q.y, q2.x - q.x) * 180 / Math.PI})`);
+      done.current?.setAttribute('stroke-dasharray', `${l} ${L}`);
+    };
+    const target = Math.max(0, Math.min(1, progress));
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { st.t = target; place(); return; }
+    const tw = gsap.to(st, { t: target, duration: 1.6, ease: 'power3.inOut', delay: .2, onUpdate: place });
+    place();
+    return () => { tw.kill(); };
+  }, [progress, stops.length]);
+  return <div className="route">
+    <svg viewBox="0 0 1000 120" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <defs><radialGradient id="route-ball"><stop offset="0" stopColor="#fff" /><stop offset=".6" stopColor="#F4F6FF" /><stop offset="1" stopColor="#F4F6FF" stopOpacity="0" /></radialGradient></defs>
+      <path ref={path} d={ROUTE} className="route-base" />
+      <path ref={done} d={ROUTE} className="route-done" strokeDasharray="0 2000" />
+      {pts.map((q, i) => <g key={i} transform={`translate(${q.x} ${q.y})`} className={`route-stop ${stops[i].hit ? 'hit' : ''}`}>
+        <circle r="11" />{stops[i].hit && <path d="M-4.5 0 l3 3 l6 -6.5" />}
+      </g>)}
+      <g ref={ball} className="route-ball"><circle r="20" fill="url(#route-ball)" opacity=".55" /><circle r="8.5" /></g>
+    </svg>
+    <div className="route-labels">{pts.map((q, i) => <span key={i} className={stops[i].hit ? 'hit' : ''} style={{ left: `${q.x / 10}%` }}>{stops[i].label}</span>)}</div>
+  </div>;
 }

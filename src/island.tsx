@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import '@fontsource-variable/inter';
 import './styles.css';
 import { useSnapshot } from './store';
 import { bb } from './bridge';
@@ -124,7 +125,7 @@ function Island() {
         </div>
 
         {/* next upload */}
-        <div className="isl-tile" style={{ background: 'rgba(255,198,58,.08)' }} title="Next upload">
+        <div className="isl-tile y" title="Next upload">
           {next ? <>
             <div className="row" style={{ gap: 6 }}><span className="dot" style={{ background: kColor(next.video!.konzept) }} title={KONZEPTE[next.video!.konzept ?? 0]?.name} /><span style={{ fontSize: 20, fontWeight: 800 }}>#{next.video!.num}</span></div>
             <span className="isl-tag" style={{ color: nextMins < 0 ? '#FF8F7A' : '#FFD978' }}>{next.time} · {nextMins < 0 ? (nextMins > -60 ? `${-nextMins}m late` : `${Math.floor(-nextMins / 60)}h late`) : fmtIn(nextMins)}</span>
@@ -136,7 +137,7 @@ function Island() {
         </div>
 
         {/* make videos */}
-        <div className="isl-tile" style={{ background: 'rgba(170,140,255,.09)' }} title="Make videos">
+        <div className="isl-tile f" title="Make videos">
           <div className="row" style={{ gap: 6 }}><Icon name="film" size={16} color="#C9CCF5" /><span style={{ fontSize: 20, fontWeight: 800 }}>{b.missing2 > 0 ? b.missing2 : <Tick size={16} color="#7FD9A8" />}</span></div>
           <span className="isl-tag">{b.missing2 > 0 ? 'to make' : `${b.readyCount} ready`}</span>
           <button className={`isl-btn ${b.missing2 > 0 ? 'white' : ''}`} style={{ marginTop: 'auto', width: 'auto', padding: '0 10px', gap: 5 }} onClick={async () => { const n = Math.max(1, b.missing2); await bb.runGen(n); flash(`"Gen x${n}" copied`); }} title={`Copy "Gen x${Math.max(1, b.missing2)}" and open Claude`} aria-label="Run Gen">

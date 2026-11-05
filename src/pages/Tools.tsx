@@ -21,7 +21,7 @@ export default function Tools() {
     { label: 'Studio', sub: 'Analytics', url: 'https://www.tiktok.com/tiktokstudio/analytics', logo: <><TikTokLogo /><Badge color="#7FD9A8"><Icon name="chart" size={11} color="#0B2016" sw={2.6} /></Badge></>, glow: 'rgba(127,217,168,.25)' },
     { label: 'Claude', sub: 'Project', url: snap.state.settings.projectUrl, logo: <ClaudeLogo />, glow: 'rgba(217,119,87,.3)' },
     { label: 'Gemini', sub: 'Chat', url: 'https://gemini.google.com/app', logo: <GeminiLogo />, glow: 'rgba(155,114,203,.3)' },
-    { label: 'ChatGPT', sub: 'Chat', url: 'https://chatgpt.com/', logo: <ChatGPTLogo />, glow: 'rgba(255,255,255,.18)' },
+    { label: 'ChatGPT', sub: 'Chat', url: 'https://chatgpt.com/', logo: <ChatGPTLogo />, glow: 'rgba(var(--wrgb),.18)' },
   ];
   const folders = [['Vault', ''], ['Results', 'Results'], ['Konzepte', 'Branding/Konzepte'], ['Branding', 'Branding'], ['Analytics', 'Analytics'], ['Ideas', 'Ideas'], ['Backups', '.claude-workspace/launcher-data/backups']];
   return <>

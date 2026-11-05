@@ -45,9 +45,9 @@ export function NextUpload({ compact = false }: { compact?: boolean }) {
     <div className="next">
       {!compact && <Thumb v={v} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
-        <span className="small" style={{ fontWeight: 700, color: late ? 'var(--red)' : 'var(--yellow)', letterSpacing: '.04em' }}>{(late ? `${fmtLate(mins).toUpperCase()} · ` : `${fmtIn(mins).toUpperCase()} · `) + dayLabel + next.time}</span>
+        <span className="small" style={{ fontWeight: 700, color: late ? 'var(--red)' : 'var(--yellow-text)', letterSpacing: '.04em' }}>{(late ? `${fmtLate(mins).toUpperCase()} · ` : `${fmtIn(mins).toUpperCase()} · `) + dayLabel + next.time}</span>
         <span style={{ fontSize: 18, fontWeight: 700 }}>Upload #{v.num}</span>
-        <span className="row small" style={{ color: '#CFD6E8', gap: 6 }}><span className="dot" style={{ background: kColor(v.konzept) }} />Konzept {v.konzept ?? '?'} · {KONZEPTE[v.konzept ?? 0]?.name ?? v.title}</span>
+        <span className="row small" style={{ color: 'var(--muted)', gap: 6 }}><span className="dot" style={{ background: kColor(v.konzept) }} />Konzept {v.konzept ?? '?'} · {KONZEPTE[v.konzept ?? 0]?.name ?? v.title}</span>
         <div className="row" style={{ marginTop: 6, gap: 8 }}>
           <button className="btn primary sm" onClick={() => doUploadPack(v.num, toast)}><Icon name="upload" size={15} /> Upload pack</button>
           <button className="btn sm" onClick={async () => { await update(markUploaded(snap, v.num)); setLinkFor(v.num); }} title="Mark uploaded"><Tick size={12} color="currentColor" /> Done</button>
@@ -63,7 +63,7 @@ export function SlotList({ date }: { date: Date }) {
   const ds = ymd(date);
   const slots = buildPlan(snap, date, 1).filter((s) => s.date === ds);
   if (!slots.length) return <div className="muted small">No uploads planned for this day.</div>;
-  const color = { uploaded: '#7FD9A8', ready: '#AAC3F0', next: '#FFC63A', missing: '#FF8F7A', overdue: '#FF8F7A', missed: '#8F9BBA' } as const;
+  const color = { uploaded: '#7FD9A8', ready: '#AAC3F0', next: '#FFC63A', missing: '#FF8F7A', overdue: '#FF8F7A', missed: 'var(--dim)' } as const;
   const label = { uploaded: 'Uploaded', ready: 'Ready', next: 'Next', missing: 'No video', overdue: 'Overdue', missed: 'Missed' } as const;
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
     {slots.map((s) => <div key={s.time} className="slotline">

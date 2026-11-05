@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import '@fontsource-variable/inter';
 import './styles.css';
 import { useSnapshot } from './store';
 import { AppCtx } from './ctx';
-import { Background, Icon, Toast } from './ui';
+import { Background, Icon, Toast, useNow, ThemeButton } from './ui';
 import { bb, isDesktop } from './bridge';
 import { Gate, ShareSheet } from './cloud/Gate';
 import { cloudConfigured } from './cloud/client';
 import { listenPhone, syncTick } from './cloud/pcSync';
 import { useRef } from 'react';
-import { csvDue, bufferInfo } from './logic';
+import { csvDue, bufferInfo, allTasks, ymd } from './logic';
 import type { AppState } from './types';
 import Today from './pages/Today';
 import Schedule from './pages/Schedule';
@@ -23,21 +24,31 @@ import Settings from './pages/Settings';
 import Mail from './pages/Mail';
 
 const PAGES = [
-  { id: 'today', label: 'Today', icon: 'home' },
-  { id: 'schedule', label: 'Upload schedule', icon: 'calendar' },
-  { id: 'upload', label: 'Next upload', icon: 'upload' },
-  { id: 'board', label: 'To do', icon: 'check' },
-  { id: 'analytics', label: 'Analytics', icon: 'chart' },
-  { id: 'library', label: 'Library', icon: 'grid' },
-  { id: 'ideas', label: 'Idea inbox', icon: 'bulb' },
-  { id: 'mail', label: 'Inbox', icon: 'mail' },
-  { id: 'tools', label: 'Tools', icon: 'tools' },
+  { id: 'today', label: 'Today', short: 'Today', icon: 'home' },
+  { id: 'schedule', label: 'Upload schedule', short: 'Schedule', icon: 'calendar' },
+  { id: 'upload', label: 'Next upload', short: 'Upload', icon: 'upload' },
+  { id: 'board', label: 'To do', short: 'To do', icon: 'check' },
+  { id: 'analytics', label: 'Analytics', short: 'Analytics', icon: 'chart' },
+  { id: 'library', label: 'Library', short: 'Library', icon: 'grid' },
+  { id: 'ideas', label: 'Idea inbox', short: 'Ideas', icon: 'bulb' },
+  { id: 'mail', label: 'Inbox', short: 'Inbox', icon: 'mail' },
+  { id: 'tools', label: 'Tools', short: 'Tools', icon: 'tools' },
 ];
+const PHONE_NAV = ['today', 'schedule', 'board', 'mail'];
+const Logo = ({ id }: { id: string }) => <svg className="brand" viewBox="0 0 40 40" aria-hidden="true">
+  <defs><radialGradient id={`bb-ball-${id}`} cx=".42" cy=".38" r=".6"><stop offset="0" stopColor="#fff" /><stop offset=".55" stopColor="#F4F6FF" /><stop offset="1" stopColor="#AAC3F0" /></radialGradient>
+    <radialGradient id={`bb-halo-${id}`} cx=".5" cy=".5" r=".5"><stop offset="0" stopColor="#F4F6FF" stopOpacity=".55" /><stop offset="1" stopColor="#F4F6FF" stopOpacity="0" /></radialGradient></defs>
+  <rect x="1" y="1" width="38" height="38" rx="12" fill="#0E162A" stroke="#AAC3F0" strokeOpacity=".45" />
+  <circle cx="20" cy="17" r="11" fill={`url(#bb-halo-${id})`} />
+  <circle cx="20" cy="17" r="6" fill={`url(#bb-ball-${id})`} />
+  <rect x="9" y="29" width="22" height="3" rx="1.5" fill="#FFC63A" />
+</svg>;
 
 function App() {
   const { snap, update } = useSnapshot();
   const [page, setPage] = useState(() => (location.hash.slice(1) || 'today'));
   const [msg, setMsg] = useState<string | null>(null);
+  const [more, setMore] = useState(false);
   const go = useCallback((p: string) => { setPage(p); location.hash = p; window.scrollTo(0, 0); }, []);
   useEffect(() => bb.onNavigate((p) => go(p)), [go]);
   const toast = useCallback((m: string) => setMsg(m), []);
@@ -49,31 +60,65 @@ function App() {
   if (!snap) return <><Background /><div style={{ padding: 40, position: 'relative' }} className="muted">Loading…</div></>;
   const due = csvDue(snap);
   const buf = bufferInfo(snap);
+  const today = ymd(new Date(snap.now));
+  const dueTasks = allTasks(snap).filter((t) => t.col !== 'done' && (!t.due || t.due <= today)).length;
+  const counts: Record<string, number> = { board: dueTasks, mail: snap.mail?.unread ?? 0 };
+  const cur = PAGES.find((p) => p.id === page) ?? { label: 'Settings', short: 'Settings' };
+  const backup = async () => { const p = await bb.backupNow(); update((s) => ({ ...s, lastBackup: new Date().toISOString() })); toast(`Saved backup: ${p.split(/[\\/]/).pop()}`); };
   const Page = { today: Today, schedule: Schedule, board: Board, upload: Upload, analytics: Analytics, library: Library, ideas: Ideas, mail: Mail, tools: Tools, settings: Settings }[page] || Today;
   return (
     <AppCtx.Provider value={{ snap, update, toast, go }}>
       <Background />
       <div className="shell">
-        <nav className="glass rail" aria-label="Main">
-          <svg className="brand" viewBox="0 0 40 40" aria-hidden="true">
-            <defs><radialGradient id="bg-ball" cx=".5" cy=".5" r=".5"><stop offset="0" stopColor="#fff" /><stop offset=".6" stopColor="#F4F6FF" /><stop offset="1" stopColor="#AAC3F0" stopOpacity="0" /></radialGradient></defs>
-            <rect x="1" y="1" width="38" height="38" rx="12" fill="#0B1124" stroke="rgba(170,195,240,.35)" />
-            <circle cx="20" cy="17" r="9" fill="url(#bg-ball)" opacity=".5" />
-            <circle cx="20" cy="17" r="5.5" fill="#F4F6FF" />
-            <rect x="9" y="29" width="22" height="3" rx="1.5" fill="#FFC63A" />
-          </svg>
-          {PAGES.map((p) => (
-            <button key={p.id} className={`rail-btn ${page === p.id ? 'on' : ''}`} onClick={() => go(p.id)} aria-label={p.label}>
-              <Icon name={p.icon} /><span className="tip">{p.label}</span>
-              {p.id === 'analytics' && due && <span className="badge-dot" />}
-              {p.id === 'mail' && (snap.mail?.unread ?? 0) > 0 && <span className="count">{Math.min(99, snap.mail!.unread)}</span>}
-            </button>
-          ))}
-          <div style={{ flex: 1 }} />
-          {snap.update?.ready && <button className="rail-btn upd hide-phone" onClick={async () => { toast(`Installing update ${snap.update!.ready}…`); if (!(await bb.applyUpdate?.())) toast('Update failed, try again later'); }} aria-label="Install update"><Icon name="sparkle" color="var(--yellow)" /><span className="badge-dot" /><span className="tip">Update {snap.update.ready} ready · click to restart</span></button>}
-          <button className="rail-btn hide-phone" onClick={async () => { const p = await bb.backupNow(); update((s) => ({ ...s, lastBackup: new Date().toISOString() })); toast(`Saved backup: ${p.split(/[\\/]/).pop()}`); }} aria-label="Save backup now"><Icon name="save" /><span className="tip">Save backup now</span></button>
-          <button className={`rail-btn ${page === 'settings' ? 'on' : ''}`} onClick={() => go('settings')} aria-label="Settings"><Icon name="gear" /><span className="tip">Settings</span></button>
+        <header className="glass topbar hide-phone">
+          <div className="tb-row">
+            <button className="tb-brand" onClick={() => go('today')} aria-label="Today"><Logo id="pc" /><span>Badbounce</span></button>
+            <nav className="pills" aria-label="Main">
+              {PAGES.map((p) => <button key={p.id} className={`pill ${page === p.id ? 'on' : ''}`} onClick={() => go(p.id)} title={p.label}>
+                <Icon name={p.icon} size={15} /><span className="pl">{p.short}</span>
+                {counts[p.id] > 0 && <span className="pcount">{Math.min(99, counts[p.id])}</span>}
+                {p.id === 'analytics' && due && <span className="pdot" />}
+              </button>)}
+            </nav>
+            <div className="tb-actions">
+              {snap.update?.ready && <button className="iconbtn upd" onClick={async () => { toast(`Installing update ${snap.update!.ready}…`); if (!(await bb.applyUpdate?.())) toast('Update failed, try again later'); }} title={`Update ${snap.update.ready} ready · click to restart`} aria-label="Install update"><Icon name="sparkle" size={17} /></button>}
+              <button className="btn accent" onClick={() => go('ideas')}><Icon name="plus" size={15} sw={2.4} /> Idea</button>
+              <ThemeButton />
+              <button className="iconbtn" onClick={backup} title="Save backup now" aria-label="Save backup now"><Icon name="save" size={17} /></button>
+              <button className={`iconbtn ${page === 'settings' ? 'on' : ''}`} onClick={() => go('settings')} title="Settings" aria-label="Settings"><Icon name="gear" size={17} /></button>
+              <span className="avatar" title="Mo">MO</span>
+            </div>
+          </div>
+          <div className="tb-crumbs">
+            <span>Launcher</span><span className="sep">›</span><b>{cur.short}</b>
+            <span style={{ flex: 1 }} />
+            <StatusLine ok={snap.vaultOk} />
+          </div>
+        </header>
+        <header className="ptop phone-only">
+          <button className="tb-brand" onClick={() => go('today')} aria-label="Today"><Logo id="ph" /></button>
+          <div className="ptitle"><span>Badbounce</span><b>{cur.short}</b></div>
+          <ThemeButton className="iconbtn sm" />
+          <button className="btn sm accent" onClick={() => go('ideas')} aria-label="New idea"><Icon name="plus" size={14} sw={2.6} /> Idea</button>
+        </header>
+        <nav className="glass pnav phone-only" aria-label="Main">
+          {PHONE_NAV.map((id) => { const p = PAGES.find((x) => x.id === id)!; return (
+            <button key={id} className={`pnav-btn ${page === id ? 'on' : ''}`} onClick={() => { setMore(false); go(id); }} aria-label={p.label}>
+              <span className="pi"><Icon name={p.icon} size={21} />{counts[id] > 0 && <span className="count">{Math.min(99, counts[id])}</span>}</span>
+              <span className="pl">{p.short}</span>
+            </button>); })}
+          <button className={`pnav-btn ${more || !PHONE_NAV.includes(page) ? 'on' : ''}`} onClick={() => setMore((m) => !m)} aria-label="More pages">
+            <span className="pi"><Icon name="more" size={21} />{due && <span className="badge-dot" />}</span><span className="pl">More</span>
+          </button>
         </nav>
+        {more && <div className="pmore-back phone-only" onClick={() => setMore(false)}>
+          <div className="glass pmore" onClick={(e) => e.stopPropagation()}>
+            {[...PAGES.filter((p) => !PHONE_NAV.includes(p.id)), { id: 'settings', label: 'Settings', short: 'Settings', icon: 'gear' }].map((p) =>
+              <button key={p.id} className={`pmore-btn ${page === p.id ? 'on' : ''}`} onClick={() => { setMore(false); go(p.id); }}>
+                <span className="pi"><Icon name={p.icon} size={20} />{p.id === 'analytics' && due && <span className="badge-dot" />}</span>{p.short}
+              </button>)}
+          </div>
+        </div>}
         <main className="content">
           {!snap.vaultOk && <div className="glass card" style={{ borderColor: 'rgba(255,143,122,.5)' }}><b>Vault not found.</b><span className="muted">Expected the Badbounce folder at {snap.vaultPath}. Change it in Settings (gear icon).</span></div>}
           {(due || buf.days < 1) && (
@@ -89,6 +134,10 @@ function App() {
       {!isDesktop && <ShareSheet />}
     </AppCtx.Provider>
   );
+}
+function StatusLine({ ok }: { ok: boolean }) {
+  const now = useNow(30000);
+  return <span className="status"><i className={ok ? '' : 'bad'} />{isDesktop ? (ok ? 'Vault connected' : 'Vault missing') : 'Synced with PC'} · {now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>;
 }
 // phone: GitHub Pages caches the page ~10 min; check for a newer build when the app comes to the front
 if (!isDesktop) {

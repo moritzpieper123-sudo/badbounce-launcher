@@ -39,7 +39,7 @@ export default function Upload() {
       <p className="sub" style={{ marginTop: -10 }}>Paste the TikTok link so the weekly CSV can be matched to each video.</p>
       {recent.length ? recent.map(([n, u]) => {
         const v = snap.videos.find((x) => x.num === +n);
-        return <div key={n} className="row" style={{ borderTop: '1px solid rgba(255,255,255,.07)', paddingTop: 10, flexWrap: 'wrap' }}>
+        return <div key={n} className="row" style={{ borderTop: '1px solid rgba(var(--wrgb),.07)', paddingTop: 10, flexWrap: 'wrap' }}>
           <Thumb v={v} w={36} h={64} />
           <div style={{ flex: '1 1 160px' }}><b>#{n}</b> <span className="muted small">· {new Date(u.at).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</span>{v && <div className="small muted">K{v.konzept ?? '?'} {KONZEPTE[v.konzept ?? 0]?.name}</div>}</div>
           <input className="in" style={{ flex: '2 1 260px' }} placeholder="TikTok post link" value={edit[n] ?? u.link ?? ''} onChange={(e) => setEdit({ ...edit, [n]: e.target.value })} onBlur={() => edit[n] != null && update(setLink(+n, edit[n]))} />

@@ -315,6 +315,7 @@ else {
     if (process.env.BB_SHOT) setTimeout(async () => {
       try {
         if (process.env.BB_PAGE) mainWin.webContents.send('navigate', process.env.BB_PAGE);
+        if (process.env.BB_ISLAND_OPEN) islandWin.webContents.send('navigate', 'toggle');
         await new Promise((r) => setTimeout(r, 1500));
         fs.writeFileSync(process.env.BB_SHOT, (await mainWin.webContents.capturePage()).toPNG());
         fs.writeFileSync(process.env.BB_SHOT.replace('.png', '-island.png'), (await islandWin.webContents.capturePage()).toPNG());
