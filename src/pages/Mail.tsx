@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../ctx';
 import { Header } from './parts';
 import { Icon } from '../ui';
@@ -72,11 +72,43 @@ export default function Mail() {
   </>;
 }
 
-const frameDoc = (html: string) => `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>html,body{margin:0;background:#fff;color:#202124;font:14px/1.5 Arial,system-ui,sans-serif}body{padding:20px;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}</style></head><body>${html}</body></html>`;
+/* Render the email inside the launcher design: strip scripts, foreign styles and colours, keep text, images, links and layout. */
+const DROP = 'script,style,link,meta,title,base,iframe,frame,frameset,object,embed,applet,form,input,button,textarea,select,noscript,template';
+const BAD_CSS = /^(color|background|background-color|background-image|font-family|box-shadow|border|border-top|border-bottom|border-left|border-right|border-color|border-radius|text-shadow|position|z-index|top|left|right|bottom|float|min-width|height|min-height|line-height|filter|opacity)$/i;
+function cleanMail(html: string): string {
+  const doc = new DOMParser().parseFromString(html || '', 'text/html');
+  doc.querySelectorAll(DROP).forEach((n) => n.remove());
+  doc.body.querySelectorAll('*').forEach((el) => {
+    let hadBg = el.hasAttribute('bgcolor');
+    for (const a of Array.from(el.attributes)) {
+      const n = a.name.toLowerCase();
+      if (n.startsWith('on') || ['bgcolor', 'color', 'background', 'face', 'border', 'class', 'id', 'height', 'srcset'].includes(n)) el.removeAttribute(a.name);
+    }
+    const st = el.getAttribute('style');
+    if (st) {
+      if (/background/i.test(st)) hadBg = true;
+      const kept = st.split(';').map((d) => d.trim()).filter((d) => d && !BAD_CSS.test(d.split(':')[0].trim()));
+      if (kept.length) el.setAttribute('style', kept.join(';')); else el.removeAttribute('style');
+    }
+    if (el.tagName === 'A') {
+      const href = el.getAttribute('href') ?? '';
+      if (!/^(https?:|mailto:)/i.test(href)) el.removeAttribute('href');
+      if (hadBg && (el.textContent ?? '').trim()) el.classList.add('mbtn');
+    }
+    if (el.tagName === 'IMG') {
+      const src = el.getAttribute('src') ?? '';
+      if (!/^(https?:|data:image\/)/i.test(src)) el.remove();
+      else { el.setAttribute('loading', 'lazy'); el.setAttribute('referrerpolicy', 'no-referrer'); }
+    }
+  });
+  return doc.body.innerHTML;
+}
 
 function Reader({ item, body, onBack }: { item: MailItem; body: MailBody | null; onBack: () => void }) {
-  const [h, setH] = useState(400);
-  const fit = (f: HTMLIFrameElement | null) => { try { const d = f?.contentDocument; if (d?.body) setH(Math.max(200, d.body.scrollHeight + 44)); } catch { /* ignore */ } };
+  const html = useMemo(() => (body?.ok ? cleanMail(body.html ?? '') : ''), [body]);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => { box.current?.querySelectorAll('img').forEach((im) => { const hide = () => { im.style.display = 'none'; }; if (im.complete && !im.naturalWidth) hide(); else im.addEventListener('error', hide); }); }, [html]);
+  const click = (e: React.MouseEvent) => { const a = (e.target as HTMLElement).closest('a'); if (!a) return; e.preventDefault(); const href = a.getAttribute('href'); if (href) bb.openUrl(href); };
   const addr = body?.from?.match(/<([^>]+)>/)?.[1] ?? item.fromAddr ?? '';
   return <>
     <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -91,10 +123,10 @@ function Reader({ item, body, onBack }: { item: MailItem; body: MailBody | null;
       </div>
       {!!body?.files?.length && <div className="row small" style={{ gap: 6, flexWrap: 'wrap' }}>{body.files.map((f) => <span key={f} className="chip">📎 {f}</span>)}<span className="dim">open attachments in Gmail</span></div>}
     </section>
-    <section className="glass card" style={{ padding: 8 }}>
+    <section className="glass card mailcard">
       {!body ? <div className="empty">Loading…</div>
         : !body.ok ? <div className="empty" style={{ color: 'var(--red)' }}>Could not load this email: {body.error}</div>
-        : <iframe title="email" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" srcDoc={frameDoc(body.html ?? '')} onLoad={(e) => { const f = e.currentTarget; fit(f); setTimeout(() => fit(f), 600); setTimeout(() => fit(f), 2000); }} style={{ width: '100%', height: h, border: 0, borderRadius: 12, background: '#fff', display: 'block' }} />}
+        : html.trim() ? <div ref={box} className="mailhtml" onClick={click} dangerouslySetInnerHTML={{ __html: html }} /> : <div className="empty">This email has no text.</div>}
     </section>
   </>;
 }

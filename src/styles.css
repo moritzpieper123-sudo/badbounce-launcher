@@ -26,6 +26,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 html { background: var(--bg); }
+html:has(body.island-body) { background: transparent; }
 body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; -webkit-font-smoothing: antialiased; }
 button { font: inherit; color: inherit; }
 a { color: var(--frost); }
@@ -536,3 +537,21 @@ textarea.in { resize: vertical; }
 :root[data-theme='medium'] .top h1, :root[data-theme='medium'] .top p { text-shadow: 0 2px 16px rgba(20,29,51,.8); }
 :root[data-theme='medium'] .next { background: linear-gradient(135deg, rgba(244,246,255,.12), rgba(20,30,54,.25)); }
 :root[data-theme='medium'] .route-stop circle { fill: #2B3A5E; }
+
+/* Email reader: email rendered in the launcher design */
+.mailcard { padding: 22px 26px; }
+.mailhtml { color: var(--text); font-size: 14.5px; line-height: 1.65; overflow-wrap: anywhere; max-width: 760px; }
+.mailhtml * { max-width: 100% !important; color: inherit; border-color: rgba(var(--wrgb), .12) !important; }
+.mailhtml table { border-collapse: collapse; width: auto !important; }
+.mailhtml td, .mailhtml th { padding: 2px 0; }
+.mailhtml img { height: auto !important; border-radius: 6px; }
+.mailhtml img[width="1"], .mailhtml img[height="1"] { display: none; }
+.mailhtml h1, .mailhtml h2, .mailhtml h3 { color: var(--text); line-height: 1.3; margin: .6em 0 .4em; }
+.mailhtml p { margin: 0 0 .8em; }
+.mailhtml a { color: var(--frost); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.mailhtml a.mbtn { display: inline-block; margin: 6px 0; padding: 9px 16px; border-radius: 999px; background: var(--yellow); color: #04050A !important; font-weight: 700; text-decoration: none; }
+.mailhtml hr { border: 0; border-top: 1px solid rgba(var(--wrgb), .12); }
+.mailhtml blockquote { margin: 0 0 .8em; padding-left: 12px; border-left: 2px solid rgba(var(--wrgb), .2); color: var(--muted); }
+.mailhtml pre { white-space: pre-wrap; font: inherit; margin: 0; }
+[data-theme='light'] .mailhtml a:not(.mbtn) { color: var(--hl); }
+@media (max-width: 760px) { .mailcard { padding: 16px; } }

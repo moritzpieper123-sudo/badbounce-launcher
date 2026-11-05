@@ -8,6 +8,9 @@ import { bufferInfo, dueAlerts, fmtLate, isQuiet, islandStatus, KONZEPTE, kColor
 import { doUploadPack, markUploaded } from './actions';
 import { Icon, Tick } from './ui';
 
+/* The island window is transparent: never paint the page background behind the pill. */
+document.documentElement.style.background = 'transparent';
+
 const MOOD = { done: '#7FD9A8', due: '#FFC63A', overdue: '#FF6B5C', idle: '#7FD9A8' } as const;
 
 function Island() {
