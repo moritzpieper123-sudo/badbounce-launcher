@@ -811,3 +811,11 @@ main.content > .grid > *:nth-child(4) { animation-delay: .22s; } main.content > 
 .top3 .top-c { display: flex; justify-content: center; }
 .top3 .top-r { justify-content: flex-end; }
 @media (max-width: 1180px) { .top.top3 { grid-template-columns: 1fr auto; } .top3 .top-c { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; } }
+
+/* idea: fold-down reference video */
+.idea-row .chev svg { transition: transform .25s; transform: rotate(90deg); }
+.idea-row .chev.up svg { transform: rotate(-90deg); }
+.idea-media { flex-basis: 100%; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; padding: 12px 0 4px; animation: ideafold .3s cubic-bezier(.2,.9,.3,1) backwards; transform-origin: top; }
+.idea-media video, .idea-media img { max-height: 62vh; max-width: 100%; border-radius: 16px; background: #000; box-shadow: 0 14px 40px rgba(0,0,0,.45); }
+.idea-media iframe { width: 325px; height: 578px; max-width: 100%; border: 0; border-radius: 16px; background: #000; }
+@keyframes ideafold { from { opacity: 0; transform: scaleY(.85) translateY(-8px); } }
