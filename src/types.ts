@@ -40,6 +40,7 @@ export interface Idea {
   text: string;
   konzept: number | null;
   newKonzept?: boolean; // idea for a brand-new Konzept (NewStyle round)
+  markers?: { id: string; t: number; note?: string }[]; // timeline markers on the reference video
   link?: string;
   file?: string;     // stored file name (in vault Ideas/files)
   createdAt: string;

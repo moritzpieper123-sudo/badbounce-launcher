@@ -5,6 +5,7 @@ import { Header } from './parts';
 import { Icon, KChip } from '../ui';
 import { bb, isDesktop } from '../bridge';
 import type { Idea } from '../types';
+import { Player } from '../player';
 
 const KNUMS = Object.keys(KONZEPTE).map(Number);
 /** Konzept picker: any, an existing Konzept, or a brand-new one */
@@ -50,15 +51,18 @@ export default function Ideas() {
   const filePath = (f: string) => [snap.vaultPath, 'Ideas', 'files', f].join(sep);
   const tiktokId = (l?: string) => l?.match(/tiktok\.com\/.*\/video\/(\d+)/)?.[1];
   const hasMedia = (i: Idea) => !!(i.file || tiktokId(i.link));
+  const [seen, setSeen] = useState<Set<string>>(new Set()); // mounted players stay mounted so folding up animates
+  const toggleOpen = (id: string) => { setSeen((x) => new Set(x).add(id)); setOpenId(openId === id ? null : id); };
+  const setMarkers = (id: string, m: Idea['markers']) => update((st) => ({ ...st, ideas: st.ideas.map((x) => (x.id === id ? { ...x, markers: m } : x)) }));
   const media = (i: Idea) => {
-    const tid = tiktokId(i.link);
-    return <div className="idea-media">
+    const tid = tiktokId(i.link), on = openId === i.id;
+    return <div className={`fold ${on ? 'open' : ''}`} aria-hidden={!on}><div className="fold-in"><div className="idea-media">
       {i.file && (isDesktop ? (/\.(png|jpe?g|webp|gif)$/i.test(i.file)
         ? <img src={bb.fileUrl(filePath(i.file))} alt="" />
-        : <video src={bb.fileUrl(filePath(i.file))} controls autoPlay playsInline loop />)
+        : <Player src={bb.fileUrl(filePath(i.file))} active={on} markers={i.markers ?? []} onMarkers={(m) => setMarkers(i.id, m)} />)
         : <div className="empty">The video is stored on the PC. Open the idea in the PC launcher to watch it.</div>)}
-      {tid && <iframe src={`https://www.tiktok.com/embed/v2/${tid}`} title="TikTok reference" allow="autoplay; encrypted-media; fullscreen" />}
-    </div>;
+      {tid && on && <iframe src={`https://www.tiktok.com/embed/v2/${tid}`} title="TikTok reference" allow="autoplay; encrypted-media; fullscreen" />}
+    </div></div></div>;
   };
   const open = snap.state.ideas.filter((i) => !i.used), used = snap.state.ideas.filter((i) => i.used);
   const row = (i: Idea) => edit?.id === i.id ? <div key={i.id} className="task idea-edit" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
@@ -69,15 +73,15 @@ export default function Ideas() {
     </div>
     <div className="row"><button className="btn primary sm" onClick={saveEdit}><Icon name="check" size={14} /> Save</button><button className="btn sm" onClick={() => setEdit(null)}>Cancel</button><span className="small dim">Ctrl+Enter saves · Esc cancels</span></div>
   </div> : <div key={i.id} className={`task idea-row ${openId === i.id ? 'open' : ''}`} style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-    <div style={{ flex: 1, minWidth: 0, cursor: hasMedia(i) ? 'pointer' : undefined }} onClick={(e) => { if ((e.target as HTMLElement).closest('button')) return; if (hasMedia(i)) setOpenId(openId === i.id ? null : i.id); }} title={hasMedia(i) ? (openId === i.id ? 'Fold up' : 'Click to watch the reference') : undefined}>
+    <div style={{ flex: 1, minWidth: 0, cursor: hasMedia(i) ? 'pointer' : undefined }} onClick={(e) => { if ((e.target as HTMLElement).closest('button')) return; if (hasMedia(i)) toggleOpen(i.id); }} title={hasMedia(i) ? (openId === i.id ? 'Fold up' : 'Click to watch the reference') : undefined}>
       <div className="t" style={{ textDecoration: i.used ? 'line-through' : 'none', color: i.used ? 'var(--dim)' : undefined }}>{i.text || '(no text)'}</div>
-      <div className="row small muted" style={{ gap: 8, marginTop: 4, flexWrap: 'wrap' }}><IdeaK i={i} />{i.link && <button className="chip chip-btn" onClick={() => bb.openUrl(i.link!)}><Icon name="link" size={11} /> Link</button>}{i.file && <button className="chip chip-btn" onClick={() => setOpenId(openId === i.id ? null : i.id)}><Icon name="film" size={11} /> {i.file}</button>}<span>{new Date(i.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span></div>
+      <div className="row small muted" style={{ gap: 8, marginTop: 4, flexWrap: 'wrap' }}><IdeaK i={i} />{i.link && <button className="chip chip-btn" onClick={() => bb.openUrl(i.link!)}><Icon name="link" size={11} /> Link</button>}{i.file && <button className="chip chip-btn" onClick={() => toggleOpen(i.id)}><Icon name="film" size={11} /> {i.file}</button>}<span>{new Date(i.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span></div>
     </div>
     <button className="btn sm icon" title="Edit idea" aria-label="Edit idea" onClick={() => setEdit({ id: i.id, text: i.text, k: kVal(i), link: i.link ?? '' })}><Icon name="pen" size={13} /></button>
     <button className="btn sm" onClick={() => update((st) => ({ ...st, ideas: st.ideas.map((x) => (x.id === i.id ? { ...x, used: !x.used } : x)) }))}>{i.used ? 'Reopen' : 'Used'}</button>
     <button className="btn sm" aria-label="Delete idea" onClick={() => update((st) => ({ ...st, ideas: st.ideas.filter((x) => x.id !== i.id) }))}><Icon name="x" size={13} /></button>
-    {hasMedia(i) && <button className={`btn sm icon chev ${openId === i.id ? 'up' : ''}`} aria-label={openId === i.id ? 'Hide video' : 'Show video'} title={openId === i.id ? 'Hide video' : 'Watch video'} onClick={() => setOpenId(openId === i.id ? null : i.id)}><Icon name="play" size={12} /></button>}
-    {openId === i.id && media(i)}
+    {hasMedia(i) && <button className={`btn sm icon chev ${openId === i.id ? 'up' : ''}`} aria-label={openId === i.id ? 'Hide video' : 'Show video'} title={openId === i.id ? 'Hide video' : 'Watch video'} onClick={() => toggleOpen(i.id)}><Icon name="play" size={12} /></button>}
+    {hasMedia(i) && (seen.has(i.id) || openId === i.id) && media(i)}
   </div>;
   return <>
     <Header title="Idea inbox" sub="Collect ideas for the next videos." right={isDesktop ? <button className="btn" onClick={() => bb.openVault('Ideas.md')}><Icon name="folder" size={14} /> Ideas.md</button> : undefined} />
