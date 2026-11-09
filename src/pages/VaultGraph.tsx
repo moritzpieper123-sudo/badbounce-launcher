@@ -52,6 +52,8 @@ export default function VaultGraphPage({ solo = false }: { solo?: boolean }) {
   const nodesRef = useRef<N[]>([]); const linksRef = useRef<L[]>([]);
   const view = useRef({ k: 1, x: 0, y: 0, w: 800, h: 600 });
   const hover = useRef<N | null>(null);
+  const ptr = useRef<{ x: number; y: number } | null>(null); // last cursor position while it is over the canvas and not dragging
+  const hitRef = useRef<(ex: number, ey: number) => N | null>(() => null);
   const dirty = useRef(true);
   const qRef = useRef(''); qRef.current = q.trim().toLowerCase();
   const selRef = useRef<N | null>(null); selRef.current = sel;
@@ -121,8 +123,8 @@ export default function VaultGraphPage({ solo = false }: { solo?: boolean }) {
   // canvas size
   useEffect(() => {
     const c = cv.current, b = box.current; if (!c || !b) return;
-    const ro = new ResizeObserver(() => { const r = b.getBoundingClientRect(), d = devicePixelRatio || 1; c.width = r.width * d; c.height = r.height * d; view.current.w = r.width; view.current.h = r.height; dirty.current = true; });
-    ro.observe(b); return () => ro.disconnect();
+    const ro = new ResizeObserver(() => { const r = c.getBoundingClientRect(), d = devicePixelRatio || 1; c.width = Math.round(r.width * d); c.height = Math.round(r.height * d); view.current.w = r.width; view.current.h = r.height; dirty.current = true; });
+    ro.observe(b); ro.observe(c); return () => ro.disconnect();
   }, []);
 
   // draw loop
@@ -132,6 +134,7 @@ export default function VaultGraphPage({ solo = false }: { solo?: boolean }) {
       raf = requestAnimationFrame(draw);
       if (!dirty.current) return; dirty.current = false;
       const c = cv.current; if (!c) return; const ctx = c.getContext('2d')!; const d = devicePixelRatio || 1;
+      if (ptr.current) { const hv = hitRef.current(ptr.current.x, ptr.current.y); if (hv !== hover.current) { hover.current = hv; cv.current?.classList.toggle('pointing', !!hv); } }
       const { k, x, y, w, h } = view.current;
       ctx.setTransform(d, 0, 0, d, 0, 0); ctx.clearRect(0, 0, w, h);
       ctx.translate(w / 2 + x, h / 2 + y); ctx.scale(k, k);
@@ -181,7 +184,19 @@ export default function VaultGraphPage({ solo = false }: { solo?: boolean }) {
   useEffect(() => {
     const c = cv.current; if (!c) return;
     const toWorld = (ex: number, ey: number) => { const r = c.getBoundingClientRect(), v = view.current; return { x: (ex - r.left - v.w / 2 - v.x) / v.k, y: (ey - r.top - v.h / 2 - v.y) / v.k }; };
-    const hit = (ex: number, ey: number) => { const p = toWorld(ex, ey); let best: N | null = null, bd = Infinity; for (const n of nodesRef.current) { if (n.x == null) continue; const dd = Math.hypot(n.x - p.x, n.y! - p.y); const lim = radius(n) + 6 / view.current.k; if (dd < lim && dd < bd) { best = n; bd = dd; } } return best; };
+    // hit area = the whole visible dot (bigger while highlighted) plus a 3 px rim, never smaller than 8 px on screen
+    const hit = (ex: number, ey: number) => {
+      const p = toWorld(ex, ey), k = view.current.k; let best: N | null = null, bd = Infinity;
+      for (const n of nodesRef.current) {
+        if (n.x == null) continue;
+        const drawn = radius(n) * ((hover.current ?? selRef.current)?.id === n.id ? 1.25 : 1);
+        const lim = Math.max(drawn + 3 / k, 8 / k), dd = Math.hypot(n.x - p.x, n.y! - p.y);
+        if (dd <= lim && dd / lim < bd) { best = n; bd = dd / lim; }
+      }
+      return best;
+    };
+    hitRef.current = hit;
+    (window as unknown as { __vg?: unknown }).__vg = { nodes: nodesRef, view, cv: c, hover, hit }; // test hook (hover checks)
     let mode: 'none' | 'pan' | 'node' = 'none', drag: N | null = null, sx = 0, sy = 0, moved = 0, last = { x: 0, y: 0 };
     const down = (e: PointerEvent) => {
       c.setPointerCapture(e.pointerId); sx = e.clientX; sy = e.clientY; moved = 0; last = { x: e.clientX, y: e.clientY };
@@ -191,7 +206,8 @@ export default function VaultGraphPage({ solo = false }: { solo?: boolean }) {
       c.classList.add('grabbing');
     };
     const move = (e: PointerEvent) => {
-      if (mode === 'none') { const h = hit(e.clientX, e.clientY); if (h !== hover.current) { hover.current = h; dirty.current = true; c.classList.toggle('pointing', !!h); } return; }
+      if (mode === 'none') { ptr.current = { x: e.clientX, y: e.clientY }; const h = hit(e.clientX, e.clientY); if (h !== hover.current) { hover.current = h; dirty.current = true; c.classList.toggle('pointing', !!h); } return; }
+      ptr.current = null;
       moved = Math.max(moved, Math.hypot(e.clientX - sx, e.clientY - sy));
       if (mode === 'node' && drag) { const p = toWorld(e.clientX, e.clientY); drag.fx = p.x; drag.fy = p.y; }
       else { view.current.x += e.clientX - last.x; view.current.y += e.clientY - last.y; }
@@ -210,7 +226,7 @@ export default function VaultGraphPage({ solo = false }: { solo?: boolean }) {
       v.x = mx - (mx - v.x) * (nk / v.k); v.y = my - (my - v.y) * (nk / v.k); v.k = nk; dirty.current = true;
     };
     const dbl = (e: MouseEvent) => { const n = hit(e.clientX, e.clientY); if (n && !n.unresolved && !n.isTag) bb.openNote?.(n.id); };
-    const leave = () => { if (hover.current) { hover.current = null; dirty.current = true; } };
+    const leave = () => { ptr.current = null; if (hover.current) { hover.current = null; dirty.current = true; c.classList.remove('pointing'); } };
     c.addEventListener('pointerdown', down); c.addEventListener('pointermove', move); c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
     c.addEventListener('wheel', wheel, { passive: false }); c.addEventListener('dblclick', dbl); c.addEventListener('pointerleave', leave);
     return () => { c.removeEventListener('pointerdown', down); c.removeEventListener('pointermove', move); c.removeEventListener('pointerup', up); c.removeEventListener('pointercancel', up); c.removeEventListener('wheel', wheel); c.removeEventListener('dblclick', dbl); c.removeEventListener('pointerleave', leave); };
