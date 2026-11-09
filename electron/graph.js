@@ -57,7 +57,7 @@ function build(root) {
     if (text.length > 2e6) text = text.slice(0, 2e6);
     const body = text.replace(/```[\s\S]*?```/g, '');
     const add = (t) => { if (!t || t === n.id) return; const key = n.id < t ? n.id + '\u0000' + t : t + '\u0000' + n.id; if (seen.has(key)) return; seen.add(key); links.push({ s: n.id, t }); };
-    for (const m of body.matchAll(WIKI)) { const r = resolve(m[1], n.id); if (r) add(r); else { const nm = m[1].trim().split('/').pop(); const uid = '?' + nm.toLowerCase(); if (!unresolved.has(uid)) unresolved.set(uid, { id: uid, name: nm, folder: '', tags: [], unresolved: true }); add(uid); } }
+    for (const m of body.matchAll(WIKI)) { const tg = m[1].replace(/\\+$/, '').trim(); if (/\.(?!md$)[a-z0-9]{2,5}$/i.test(tg)) continue; /* attachments (png, txt, mp4) are not notes; trailing \ comes from \| inside tables */ m[1] = tg; const r = resolve(m[1], n.id); if (r) add(r); else { const nm = m[1].trim().split('/').pop(); const uid = '?' + nm.toLowerCase(); if (!unresolved.has(uid)) unresolved.set(uid, { id: uid, name: nm, folder: '', tags: [], unresolved: true }); add(uid); } }
     for (const m of body.matchAll(MDLINK)) { if (/^https?:/i.test(m[1])) continue; const r = resolve(m[1], n.id); if (r) add(r); }
     const fm = text.match(/^---\n([\s\S]*?)\n---/); const tags = new Set();
     if (fm) { const tm = fm[1].match(/^tags:\s*(.*(?:\n\s+-\s.*)*)/m); if (tm) for (const t of tm[1].replace(/[\[\]]/g, '').split(/[,\n]/)) { const x = t.replace(/^\s*-\s*/, '').trim().replace(/^#/, ''); if (x) tags.add(x); } }

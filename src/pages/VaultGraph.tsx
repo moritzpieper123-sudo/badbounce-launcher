@@ -21,7 +21,7 @@ function renderMd(md: string, has: (name: string) => string | null) {
   body = body.replace(/```[\s\S]*?```/g, (m) => { blocks.push(`<pre><code>${esc(m.replace(/^```\w*\n?|```$/g, ''))}</code></pre>`); return `\u0000${blocks.length - 1}\u0000`; });
   const inline = (t: string) => esc(t)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/!?\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g, (_m, target: string, alias?: string) => { const id = has(target.trim()); return `<a class="wl ${id ? '' : 'miss'}" data-id="${esc(id ?? '')}">${alias ?? target}</a>`; })
+    .replace(/!?\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g, (_m, target: string, alias?: string) => { target = target.replace(/\\+$/, ''); const id = has(target.trim()); return `<a class="wl ${id ? '' : 'miss'}" data-id="${esc(id ?? '')}">${alias ?? target}</a>`; })
     .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a class="wl" data-url="$2">$1</a>')
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>')
     .replace(/(^|\s)#([A-Za-zÀ-ɏ][\w/\-À-ɏ]*)/g, '$1<span class="tag">#$2</span>');
@@ -123,7 +123,8 @@ export default function VaultGraphPage({ solo = false }: { solo?: boolean }) {
   // canvas size
   useEffect(() => {
     const c = cv.current, b = box.current; if (!c || !b) return;
-    const ro = new ResizeObserver(() => { const r = c.getBoundingClientRect(), d = devicePixelRatio || 1; c.width = Math.round(r.width * d); c.height = Math.round(r.height * d); view.current.w = r.width; view.current.h = r.height; dirty.current = true; });
+    // layout size (clientWidth), not getBoundingClientRect: the page fades in with a small scale animation, and a rect read during it was 1.5 % too small, so dots were drawn away from where the mouse test looked
+    const ro = new ResizeObserver(() => { const w = c.clientWidth, h = c.clientHeight, d = devicePixelRatio || 1; c.width = Math.round(w * d); c.height = Math.round(h * d); view.current.w = w; view.current.h = h; dirty.current = true; });
     ro.observe(b); ro.observe(c); return () => ro.disconnect();
   }, []);
 
@@ -183,7 +184,7 @@ export default function VaultGraphPage({ solo = false }: { solo?: boolean }) {
   // pointer interaction: drag node / pan / hover / click / double-click / wheel zoom
   useEffect(() => {
     const c = cv.current; if (!c) return;
-    const toWorld = (ex: number, ey: number) => { const r = c.getBoundingClientRect(), v = view.current; return { x: (ex - r.left - v.w / 2 - v.x) / v.k, y: (ey - r.top - v.h / 2 - v.y) / v.k }; };
+    const toWorld = (ex: number, ey: number) => { const r = c.getBoundingClientRect(), v = view.current, sx = r.width ? c.clientWidth / r.width : 1, sy = r.height ? c.clientHeight / r.height : 1; return { x: ((ex - r.left) * sx - v.w / 2 - v.x) / v.k, y: ((ey - r.top) * sy - v.h / 2 - v.y) / v.k }; };
     // hit area = the whole visible dot (bigger while highlighted) plus a 3 px rim, never smaller than 8 px on screen
     const hit = (ex: number, ey: number) => {
       const p = toWorld(ex, ey), k = view.current.k; let best: N | null = null, bd = Infinity;
@@ -221,7 +222,7 @@ export default function VaultGraphPage({ solo = false }: { solo?: boolean }) {
     };
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
-      const r = c.getBoundingClientRect(), v = view.current, mx = e.clientX - r.left - v.w / 2, my = e.clientY - r.top - v.h / 2;
+      const r = c.getBoundingClientRect(), v = view.current, mx = (e.clientX - r.left) * (r.width ? c.clientWidth / r.width : 1) - v.w / 2, my = (e.clientY - r.top) * (r.height ? c.clientHeight / r.height : 1) - v.h / 2;
       const nk = Math.max(.08, Math.min(8, v.k * Math.exp(-e.deltaY * .0015)));
       v.x = mx - (mx - v.x) * (nk / v.k); v.y = my - (my - v.y) * (nk / v.k); v.k = nk; dirty.current = true;
     };
