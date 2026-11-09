@@ -57,9 +57,14 @@ function writeIdeasMd(st) {
     for (const i of open) {
       lines.push(`- ${i.text || '(no text)'}${i.newKonzept ? ' · NEW KONZEPT (run NewStyle)' : i.konzept ? ` · Konzept ${i.konzept}` : ''} · ${i.createdAt.slice(0, 10)}`);
       if (i.link) lines.push(`  - Link: ${i.link}`);
-      if (i.file) lines.push(`  - File: Ideas/files/${i.file}`);
+      if (i.file) lines.push(`  - File: [[Ideas/files/${i.file}|${i.file}]]`);
     }
-    fs.writeFileSync(path.join(vault(), 'Ideas.md'), lines.join('\n') + '\n');
+    lines.push('', 'Back to [[Home]]');
+    fs.mkdirSync(path.join(vault(), 'Ideas'), { recursive: true });
+    fs.writeFileSync(path.join(vault(), 'Ideas', 'Ideas.md'), lines.join('\n') + '\n');
+    // Ideas.md used to live in the vault root (before the 2026-11 vault restructure); drop that generated copy
+    const old = path.join(vault(), 'Ideas.md');
+    if (fs.existsSync(old) && fs.readFileSync(old, 'utf8').includes('Written by the Badbounce Launcher')) fs.unlinkSync(old);
   } catch (e) { console.error('ideas.md', e); }
 }
 
@@ -367,7 +372,7 @@ else {
       tray.on('click', () => showMain());
     } catch (e) { console.error('tray', e); }
     globalShortcut.register('Control+Alt+B', () => { if (islandWin) { islandWin.setIgnoreMouseEvents(false); islandWin.webContents.send('navigate', 'toggle'); } });
-    const st = loadState(); setAutostart(st.settings.autostart);
+    const st = loadState(); setAutostart(st.settings.autostart); if (fs.existsSync(vault())) writeIdeasMd(st);
     startFullscreenWatch();
     media.start((m) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('media', m); }, path.join(dataDir(), 'media-log.txt'));
     app.on('before-quit', () => media.stop());

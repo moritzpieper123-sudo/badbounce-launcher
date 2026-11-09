@@ -23,7 +23,7 @@ export default function Tools() {
     { label: 'Gemini', sub: 'Chat', url: 'https://gemini.google.com/app', logo: <GeminiLogo />, glow: 'rgba(155,114,203,.3)' },
     { label: 'ChatGPT', sub: 'Chat', url: 'https://chatgpt.com/', logo: <ChatGPTLogo />, glow: 'rgba(var(--wrgb),.18)' },
   ];
-  const folders = [['Vault', ''], ['Results', 'Results'], ['Konzepte', 'Branding/Konzepte'], ['Branding', 'Branding'], ['Analytics', 'Analytics'], ['Ideas', 'Ideas'], ['Backups', '.claude-workspace/launcher-data/backups']];
+  const folders = [['Vault', ''], ['Results', 'Results'], ['Konzepte', 'Konzepte'], ['Branding', 'Branding'], ['Analytics', 'Analytics'], ['Ideas', 'Ideas'], ['Backups', '.claude-workspace/launcher-data/backups']];
   return <>
     <Header title="Tools" sub="Claude commands are copied and the project opens; you paste and send." />
     <div className="glass card">

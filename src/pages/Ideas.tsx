@@ -38,7 +38,7 @@ export default function Ideas() {
     const idea: Idea = { id: uid(), text: text.trim(), ...kFields(k), link: link.trim() || undefined, file: stored, createdAt: new Date().toISOString() };
     await update((st) => ({ ...st, ideas: [idea, ...st.ideas] }));
     setText(''); setLink(''); setK(''); setFile(null); setBusy(false);
-    toast('Idea saved · Gen will see it in Ideas.md');
+    toast('Idea saved · Gen will see it in Ideas/Ideas.md');
   };
   const [edit, setEdit] = useState<{ id: string; text: string; k: string; link: string } | null>(null);
   const saveEdit = async () => {
@@ -84,7 +84,7 @@ export default function Ideas() {
     {hasMedia(i) && (seen.has(i.id) || openId === i.id) && media(i)}
   </div>;
   return <>
-    <Header title="Idea inbox" sub="Collect ideas for the next videos." right={isDesktop ? <button className="btn" onClick={() => bb.openVault('Ideas.md')}><Icon name="folder" size={14} /> Ideas.md</button> : undefined} />
+    <Header title="Idea inbox" sub="Collect ideas for the next videos." right={isDesktop ? <button className="btn" onClick={() => bb.openVault('Ideas/Ideas.md')}><Icon name="folder" size={14} /> Ideas.md</button> : undefined} />
     <section className="glass card form">
       <h2>New idea</h2>
       <label className="f">Idea<textarea className="in" rows={2} placeholder="In one line, e.g. flag battle with the World Cup 2026 groups" value={text} onChange={(e) => setText(e.target.value)} /></label>
@@ -100,7 +100,7 @@ export default function Ideas() {
           <input type="file" accept="video/*,image/*" style={{ display: 'none' }} onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])} />
         </label>
       </div>
-      <div className="row"><button className="btn primary" disabled={busy} onClick={save}><Icon name="plus" size={15} /> {busy ? 'Saving…' : 'Save idea'}</button><span className="small muted">Open ideas go to Ideas.md, where Gen picks them up.</span></div>
+      <div className="row"><button className="btn primary" disabled={busy} onClick={save}><Icon name="plus" size={15} /> {busy ? 'Saving…' : 'Save idea'}</button><span className="small muted">Open ideas go to Ideas/Ideas.md, where Gen picks them up.</span></div>
     </section>
     <section className="glass card" style={{ gap: 0 }}>
       <h2 style={{ marginBottom: 6 }}>Open ideas · {open.length}</h2>

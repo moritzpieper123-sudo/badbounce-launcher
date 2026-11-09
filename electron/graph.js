@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const SKIP = new Set(['node_modules', '.git', '.obsidian', '.trash', '.claude-workspace', '.claude']);
+const SKIP = new Set(['node_modules', '.git', '.obsidian', '.trash', '.claude-workspace', '.claude', 'Trash']);
 const MAX_FILES = 5000;
 
 function walk(root) {
