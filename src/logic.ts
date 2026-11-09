@@ -8,8 +8,9 @@ export const KONZEPTE: Record<number, { name: string; color: string }> = {
   4: { name: 'Gap runner', color: '#FF9D5C' },
   5: { name: 'Line battle', color: '#5FD3E0' },
   6: { name: 'Math damage', color: '#7FD9A8' },
+  7: { name: 'Shape filler', color: '#6FB3FF' },
 };
-export const ROTATION = [1, 2, 4, 5, 6, 3];
+export const ROTATION = [1, 2, 4, 5, 6, 7, 3];
 export const kName = (k: number | null | undefined) => (k && KONZEPTE[k] ? `Konzept ${k}` : 'No Konzept');
 export const kColor = (k: number | null | undefined) => (k && KONZEPTE[k] ? KONZEPTE[k].color : '#AAC3F0');
 
