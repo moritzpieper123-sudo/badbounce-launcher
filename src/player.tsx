@@ -11,7 +11,7 @@ export function Player({ src, active, markers, onMarkers }: { src: string; activ
   const v = useRef<HTMLVideoElement>(null);
   const bar = useRef<HTMLDivElement>(null);
   const [t, setT] = useState(0); const [dur, setDur] = useState(0);
-  const [playing, setPlaying] = useState(false); const [muted, setMuted] = useState(false); const [rate, setRate] = useState(1);
+  const [playing, setPlaying] = useState(false); const [muted, setMuted] = useState(false); const [vol, setVol] = useState(1); const [rate, setRate] = useState(1);
   const [editing, setEditing] = useState<string | null>(null);
   const [hover, setHover] = useState<number | null>(null);
   const [drag, setDrag] = useState(false);
@@ -64,7 +64,12 @@ export function Player({ src, active, markers, onMarkers }: { src: string; activ
         <span className="vp-time num">{fmt(t)} <i>/ {fmt(dur)}</i></span>
         <span style={{ flex: 1 }} />
         <button className="vp-btn" onClick={() => { const r = rate === 1 ? 0.5 : rate === 0.5 ? 0.25 : 1; setRate(r); if (v.current) v.current.playbackRate = r; }} title="Speed (slow motion)"><b className="num" style={{ fontSize: 11 }}>{rate}×</b></button>
-        <button className="vp-btn" onClick={() => setMuted(!muted)} title={muted ? 'Sound on' : 'Mute'}><Icon name={muted ? 'mute' : 'vol'} size={15} /></button>
+        <span className="vp-vol" onWheel={(e) => { const n = Math.max(0, Math.min(1, vol + (e.deltaY < 0 ? 0.05 : -0.05))); setVol(n); setMuted(n === 0); if (v.current) v.current.volume = n; }}>
+          <span className="vp-volbar"><input type="range" min={0} max={1} step={0.01} value={muted ? 0 : vol} aria-label="Volume" title={`Volume ${Math.round((muted ? 0 : vol) * 100)}%`}
+            style={{ ['--p' as string]: `${(muted ? 0 : vol) * 100}%` }}
+            onChange={(e) => { const n = +e.target.value; setVol(n); setMuted(n === 0); if (v.current) v.current.volume = n; }} /></span>
+          <button className="vp-btn" onClick={() => { if (muted && vol === 0) { setVol(0.6); if (v.current) v.current.volume = 0.6; } setMuted(!muted); }} title={muted ? 'Sound on' : 'Mute'}><Icon name={muted || vol === 0 ? 'mute' : 'vol'} size={15} /></button>
+        </span>
         <button className="vp-btn" onClick={() => v.current?.requestFullscreen?.()} title="Fullscreen"><Icon name="expand" size={14} /></button>
       </div>
       <div className="vp-row vp-row2">
