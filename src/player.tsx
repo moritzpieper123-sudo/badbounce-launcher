@@ -44,7 +44,6 @@ export function Player({ src, active, markers, onMarkers }: { src: string; activ
       {!playing && <span className="vp-big"><Icon name="play" size={26} color="#0B1124" /></span>}
       {sorted.filter((m) => m.note && Math.abs(m.t - t) < 0.6).map((m) => <span key={m.id} className="vp-pop" style={{ borderColor: colorOf(m) }}>{m.note}</span>)}
     </div>
-    <div className="vp-side">
     <div className="vp-ctl glass">
       <div className="vp-line"
         onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); setDrag(true); seekTo(at(e.clientX)); }}
@@ -64,11 +63,14 @@ export function Player({ src, active, markers, onMarkers }: { src: string; activ
         <button className="vp-btn" onClick={() => step(1)} title="Next marker (.)"><Icon name="skipf" size={14} /></button>
         <span className="vp-time num">{fmt(t)} <i>/ {fmt(dur)}</i></span>
         <span style={{ flex: 1 }} />
-        <button className="vp-add" onClick={() => add(false)} title="Set a marker here (M)"><Icon name="flag" size={14} /> Marker</button>
-        <button className="vp-add y" onClick={() => add(true)} title="Marker with a note (N)"><Icon name="pen" size={14} /> Note</button>
         <button className="vp-btn" onClick={() => { const r = rate === 1 ? 0.5 : rate === 0.5 ? 0.25 : 1; setRate(r); if (v.current) v.current.playbackRate = r; }} title="Speed (slow motion)"><b className="num" style={{ fontSize: 11 }}>{rate}×</b></button>
         <button className="vp-btn" onClick={() => setMuted(!muted)} title={muted ? 'Sound on' : 'Mute'}><Icon name={muted ? 'mute' : 'vol'} size={15} /></button>
         <button className="vp-btn" onClick={() => v.current?.requestFullscreen?.()} title="Fullscreen"><Icon name="expand" size={14} /></button>
+      </div>
+      <div className="vp-row vp-row2">
+        <button className="vp-add" onClick={() => add(false)} title="Set a marker here (M)"><Icon name="flag" size={14} /> Marker</button>
+        <button className="vp-add y" onClick={() => add(true)} title="Marker with a note (N)"><Icon name="pen" size={14} /> Note</button>
+        {sorted.length > 0 && <span className="small dim vp-count">{sorted.length} marker{sorted.length > 1 ? 's' : ''}</span>}
       </div>
     </div>
     {sorted.length > 0 && <div className="vp-list">
@@ -81,6 +83,5 @@ export function Player({ src, active, markers, onMarkers }: { src: string; activ
       </div>)}
     </div>}
     {!sorted.length && <div className="vp-hint small dim">Press <b>M</b> for a marker, <b>N</b> for a marker with a note. Space plays, ← → jump, Shift+← → step one frame.</div>}
-    </div>
   </div>;
 }

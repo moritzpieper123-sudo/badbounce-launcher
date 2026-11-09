@@ -815,7 +815,7 @@ main.content > .grid > *:nth-child(4) { animation-delay: .22s; } main.content > 
 /* idea: fold-down reference video */
 .idea-row .chev svg { transition: transform .25s; transform: rotate(90deg); }
 .idea-row .chev.up svg { transform: rotate(-90deg); }
-.idea-media { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; align-items: flex-start; padding: 14px 0 6px; }
+.idea-media { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; align-items: flex-start; padding: 14px 0 6px; min-width: 0; max-width: 100%; box-sizing: border-box; }
 .idea-media video, .idea-media img { max-height: 62vh; max-width: 100%; border-radius: 16px; background: #000; box-shadow: 0 14px 40px rgba(0,0,0,.45); }
 .idea-media iframe { width: 325px; height: 578px; max-width: 100%; border: 0; border-radius: 16px; background: #000; }
 @keyframes ideafold { from { opacity: 0; transform: scaleY(.85) translateY(-8px); } }
@@ -829,12 +829,11 @@ main.content > .grid > *:nth-child(4) { animation-delay: .22s; } main.content > 
 .idea-row.open { background: rgba(var(--wrgb), .04); border-radius: 18px; }
 
 /* video player in the launcher look */
-.vp { display: flex; gap: 18px; align-items: flex-start; justify-content: center; width: 100%; outline: none; }
-.vp-side { width: 440px; max-width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.vp { display: flex; flex-direction: column; gap: 10px; align-items: stretch; width: 100%; max-width: 480px; margin: 0 auto; outline: none; box-sizing: border-box; min-width: 0; }
+.vp * { box-sizing: border-box; }
 .vp-hint { padding: 4px 6px; line-height: 1.5; } .vp-hint b { color: var(--text); }
-@media (max-width: 1000px) { .vp { flex-direction: column; align-items: center; } }
-.vp-stage { position: relative; flex-shrink: 0; border-radius: 20px; overflow: hidden; background: #000; cursor: pointer; box-shadow: 0 18px 50px rgba(0,0,0,.5), 0 0 0 1px rgba(var(--wrgb), .12); }
-.vp-stage video { display: block; height: min(66vh, 680px); width: auto; max-width: 100%; background: #000; }
+.vp-stage { position: relative; align-self: center; max-width: 100%; border-radius: 20px; overflow: hidden; background: #000; cursor: pointer; box-shadow: 0 18px 50px rgba(0,0,0,.5), 0 0 0 1px rgba(var(--wrgb), .12); }
+.vp-stage video { display: block; height: min(46vh, 440px); width: auto; max-width: 100%; background: #000; }
 .vp-big { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; display: grid; place-items: center; background: rgba(244,246,255,.92); box-shadow: 0 0 40px rgba(244,246,255,.4); animation: vpin .25s ease backwards; }
 @keyframes vpin { from { transform: scale(.7); opacity: 0; } }
 .vp-pop { position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 8px 12px; border-radius: 12px; background: rgba(8,12,26,.82); backdrop-filter: blur(10px); border-left: 3px solid; font-size: 13px; font-weight: 600; animation: vpin .2s ease backwards; }
@@ -847,7 +846,10 @@ main.content > .grid > *:nth-child(4) { animation-delay: .22s; } main.content > 
 .vp-mk.note { border-radius: 5px 5px 5px 0; }
 .vp-mk:hover { transform: scaleY(1.25); }
 .vp-tip { position: absolute; bottom: 14px; transform: translateX(-50%); font-size: 10.5px; padding: 2px 6px; border-radius: 6px; background: rgba(8,12,26,.9); pointer-events: none; white-space: nowrap; }
-.vp-row { display: flex; align-items: center; gap: 4px; }
+.vp-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0; }
+.vp-row2 { gap: 6px; padding-top: 2px; border-top: 1px solid rgba(var(--wrgb), .08); padding-top: 8px; }
+.vp-count { margin-left: auto; padding-right: 4px; }
+.vp-ctl { width: 100%; min-width: 0; overflow: hidden; }
 .vp-btn { width: 32px; height: 32px; border-radius: 50%; border: 0; background: transparent; color: var(--text); display: grid; place-items: center; cursor: pointer; transition: background .15s; }
 .vp-btn:hover { background: rgba(var(--wrgb), .12); }
 .vp-btn.play { width: 38px; height: 38px; background: #F4F6FF; box-shadow: 0 0 14px rgba(244,246,255,.35); }
