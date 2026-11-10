@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useApp } from '../ctx';
-import { allTasks, kColor, kName, setTaskCol, uid, ymd } from '../logic';
+import { allTasks, kColor, kName, setTaskCol, uid, ymd, KONZEPTE } from '../logic';
 import { markUploaded, unmarkUploaded } from '../actions';
 import { Icon, Tick } from '../ui';
 import { Header, DueLabel } from './parts';
@@ -58,7 +58,7 @@ export default function Board() {
     </>} />
     {form && <div className="glass card" style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end' }}>
       <label className="f" style={{ flex: '2 1 260px' }}>Task<input className="in" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} autoFocus placeholder="What needs doing?" /></label>
-      <label className="f">Konzept<select className="in" value={k} onChange={(e) => setK(e.target.value)}><option value="">None</option>{[1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n} value={n}>Konzept {n}</option>)}</select></label>
+      <label className="f">Konzept<select className="in" value={k} onChange={(e) => setK(e.target.value)}><option value="">None</option>{Object.keys(KONZEPTE).map(Number).map((n) => <option key={n} value={n}>Konzept {n} · {KONZEPTE[n].name}</option>)}</select></label>
       <label className="f">Priority<select className="in" value={prio} onChange={(e) => setPrio(e.target.value as Task['prio'])}><option value="">Normal</option><option>High</option><option>Urgent</option></select></label>
       <label className="f">Due<input className="in" type="date" value={due} onChange={(e) => setDue(e.target.value)} /></label>
       <button className="btn primary" onClick={addTask}>Add</button>
