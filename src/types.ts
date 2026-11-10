@@ -82,6 +82,7 @@ export interface AppState {
   alertsSeen: Record<string, string>;
   settings: Settings;
   lastBackup?: string;
+  migrations?: Record<string, boolean>; // one-time fixes already applied
 }
 
 export interface RenderStatus { video?: string; konzept?: number; progress?: number; etaSec?: number; label?: string; updated?: string; }
@@ -102,7 +103,7 @@ export interface Snapshot {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  day1: '2026-11-05',
+  day1: '2026-11-09',
   quietEnabled: true,
   quietFrom: 22,
   quietTo: 8,

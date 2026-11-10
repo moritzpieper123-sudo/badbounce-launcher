@@ -11,7 +11,7 @@ const graph = require('./graph');
 const csvfetch = require('./csvfetch');
 const media = require('./media');
 
-const DEFAULT_SETTINGS = { day1: '2026-11-05', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
+const DEFAULT_SETTINGS = { day1: '2026-11-09', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
 const HIDDEN = process.argv.includes('--hidden');
 const DEV_URL = process.env.BB_DEV_URL; // e.g. http://localhost:5173 during development
 
@@ -39,7 +39,13 @@ function loadState() {
   try {
     const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
     const base = emptyState();
-    return { ...base, ...s, settings: { ...DEFAULT_SETTINGS, ...(s.settings || {}) }, stats: { ...base.stats, ...(s.stats || {}) } };
+    const st = { ...base, ...s, settings: { ...DEFAULT_SETTINGS, ...(s.settings || {}) }, stats: { ...base.stats, ...(s.stats || {}) } };
+    // Mo 2026-11-10: first upload on 11 Nov, so the plan moves to Day 1 = 9 Nov (11 Nov = Day 3 = first post). One time only.
+    if (!(st.migrations || {}).firstUpload1111) {
+      st.settings.day1 = '2026-11-09'; st.migrations = { ...(st.migrations || {}), firstUpload1111: true };
+      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
+    }
+    return st;
   } catch { return emptyState(); }
 }
 function saveState(st) {
