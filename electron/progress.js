@@ -58,10 +58,28 @@ async function applyCss() {
 }
 
 const ses = () => session.fromPartition('persist:progress');
+// asks claude.ai itself (from a claude.ai page) whether this window's account is signed in
+async function probe(wc) {
+  try { if (!wc || wc.isDestroyed() || !/^https:\/\/claude\.ai\//.test(wc.getURL())) return null;
+    return await wc.executeJavaScript("fetch('/api/organizations',{credentials:'include'}).then(r=>r.status).catch(()=>0)"); } catch { return null; }
+}
 async function checkLogin() {
-  try { const c = await ses().cookies.get({ url: 'https://claude.ai', name: 'sessionKey' }); const now = c.length > 0; if (now !== signedIn) { signedIn = now; onChange(); } } catch { /* */ }
+  let now = false;
+  try { const c = await ses().cookies.get({ domain: 'claude.ai' }); now = c.some((k) => /^session/i.test(k.name)); } catch { /* */ }
+  if (!now) { const st = (await probe(loginWin && !loginWin.isDestroyed() ? loginWin.webContents : null)) ?? (await probe(alive() ? win.webContents : null)); now = st === 200; }
+  if (now !== signedIn) { signedIn = now; onChange(); }
   return signedIn;
 }
+// bar at the bottom of the sign-in window: paste the link from the sign-in email here (it would open in the normal browser otherwise)
+const PASTE_BAR_JS = `(() => {
+  if (document.getElementById('bb-paste')) return;
+  const d = document.createElement('div'); d.id = 'bb-paste';
+  d.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483647;display:flex;gap:6px;padding:8px;background:#0A101E;font:13px system-ui,sans-serif;';
+  d.innerHTML = '<input placeholder="Sign-in link from the email? Paste it here" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid #334;background:#111a2e;color:#fff"><button style="padding:8px 14px;border-radius:8px;border:0;background:#FFC63A;color:#111;font-weight:700;cursor:pointer">Go</button>';
+  const go = () => { const v = d.querySelector('input').value.trim(); if (/^https:\\/\\/claude\\.ai\\//.test(v)) location.href = v; else d.querySelector('input').value = ''; };
+  d.querySelector('button').onclick = go; d.querySelector('input').onkeydown = (e) => { if (e.key === 'Enter') go(); };
+  document.documentElement.appendChild(d);
+})();`;
 /** separate, normal window on top of everything for the claude.ai sign-in; closes itself once signed in */
 function signIn(url = 'https://claude.ai/login') {
   if (loginWin && !loginWin.isDestroyed()) { loginWin.show(); loginWin.focus(); return; }
@@ -77,13 +95,19 @@ function signIn(url = 'https://claude.ai/login') {
     if (/^https:\/\/(claude\.ai|[^/]*\.anthropic\.com|accounts\.google\.com)\//.test(u)) { loginWin.loadURL(u); return { action: 'deny' }; }
     shell.openExternal(u); return { action: 'deny' };
   });
-  const done = async (u) => {
+  const lw = loginWin;
+  const done = async () => {
+    if (lw.isDestroyed()) return;
+    const u = lw.webContents.getURL();
     if (!/^https:\/\/claude\.ai\//.test(u) || /claude\.ai\/(login|signup|magic-link|onboarding)/.test(u)) return;
-    if (await checkLogin()) { if (loginWin && !loginWin.isDestroyed()) loginWin.destroy(); create(true); win.loadURL(cfg().url); }
+    if (await checkLogin()) { if (!lw.isDestroyed()) lw.destroy(); }
   };
-  loginWin.webContents.on('did-navigate', (_e, u) => done(u));
-  loginWin.webContents.on('did-navigate-in-page', (_e, u) => done(u));
-  loginWin.on('closed', () => { loginWin = null; checkLogin().then(() => { if (alive() && signedIn) win.reload(); }); });
+  lw.webContents.on('did-navigate', done);
+  lw.webContents.on('did-navigate-in-page', done);
+  lw.webContents.on('dom-ready', () => { lw.webContents.executeJavaScript(PASTE_BAR_JS).catch(() => {}); });
+  const poll = setInterval(done, 3000);
+  // closing the sign-in window (by itself or by hand) always reloads the board
+  lw.on('closed', () => { clearInterval(poll); loginWin = null; create(true); if (alive()) { win.loadURL(cfg().url); win.show(); } setTimeout(checkLogin, 4000); });
   loginWin.loadURL(url);
 }
 async function signOut() {
