@@ -367,7 +367,7 @@ else {
     });
     createMain(!HIDDEN);
     createIsland();
-    progress.start({ readCfg, writeCfg });
+    progress.start({ readCfg, writeCfg, onChange: () => sendAll('progressChanged') });
     try {
       tray = new Tray(nativeImage.createFromPath(iconPath()).resize({ width: 16, height: 16 }));
       tray.setToolTip('Badbounce Launcher');

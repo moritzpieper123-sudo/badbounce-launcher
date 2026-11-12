@@ -1,7 +1,8 @@
-/* Progress screen: Claude's live Task Progress page as a borderless full-screen window
-   on a monitor Mo picks. It has no taskbar button; its own tray icon shows, hides and configures it.
-   Settings live in config.json (progress: { display, autostart, hideBar }). */
-const { BrowserWindow, Tray, Menu, nativeImage, screen, shell, globalShortcut } = require('electron');
+/* Progress screen: Claude's live Task Progress page in its own window on a monitor Mo picks.
+   It starts in full screen and has no taskbar button. F11 (or the small button at the top) switches
+   between full screen and a normal window. All settings live in the launcher's Settings page
+   (config.json: progress { display, autostart, hideBar }). Ctrl+Alt+P shows / hides it. */
+const { BrowserWindow, screen, shell, globalShortcut, ipcMain } = require('electron');
 const path = require('path');
 
 const URL = 'https://claude.ai/artifact/JmnkuAdKnUrbs6a9zyKAWJ';
@@ -11,8 +12,22 @@ const HIDE_BAR_CSS = `iframe[src*="claudeusercontent"], iframe[title], main ifra
   position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important;
   max-width: none !important; max-height: none !important; border: 0 !important; border-radius: 0 !important; z-index: 2147483646 !important; }
 html, body { overflow: hidden !important; background: #05080F !important; }`;
+// Small button that slides in when the mouse is at the top edge: full screen <-> window
+const FS_BUTTON_JS = `(() => {
+  if (document.getElementById('bb-fs')) return;
+  const b = document.createElement('button'); b.id = 'bb-fs';
+  b.style.cssText = 'position:fixed;top:8px;left:50%;transform:translate(-50%,-60px);z-index:2147483647;padding:7px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(10,16,30,.82);color:#fff;font:600 13px system-ui,sans-serif;cursor:pointer;backdrop-filter:blur(10px);transition:transform .25s ease;';
+  const label = () => { b.textContent = window.bbProgress && window.bbProgress.isFull() ? '\\u2922  Exit full screen (F11)' : '\\u2921  Full screen (F11)'; };
+  b.onclick = () => { window.bbProgress && window.bbProgress.toggleFull(); setTimeout(label, 300); };
+  let t = null;
+  document.addEventListener('mousemove', (e) => {
+    if (e.clientY < 40) { label(); b.style.transform = 'translate(-50%,0)'; clearTimeout(t); t = setTimeout(() => { if (!b.matches(':hover')) b.style.transform = 'translate(-50%,-60px)'; }, 2500); }
+  }, true);
+  b.onmouseleave = () => { b.style.transform = 'translate(-50%,-60px)'; };
+  document.documentElement.appendChild(b);
+})();`;
 
-let win = null, tray = null, cssKey = null, readCfg, writeCfg;
+let win = null, cssKey = null, readCfg, writeCfg, onChange = () => {};
 
 const cfg = () => Object.assign({ display: null, autostart: true, hideBar: true, url: URL }, (readCfg() || {}).progress || {});
 function setCfg(patch) { const c = readCfg() || {}; c.progress = Object.assign(cfg(), patch); writeCfg(c); }
@@ -21,34 +36,42 @@ function targetDisplay() {
   const all = screen.getAllDisplays(), want = cfg().display;
   return all.find((d) => d.id === want) || screen.getPrimaryDisplay();
 }
-function place() {
-  if (!win || win.isDestroyed()) return;
-  const b = targetDisplay().bounds;
+const alive = () => !!(win && !win.isDestroyed());
+const isFull = () => alive() && win.isFullScreen();
+/** moves the window to the chosen monitor; full = true -> full screen, false -> normal window there */
+function place(full = true) {
+  if (!alive()) return;
+  const d = targetDisplay(), b = d.bounds, w = d.workArea;
   if (win.isFullScreen()) win.setFullScreen(false);
-  win.setBounds({ x: b.x, y: b.y, width: b.width, height: b.height });
-  win.setFullScreen(true);
+  if (full) { win.setBounds({ x: b.x, y: b.y, width: b.width, height: b.height }); win.setFullScreen(true); }
+  else {
+    const W = Math.round(w.width * 0.7), H = Math.round(w.height * 0.75);
+    win.setBounds({ x: w.x + Math.round((w.width - W) / 2), y: w.y + Math.round((w.height - H) / 2), width: W, height: H });
+  }
   win.setSkipTaskbar(true);
 }
+function toggleFull() { if (!alive()) return; place(!win.isFullScreen()); onChange(); }
 async function applyCss() {
-  if (!win || win.isDestroyed()) return;
+  if (!alive()) return;
   if (cssKey) { try { await win.webContents.removeInsertedCSS(cssKey); } catch { /* */ } cssKey = null; }
   if (cfg().hideBar) { try { cssKey = await win.webContents.insertCSS(HIDE_BAR_CSS); } catch { /* */ } }
 }
 
 function create(show) {
-  if (win && !win.isDestroyed()) { if (show) { place(); win.show(); } return win; }
+  if (alive()) { if (show) { if (!win.isVisible()) place(true); win.show(); } return win; }
   const b = targetDisplay().bounds;
   win = new BrowserWindow({
-    x: b.x, y: b.y, width: b.width, height: b.height, frame: false, show: false, skipTaskbar: true, backgroundColor: '#05080F',
-    title: 'Badbounce Progress', icon: ICON, autoHideMenuBar: true, fullscreenable: true,
-    webPreferences: { partition: 'persist:progress', contextIsolation: true, sandbox: true, backgroundThrottling: false },
+    x: b.x, y: b.y, width: b.width, height: b.height, show: false, skipTaskbar: true, backgroundColor: '#05080F',
+    title: 'Badbounce Progress', icon: ICON, autoHideMenuBar: true, fullscreenable: true, minWidth: 360, minHeight: 300,
+    webPreferences: { partition: 'persist:progress', contextIsolation: true, sandbox: true, backgroundThrottling: false, preload: path.join(__dirname, 'progress-preload.js') },
   });
+  win.setMenu(null);
   // a plain Chrome user agent, so claude.ai treats the window like a normal browser
   win.webContents.setUserAgent(win.webContents.getUserAgent().replace(/\s(Electron|badbounce-launcher|Badbounce Launcher)\/\S+/gi, ''));
   win.loadURL(cfg().url);
-  win.webContents.on('dom-ready', applyCss);
-  win.webContents.on('did-fail-load', () => setTimeout(() => { if (win && !win.isDestroyed()) win.loadURL(cfg().url); }, 15000));
-  win.webContents.on('render-process-gone', () => setTimeout(() => { if (win && !win.isDestroyed()) win.reload(); }, 3000));
+  win.webContents.on('dom-ready', () => { applyCss(); win.webContents.executeJavaScript(FS_BUTTON_JS).catch(() => {}); });
+  win.webContents.on('did-fail-load', () => setTimeout(() => { if (alive()) win.loadURL(cfg().url); }, 15000));
+  win.webContents.on('render-process-gone', () => setTimeout(() => { if (alive()) win.reload(); }, 3000));
   // links that leave claude.ai open in the normal browser; claude.ai sign-in pages stay in the window
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https:\/\/(claude\.ai|[^/]*\.anthropic\.com|accounts\.google\.com)\//.test(url)) return { action: 'allow' };
@@ -56,49 +79,59 @@ function create(show) {
   });
   win.webContents.on('before-input-event', (e, i) => {
     if (i.type !== 'keyDown') return;
-    if (i.key === 'Escape' && !i.control && !i.alt) { /* keep Esc for the page (closes its dialogs) */ }
+    if (i.key === 'F11') { e.preventDefault(); toggleFull(); }
     if (i.key === 'F5') { e.preventDefault(); win.reload(); }
     if (i.key === 'F4' && i.alt) { e.preventDefault(); win.hide(); }
   });
   win.on('close', (e) => { if (!module.exports.quitting) { e.preventDefault(); win.hide(); } });
-  win.once('ready-to-show', () => { place(); if (show) win.showInactive(); });
+  win.on('show', () => onChange()); win.on('hide', () => onChange());
+  win.on('enter-full-screen', () => onChange()); win.on('leave-full-screen', () => onChange());
+  win.once('ready-to-show', () => { place(true); if (show) win.showInactive(); });
   return win;
 }
-const visible = () => !!(win && !win.isDestroyed() && win.isVisible());
-function toggle() { if (visible()) win.hide(); else { create(true); place(); win.show(); } refreshMenu(); }
+const visible = () => alive() && win.isVisible();
+function toggle() { if (visible()) win.hide(); else create(true); onChange(); }
 
-function refreshMenu() {
-  if (!tray) return;
-  const c = cfg(), prim = screen.getPrimaryDisplay().id;
-  const mons = screen.getAllDisplays().map((d, i) => ({
-    label: `Monitor ${i + 1}  (${d.size.width}×${d.size.height}${d.id === prim ? ', main' : ''})`, type: 'radio',
-    checked: (c.display == null && d.id === prim) || d.id === c.display,
-    click: () => { setCfg({ display: d.id }); create(true); place(); win.show(); refreshMenu(); },
-  }));
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: visible() ? 'Hide progress screen' : 'Show progress screen', click: toggle },
-    { label: 'Reload', click: () => { if (win && !win.isDestroyed()) win.reload(); } },
-    { type: 'separator' },
-    { label: 'Show on', submenu: mons },
-    { label: 'Open when the PC starts', type: 'checkbox', checked: c.autostart, click: (m) => { setCfg({ autostart: m.checked }); refreshMenu(); } },
-    { label: 'Hide the claude.ai bar', type: 'checkbox', checked: c.hideBar, click: (m) => { setCfg({ hideBar: m.checked }); applyCss(); refreshMenu(); } },
-    { type: 'separator' },
-    { label: 'Open in browser', click: () => shell.openExternal(c.url) },
-  ]));
-  tray.setToolTip(visible() ? 'Badbounce Progress (showing)' : 'Badbounce Progress');
+/** what the launcher's Settings page shows */
+function info() {
+  const c = cfg(), prim = screen.getPrimaryDisplay().id, cur = targetDisplay().id;
+  return {
+    displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, label: `Monitor ${i + 1} (${d.size.width}×${d.size.height}${d.id === prim ? ', main' : ''})`, chosen: d.id === cur })),
+    autostart: c.autostart, hideBar: c.hideBar, visible: visible(), full: isFull(),
+  };
+}
+function set(patch) {
+  const p = {};
+  if ('display' in patch) p.display = Number(patch.display);
+  if ('autostart' in patch) p.autostart = !!patch.autostart;
+  if ('hideBar' in patch) p.hideBar = !!patch.hideBar;
+  setCfg(p);
+  if ('display' in p) { create(true); place(true); win.show(); }
+  if ('hideBar' in p) applyCss();
+  onChange();
+  return info();
+}
+function command(c) {
+  if (c === 'toggle') toggle();
+  else if (c === 'show') create(true);
+  else if (c === 'full') { create(true); toggleFull(); }
+  else if (c === 'reload') { if (alive()) win.reload(); }
+  else if (c === 'browser') shell.openExternal(cfg().url);
+  return info();
 }
 
 function start(opts) {
-  readCfg = opts.readCfg; writeCfg = opts.writeCfg;
-  try {
-    tray = new Tray(nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 }));
-    tray.on('click', toggle);
-    refreshMenu();
-  } catch (e) { console.error('progress tray', e); }
+  readCfg = opts.readCfg; writeCfg = opts.writeCfg; onChange = opts.onChange || onChange;
+  ipcMain.handle('progressInfo', () => info());
+  ipcMain.handle('progressSet', (_e, patch) => set(patch || {}));
+  ipcMain.handle('progressCmd', (_e, c) => command(String(c)));
+  // used by the small full-screen button inside the progress window
+  ipcMain.on('progressFull', (e) => { if (alive() && e.sender === win.webContents) toggleFull(); });
+  ipcMain.on('progressIsFull', (e) => { e.returnValue = isFull(); });
   try { globalShortcut.register('Control+Alt+P', toggle); } catch { /* */ }
-  screen.on('display-added', () => { refreshMenu(); if (visible()) place(); });
-  screen.on('display-removed', () => { refreshMenu(); if (visible()) place(); });
-  screen.on('display-metrics-changed', () => { if (visible()) place(); });
+  const moved = () => { onChange(); if (visible()) place(isFull()); };
+  screen.on('display-added', moved); screen.on('display-removed', moved);
+  screen.on('display-metrics-changed', () => { if (visible() && isFull()) place(true); });
   if (cfg().autostart) create(true);
 }
 module.exports = { start, toggle, quitting: false, menuItems: () => [{ label: 'Show / hide progress screen', click: toggle }] };

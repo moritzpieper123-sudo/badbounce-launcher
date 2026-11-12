@@ -45,4 +45,8 @@ contextBridge.exposeInMainWorld('bb', {
   openGraphWindow: () => ipcRenderer.send('openGraphWindow'),
   win: (a) => ipcRenderer.send('win', a),
   checkUpdate: () => ipcRenderer.invoke('checkUpdate'),
+  progressInfo: () => ipcRenderer.invoke('progressInfo'),
+  progressSet: (p) => ipcRenderer.invoke('progressSet', p),
+  progressCmd: (c) => ipcRenderer.invoke('progressCmd', c),
+  onProgressChanged: (cb) => on('progressChanged', cb),
 });

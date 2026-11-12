@@ -1,7 +1,7 @@
 import React from 'react';
 import { useApp } from '../ctx';
 import { Header } from './parts';
-import { bb, isDesktop } from '../bridge';
+import { bb, isDesktop, type ProgressInfo } from '../bridge';
 import { SyncCard } from '../cloud/SyncCard';
 import type { Settings as S } from '../types';
 import { MODES, setMode, sunTimes, useTheme, type Mode } from '../theme';
@@ -15,6 +15,34 @@ function Appearance() {
     <div className="between"><h2>Appearance</h2><span className="small dim">Now: {theme === 'dark' ? 'night' : theme === 'medium' ? 'dusk' : 'day'}</span></div>
     <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>{MODES.map((m) => <button key={m} className={`btn sm ${mode === m ? 'white' : ''}`} onClick={() => setMode(m)}>{label[m]}</button>)}</div>
     <div className="small muted" style={{ lineHeight: 1.6 }}>Auto follows the sun in Hamm (NRW). Today: sunrise {f(t.rise)}, sunset {f(t.set)}.<br />Dark until {f(shift(t.rise, -45))} · medium until {f(shift(t.rise, 45))} · light until {f(shift(t.set, -45))} · medium until {f(shift(t.set, 45))} · then dark.</div>
+  </div>;
+}
+
+function ProgressScreen() {
+  const [p, setP] = React.useState<ProgressInfo | null>(null);
+  React.useEffect(() => {
+    if (!bb.progressInfo) return;
+    const load = () => bb.progressInfo!().then(setP).catch(() => {});
+    load(); const off = bb.onProgressChanged?.(load); const t = setInterval(load, 5000);
+    return () => { off?.(); clearInterval(t); };
+  }, []);
+  if (!bb.progressInfo) return null;
+  if (!p) return <div className="glass card"><h2>Progress screen</h2><div className="small dim">Loading…</div></div>;
+  const set = async (patch: Parameters<NonNullable<typeof bb.progressSet>>[0]) => setP(await bb.progressSet!(patch));
+  const cmd = async (c: Parameters<NonNullable<typeof bb.progressCmd>>[0]) => setP(await bb.progressCmd!(c));
+  const chosen = p.displays.find((d) => d.chosen)?.id ?? p.displays[0]?.id;
+  return <div className="glass card">
+    <div className="between"><h2>Progress screen</h2><span className="small dim">{p.visible ? (p.full ? 'Showing · full screen' : 'Showing · window') : 'Hidden'}</span></div>
+    <label className="f">Show on monitor<select className="in" value={chosen} onChange={(e) => set({ display: +e.target.value })}>{p.displays.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}</select></label>
+    <label className="row" style={{ justifyContent: 'space-between', cursor: 'pointer' }}><span><b>Open when the launcher starts</b><div className="small dim">Always starts in full screen</div></span><input type="checkbox" checked={p.autostart} onChange={(e) => set({ autostart: e.target.checked })} style={{ width: 20, height: 20, accentColor: '#FFC63A' }} /></label>
+    <label className="row" style={{ justifyContent: 'space-between', cursor: 'pointer' }}><span><b>Hide the claude.ai bar</b><div className="small dim">Only the progress page fills the screen</div></span><input type="checkbox" checked={p.hideBar} onChange={(e) => set({ hideBar: e.target.checked })} style={{ width: 20, height: 20, accentColor: '#FFC63A' }} /></label>
+    <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+      <button className="btn primary sm" onClick={() => cmd('toggle')}>{p.visible ? 'Hide' : 'Show'}</button>
+      <button className="btn sm" onClick={() => cmd('full')}>{p.visible && p.full ? 'Exit full screen' : 'Full screen'}</button>
+      <button className="btn sm" onClick={() => cmd('reload')}>Reload</button>
+      <button className="btn sm" onClick={() => cmd('browser')}>Open in browser</button>
+    </div>
+    <div className="small muted">Ctrl+Alt+P shows or hides it · F11 in the window switches full screen · mouse to the top edge shows an exit button</div>
   </div>;
 }
 
@@ -52,6 +80,7 @@ export default function Settings() {
           <button className="btn primary sm" onClick={async () => { const p = await bb.backupNow(); await update((st) => ({ ...st, lastBackup: new Date().toISOString() })); toast(`Saved ${p.split(/[\\/]/).pop()}`); }}>Save now</button></div>
         <button className="btn" onClick={() => bb.openVault('.claude-workspace/launcher-data/backups')}>Open backups folder</button>
       </div>}
+      {isDesktop && <ProgressScreen />}
       <SyncCard />
     </section>
   </>;
