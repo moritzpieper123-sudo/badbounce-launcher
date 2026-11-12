@@ -2,7 +2,7 @@
    It starts in full screen and has no taskbar button. F11 (or the small button at the top) switches
    between full screen and a normal window. All settings live in the launcher's Settings page
    (config.json: progress { display, autostart, hideBar }). Ctrl+Alt+P shows / hides it. */
-const { BrowserWindow, screen, shell, globalShortcut, ipcMain } = require('electron');
+const { BrowserWindow, screen, shell, globalShortcut, ipcMain, session } = require('electron');
 const path = require('path');
 
 const URL = 'https://claude.ai/artifact/JmnkuAdKnUrbs6a9zyKAWJ';
@@ -27,7 +27,7 @@ const FS_BUTTON_JS = `(() => {
   document.documentElement.appendChild(b);
 })();`;
 
-let win = null, cssKey = null, readCfg, writeCfg, onChange = () => {};
+let win = null, loginWin = null, signedIn = null, cssKey = null, readCfg, writeCfg, onChange = () => {};
 
 const cfg = () => Object.assign({ display: null, autostart: true, hideBar: true, url: URL }, (readCfg() || {}).progress || {});
 function setCfg(patch) { const c = readCfg() || {}; c.progress = Object.assign(cfg(), patch); writeCfg(c); }
@@ -57,6 +57,40 @@ async function applyCss() {
   if (cfg().hideBar) { try { cssKey = await win.webContents.insertCSS(HIDE_BAR_CSS); } catch { /* */ } }
 }
 
+const ses = () => session.fromPartition('persist:progress');
+async function checkLogin() {
+  try { const c = await ses().cookies.get({ url: 'https://claude.ai', name: 'sessionKey' }); const now = c.length > 0; if (now !== signedIn) { signedIn = now; onChange(); } } catch { /* */ }
+  return signedIn;
+}
+/** separate, normal window on top of everything for the claude.ai sign-in; closes itself once signed in */
+function signIn(url = 'https://claude.ai/login') {
+  if (loginWin && !loginWin.isDestroyed()) { loginWin.show(); loginWin.focus(); return; }
+  const w = targetDisplay().workArea, W = Math.min(520, w.width), H = Math.min(760, w.height);
+  loginWin = new BrowserWindow({
+    x: w.x + Math.round((w.width - W) / 2), y: w.y + Math.round((w.height - H) / 2), width: W, height: H,
+    title: 'Sign in to Claude', icon: ICON, alwaysOnTop: true, autoHideMenuBar: true, backgroundColor: '#ffffff',
+    webPreferences: { partition: 'persist:progress', contextIsolation: true, sandbox: true },
+  });
+  loginWin.setMenu(null);
+  loginWin.webContents.setUserAgent(loginWin.webContents.getUserAgent().replace(/\s(Electron|badbounce-launcher|Badbounce Launcher)\/\S+/gi, ''));
+  loginWin.webContents.setWindowOpenHandler(({ url: u }) => {
+    if (/^https:\/\/(claude\.ai|[^/]*\.anthropic\.com|accounts\.google\.com)\//.test(u)) { loginWin.loadURL(u); return { action: 'deny' }; }
+    shell.openExternal(u); return { action: 'deny' };
+  });
+  const done = async (u) => {
+    if (!/^https:\/\/claude\.ai\//.test(u) || /claude\.ai\/(login|signup|magic-link|onboarding)/.test(u)) return;
+    if (await checkLogin()) { if (loginWin && !loginWin.isDestroyed()) loginWin.destroy(); create(true); win.loadURL(cfg().url); }
+  };
+  loginWin.webContents.on('did-navigate', (_e, u) => done(u));
+  loginWin.webContents.on('did-navigate-in-page', (_e, u) => done(u));
+  loginWin.on('closed', () => { loginWin = null; checkLogin().then(() => { if (alive() && signedIn) win.reload(); }); });
+  loginWin.loadURL(url);
+}
+async function signOut() {
+  try { await ses().clearStorageData(); } catch { /* */ }
+  signedIn = false; if (alive()) win.loadURL(cfg().url); onChange();
+}
+
 function create(show) {
   if (alive()) { if (show) { if (!win.isVisible()) place(true); win.show(); } return win; }
   const b = targetDisplay().bounds;
@@ -74,9 +108,12 @@ function create(show) {
   win.webContents.on('render-process-gone', () => setTimeout(() => { if (alive()) win.reload(); }, 3000));
   // links that leave claude.ai open in the normal browser; claude.ai sign-in pages stay in the window
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https:\/\/(claude\.ai|[^/]*\.anthropic\.com|accounts\.google\.com)\//.test(url)) return { action: 'allow' };
+    // claude.ai / sign-in pages open in our own sign-in window (a popup would hide behind the full-screen window)
+    if (/^https:\/\/(claude\.ai|[^/]*\.anthropic\.com|accounts\.google\.com)\//.test(url)) { signIn(url); return { action: 'deny' }; }
     shell.openExternal(url); return { action: 'deny' };
   });
+  win.webContents.on('will-navigate', (e, url) => { if (/^https:\/\/claude\.ai\/(login|signup|magic-link)/.test(url)) { e.preventDefault(); signIn(url); } });
+  win.webContents.on('did-finish-load', () => checkLogin());
   win.webContents.on('before-input-event', (e, i) => {
     if (i.type !== 'keyDown') return;
     if (i.key === 'F11') { e.preventDefault(); toggleFull(); }
@@ -97,7 +134,7 @@ function info() {
   const c = cfg(), prim = screen.getPrimaryDisplay().id, cur = targetDisplay().id;
   return {
     displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, label: `Monitor ${i + 1} (${d.size.width}×${d.size.height}${d.id === prim ? ', main' : ''})`, chosen: d.id === cur })),
-    autostart: c.autostart, hideBar: c.hideBar, visible: visible(), full: isFull(),
+    autostart: c.autostart, hideBar: c.hideBar, visible: visible(), full: isFull(), signedIn: signedIn === true,
   };
 }
 function set(patch) {
@@ -117,12 +154,14 @@ function command(c) {
   else if (c === 'full') { create(true); toggleFull(); }
   else if (c === 'reload') { if (alive()) win.reload(); }
   else if (c === 'browser') shell.openExternal(cfg().url);
+  else if (c === 'signin') signIn();
+  else if (c === 'signout') signOut();
   return info();
 }
 
 function start(opts) {
   readCfg = opts.readCfg; writeCfg = opts.writeCfg; onChange = opts.onChange || onChange;
-  ipcMain.handle('progressInfo', () => info());
+  ipcMain.handle('progressInfo', async () => { await checkLogin(); return info(); });
   ipcMain.handle('progressSet', (_e, patch) => set(patch || {}));
   ipcMain.handle('progressCmd', (_e, c) => command(String(c)));
   // used by the small full-screen button inside the progress window

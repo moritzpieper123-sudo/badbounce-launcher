@@ -48,10 +48,10 @@ export interface BB {
   checkUpdate?(): Promise<{ current: string; ready: string | null; error: string | null }>;
   progressInfo?(): Promise<ProgressInfo>;
   progressSet?(p: Partial<{ display: number; autostart: boolean; hideBar: boolean }>): Promise<ProgressInfo>;
-  progressCmd?(c: 'toggle' | 'show' | 'full' | 'reload' | 'browser'): Promise<ProgressInfo>;
+  progressCmd?(c: 'toggle' | 'show' | 'full' | 'reload' | 'browser' | 'signin' | 'signout'): Promise<ProgressInfo>;
   onProgressChanged?(cb: () => void): () => void;
 }
-export interface ProgressInfo { displays: { id: number; label: string; chosen: boolean }[]; autostart: boolean; hideBar: boolean; visible: boolean; full: boolean }
+export interface ProgressInfo { displays: { id: number; label: string; chosen: boolean }[]; autostart: boolean; hideBar: boolean; visible: boolean; full: boolean; signedIn: boolean }
 export interface CsvStatus { state: 'idle' | 'running' | 'login' | 'needs-you' | 'done' | 'error'; msg: string }
 export interface GraphNode { id: string; name: string; folder: string; tags: string[]; unresolved?: boolean; mtime?: number }
 export interface VaultGraph { ok: boolean; vaultName: string; nodes: GraphNode[]; links: { s: string; t: string }[]; error?: string }
