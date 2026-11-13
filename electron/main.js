@@ -106,7 +106,7 @@ function readIndex() {
     for (const line of t.split(/\r?\n/)) {
       const c = line.split('|').map((x) => x.trim()); if (c.length < 4) continue;
       const m = (c[1] || '').match(/#?(\d+)/); if (!m) continue;
-      const k = (c[2] || '').match(/(\d)/);
+      const k = (c[2] || '').match(/(\d+)/);
       map[+m[1]] = { konzept: k ? +k[1] : null, title: c[3] || '' };
     }
   } catch { /* no index */ }
@@ -127,7 +127,7 @@ function scanVideos() {
     const no = pick(/\.md$/i, /^Notes/i);
     let notes = ''; if (no) try { notes = fs.readFileSync(path.join(folder, no), 'utf8'); } catch { /* */ }
     let desc; if (de) try { desc = fs.readFileSync(path.join(folder, de), 'utf8'); } catch { /* */ }
-    const km = notes.match(/Konzept\s*(\d)/i);
+    const km = notes.match(/Konzept\s*(\d+)/i);
     const konzept = km ? +km[1] : idx[num]?.konzept ?? null;
     const titleM = notes.match(/^#\s+(.+)$/m);
     let created = 0; try { created = fs.statSync(folder).birthtimeMs || fs.statSync(folder).mtimeMs; } catch { /* */ }
