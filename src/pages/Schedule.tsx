@@ -3,7 +3,7 @@ import { doUploadPack, markUploaded } from '../actions';
 import { bb } from '../bridge';
 import { Icon, Tick } from '../ui';
 import { useApp } from '../ctx';
-import { addDays, dayDiff, buildPlan, dayNumber, parseYmd, phaseLabel, ymd, kColor, KONZEPTE, postsForDay } from '../logic';
+import { addDays, dayDiff, buildPlan, dayNumber, parseYmd, phaseLabel, ymd, kColor, KONZEPTE, postsForDay, ROTATION } from '../logic';
 import { Header, BufferMeter } from './parts';
 
 export default function Schedule() {
@@ -24,7 +24,7 @@ export default function Schedule() {
       <button className="btn" onClick={() => setOffset(0)}>This week</button>
       <button className="btn" onClick={() => setOffset(offset + 1)} aria-label="Next week">›</button>
     </>} />
-    <div className="glass card"><BufferMeter /><span className="small dim hide-phone">Videos are placed in Konzept rotation (K1, K2, K4, K5, K6, K3), never the same Konzept twice in a row. Once the CSV shows which Konzepte do best, those get the slots first.</span></div>
+    <div className="glass card"><BufferMeter /><span className="small dim hide-phone">Videos are placed in Konzept rotation ({ROTATION.map((k) => `K${k}`).join(', ')}), never the same Konzept twice in a row. Once the CSV shows which Konzepte do best, those get the slots first.</span></div>
 
     {/* phone: week strip + one day at a time */}
     {(() => {

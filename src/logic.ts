@@ -10,8 +10,10 @@ export const KONZEPTE: Record<number, { name: string; color: string }> = {
   6: { name: 'Math damage', color: '#7FD9A8' },
   7: { name: 'Shape filler', color: '#6FB3FF' },
   8: { name: 'Spiral roll', color: '#FF8FB1' },
+  9: { name: 'Sheet drop', color: '#FFB05C' },
+  10: { name: 'Gamble crush', color: '#FFD84A' },
 };
-export const ROTATION = [1, 2, 4, 5, 6, 7, 3, 8];
+export const ROTATION = [1, 2, 4, 5, 6, 7, 3, 8, 9, 10];
 export const kName = (k: number | null | undefined) => (k && KONZEPTE[k] ? `Konzept ${k}` : 'No Konzept');
 export const kColor = (k: number | null | undefined) => (k && KONZEPTE[k] ? KONZEPTE[k].color : '#AAC3F0');
 
