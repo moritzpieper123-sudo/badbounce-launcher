@@ -1,0 +1,19 @@
+/* Overview page data: one entry per final reference video (Mo's review rounds, final 2026-11-13).
+   The finals are reference only and are never uploaded. `id` matches the file prefix "<id> Final video.mp4". */
+export interface Concept { id: string; k: number; name: string; about: string; facts: string[] }
+export const CONCEPTS: Concept[] = [
+  { id: 'K1', k: 1, name: 'Crush & multiply', about: 'A scissor press crushes the balls in a fixed rhythm and every crushed ball turns into several new ones. The box fills up and bursts like a balloon at the moment the last wave spawns.', facts: ['1 ball → 5,197', '24.5 s', 'Seed 603'] },
+  { id: 'K2', k: 2, name: 'Edge increase', about: 'One ball bounces in a hexagon with gravity. Every wall hit makes it 1 km/h faster and it draws a colour-wheel trail, until the glass breaks and the trail falls down as discs.', facts: ['5 → 150 km/h', '20.2 s', 'Seed 11'] },
+  { id: 'K3', k: 3, name: 'Emoji upgrade', about: 'Copies of one emoji drop into a flask and merge two into one. Every merge upgrades it to a more epic tier until the final king form appears.', facts: ['8 tiers', '44.0 s', 'Seed 5'] },
+  { id: 'K4', k: 4, name: 'Ball escape', about: 'A ball is trapped inside about 50 spinning rings. It breaks a ring when it hits the gap, the rest move inward, and the yellow last ring turns to ash when it escapes.', facts: ['50 layers', '34.1 s', 'Seed 41'] },
+  { id: 'K5', k: 5, name: 'Line battle', about: '6 flag balls are tied to the wall by lines. Every bounce adds a line, any other ball cuts it. A ball with no lines is out, the last one wins.', facts: ['6 flags', '29.1 s', 'Seed 3117'] },
+  { id: 'K5b', k: 5, name: 'Battle box', about: '4 flag balls with different weapons fight in one box. Only the blade deals damage, power-ups appear often, the last one standing gets the crown.', facts: ['4 weapons', '36.2 s', 'Seed 2105'] },
+  { id: 'K5C', k: 5, name: 'Column break', about: 'One ball falls through a tall column packed with thin lines. Hit n breaks twice as many lines as the hit before, until all 4,095 are gone.', facts: ['4,095 lines', '45.4 s', 'Seed 12'] },
+  { id: 'K6', k: 6, name: 'Math damage battle', about: 'Two balls hit two towers on the same beat. Each deals damage from its maths formula (Factorial vs Fibonacci); the slow starter overtakes late and breaks the 1T block first.', facts: ['Factorial vs Fibonacci', '38.6 s', 'Seed 61'] },
+  { id: 'K6b', k: 6, name: 'Boss fight', about: 'A small white ball hits a devilish boss with 1 billion health. Every hit deals the next Fibonacci number, the ball gets faster, and the boss explodes before the clock runs out.', facts: ['1 billion HP', '63.3 s', 'Seed 131'] },
+  { id: 'K7 pulse', k: 7, name: 'Shape filler · pulse', about: 'A ball turns into a ring on its first wall hit and grows with every further hit until it fills the free space. Layer by layer the circle fills, then a light wave runs outward.', facts: ['26 layers', '36.8 s', 'Seed 21'] },
+  { id: 'K7 layers', k: 7, name: 'Shape filler · layers', about: 'One ball bounces in a hexagon and every wall hit adds a layer, until the ball has boxed itself in and the whole shape lights up.', facts: ['54 layers', '≈25 s'] },
+  { id: 'K8', k: 8, name: 'Spiral roll', about: 'White Pac-Men roll down a spiral full of discs under real gravity and eat as many as they can. The last one eats the big glowing ball in the centre.', facts: ['656 discs', '40.0 s', 'Seed 2'] },
+  { id: 'K9', k: 9, name: 'Sheet drop', about: 'A disc of about 2,000 balls in 34 rings drops onto a glass floor. Every ring bounces at its own speed, so a wave and a funnel appear before it settles.', facts: ['34 rings', '29.5 s'] },
+  { id: 'K10', k: 10, name: 'Gamble crush', about: 'A crusher spins like a slot machine and slams the balls into one of 8 boxes: multiply, shrink, grow or die. One ball escalates until the arena bursts.', facts: ['1 ball → 8,084', '57.9 s', 'Seed 13'] },
+];

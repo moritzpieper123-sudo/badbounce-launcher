@@ -10,8 +10,9 @@ const updater = require('./updater');
 const graph = require('./graph');
 const csvfetch = require('./csvfetch');
 const media = require('./media');
+const progress = require('./progress');
 
-const DEFAULT_SETTINGS = { day1: '2026-11-09', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
+const DEFAULT_SETTINGS = { day1: '2026-11-13', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
 const HIDDEN = process.argv.includes('--hidden');
 const DEV_URL = process.env.BB_DEV_URL; // e.g. http://localhost:5173 during development
 
@@ -34,7 +35,7 @@ const dataDir = () => path.join(vault(), '.claude-workspace', 'launcher-data');
 const stateFile = () => path.join(dataDir(), 'state.json');
 
 /* ---------- state ---------- */
-function emptyState() { return { version: 1, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
+function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
 function loadState() {
   try {
     const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
@@ -43,6 +44,11 @@ function loadState() {
     // Mo 2026-11-10: first upload on 11 Nov, so the plan moves to Day 1 = 9 Nov (11 Nov = Day 3 = first post). One time only.
     if (!(st.migrations || {}).firstUpload1111) {
       st.settings.day1 = '2026-11-09'; st.migrations = { ...(st.migrations || {}), firstUpload1111: true };
+      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
+    }
+    // Mo 2026-11-13: the Konzepte are final, the upload warm-up starts again today (Day 1 = 13 Nov). One time only.
+    if (!(st.migrations || {}).warmup1113) {
+      st.settings.day1 = '2026-11-13'; st.migrations = { ...(st.migrations || {}), warmup1113: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
     return st;
@@ -254,6 +260,21 @@ function snapshot() {
   return { vaultPath: v, vaultOk: fs.existsSync(v), videos: scanVideos(), state: loadState(), render: renderStatus(), mail: gmail.status(), update: updater.status(), fullscreen, winFull: !!(mainWin && !mainWin.isDestroyed() && mainWin.isFullScreen()), now: new Date().toISOString() };
 }
 ipcMain.handle('snapshot', () => snapshot());
+/* Overview page: the final reference video of every Konzept (Konzepte/Konzept N/Drafts/Final/**). Reference only, never uploaded. */
+function scanFinals() {
+  const root = path.join(vault(), 'Konzepte'); const out = [];
+  const walk = (d, depth) => { let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of ents) { const f = path.join(d, e.name);
+      if (e.isDirectory()) { if (depth < 3) walk(f, depth + 1); continue; }
+      const m = e.name.match(/^(.+?) Final video\.mp4$/i); if (!m) continue;
+      const id = m[1]; const sib = (suf) => { const x = path.join(d, `${id} Final ${suf}`); return fs.existsSync(x) ? x : null; };
+      const descFile = sib('description.txt'); let description = ''; try { if (descFile) description = fs.readFileSync(descFile, 'utf8').trim(); } catch { /* ignore */ }
+      let size = 0, mtime = 0; try { const s = fs.statSync(f); size = s.size; mtime = s.mtimeMs; } catch { /* ignore */ }
+      out.push({ id, folder: d, video: f, thumb: sib('thumbnail.png'), description, size, mtime }); } };
+  try { for (const k of fs.readdirSync(root)) { if (/^Konzept \d+$/.test(k)) walk(path.join(root, k, 'Drafts', 'Final'), 0); } } catch { /* no vault */ }
+  return out;
+}
+ipcMain.handle('finals', () => scanFinals());
 ipcMain.handle('mailConnect', async (_e, id, secret) => { try { const r = await gmail.connect(String(id).trim(), String(secret).trim(), true); broadcast(); return { ok: true, email: r.email }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
 ipcMain.handle('mailRead', async (_e, id) => { const r = await gmail.markRead(String(id)); broadcast(); return r; });
 ipcMain.handle('mailAllowModify', async () => { try { await gmail.allowModify(); broadcast(); return { ok: true }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
@@ -366,14 +387,16 @@ else {
     });
     createMain(!HIDDEN);
     createIsland();
+    progress.start({ readCfg, writeCfg, onChange: () => sendAll('progressChanged') });
     try {
       tray = new Tray(nativeImage.createFromPath(iconPath()).resize({ width: 16, height: 16 }));
       tray.setToolTip('Badbounce Launcher');
       tray.setContextMenu(Menu.buildFromTemplate([
         { label: 'Open launcher', click: () => showMain() },
         { label: 'Show / hide island', click: () => { if (islandWin.isVisible()) islandWin.hide(); else islandWin.showInactive(); } },
+        ...progress.menuItems(),
         { type: 'separator' },
-        { label: 'Quit', click: () => { quitting = true; app.quit(); } },
+        { label: 'Quit', click: () => { quitting = true; progress.quitting = true; app.quit(); } },
       ]));
       tray.on('click', () => showMain());
     } catch (e) { console.error('tray', e); }
@@ -401,7 +424,7 @@ else {
       quitting = true; app.quit();
     }, 4000);
   });
-  app.on('before-quit', () => { quitting = true; });
+  app.on('before-quit', () => { quitting = true; progress.quitting = true; });
   app.on('will-quit', () => globalShortcut.unregisterAll());
   app.on('window-all-closed', () => { /* stay in tray */ });
 }

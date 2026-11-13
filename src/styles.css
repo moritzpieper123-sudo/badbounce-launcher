@@ -871,3 +871,23 @@ main.content > .grid > *:nth-child(4) { animation-delay: .22s; } main.content > 
 .vp-note { flex: 1; height: 30px; font-size: 13px; padding: 0 10px; }
 .vp-x { width: 24px; height: 24px; border: 0; border-radius: 50%; background: transparent; color: var(--dim); display: grid; place-items: center; cursor: pointer; }
 .vp-x:hover { background: rgba(255,143,122,.2); color: #FF8F7A; }
+
+/* Overview page (final Konzept reference videos) */
+.ov-detail { display: grid; grid-template-columns: minmax(280px, 420px) minmax(0, 1fr); gap: 28px; align-items: start; margin-bottom: 18px; }
+.ov-detail .vp { max-width: 420px; }
+.ov-detail .vp video { max-height: 640px; }
+.ov-missing { aspect-ratio: 9/16; border-radius: 16px; display: grid; place-items: center; background: #04050A; color: var(--dim); font-size: 13px; border: 1px solid rgba(var(--wrgb),.12); }
+.ov-info { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ov-title { font-size: 26px !important; font-weight: 700 !important; letter-spacing: -.01em; }
+.ov-about { margin: 0; line-height: 1.55; color: var(--text); font-size: 14px; max-width: 620px; }
+.ov-sec { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 14px; background: var(--surface-2); }
+.ov-desc { margin: 0; white-space: pre-wrap; line-height: 1.5; font-size: 13.5px; }
+.ov-thumb { width: 140px; aspect-ratio: 9/16; object-fit: cover; border-radius: 12px; border: 1px solid rgba(var(--wrgb),.15); }
+.ov-ref { background: rgba(255,198,58,.14) !important; color: var(--yellow-text, #FFC63A) !important; }
+.ov-card { text-align: left; padding: 12px !important; gap: 8px !important; cursor: pointer; font: inherit; color: inherit; border: 1px solid transparent; }
+.ov-card:hover { transform: translateY(-3px); }
+.ov-card.on { border-color: rgba(255,198,58,.55); box-shadow: 0 0 24px rgba(255,198,58,.18); }
+.ov-card .ov-play { position: absolute; right: 10px; bottom: 10px; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: rgba(0,0,0,.55); color: #fff; opacity: .85; }
+.ov-name { font-size: 14px; }
+.ov-short { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
+@media (max-width: 900px) { .ov-detail { grid-template-columns: 1fr; } }
