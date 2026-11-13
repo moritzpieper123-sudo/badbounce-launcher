@@ -10,6 +10,7 @@ const updater = require('./updater');
 const graph = require('./graph');
 const csvfetch = require('./csvfetch');
 const media = require('./media');
+const progress = require('./progress');
 
 const DEFAULT_SETTINGS = { day1: '2026-11-09', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
 const HIDDEN = process.argv.includes('--hidden');
@@ -366,14 +367,16 @@ else {
     });
     createMain(!HIDDEN);
     createIsland();
+    progress.start({ readCfg, writeCfg, onChange: () => sendAll('progressChanged') });
     try {
       tray = new Tray(nativeImage.createFromPath(iconPath()).resize({ width: 16, height: 16 }));
       tray.setToolTip('Badbounce Launcher');
       tray.setContextMenu(Menu.buildFromTemplate([
         { label: 'Open launcher', click: () => showMain() },
         { label: 'Show / hide island', click: () => { if (islandWin.isVisible()) islandWin.hide(); else islandWin.showInactive(); } },
+        ...progress.menuItems(),
         { type: 'separator' },
-        { label: 'Quit', click: () => { quitting = true; app.quit(); } },
+        { label: 'Quit', click: () => { quitting = true; progress.quitting = true; app.quit(); } },
       ]));
       tray.on('click', () => showMain());
     } catch (e) { console.error('tray', e); }
@@ -401,7 +404,7 @@ else {
       quitting = true; app.quit();
     }, 4000);
   });
-  app.on('before-quit', () => { quitting = true; });
+  app.on('before-quit', () => { quitting = true; progress.quitting = true; });
   app.on('will-quit', () => globalShortcut.unregisterAll());
   app.on('window-all-closed', () => { /* stay in tray */ });
 }
