@@ -103,7 +103,7 @@ export interface Snapshot {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  day1: '2026-11-13',
+  day1: '2026-11-11',
   quietEnabled: true,
   quietFrom: 22,
   quietTo: 8,

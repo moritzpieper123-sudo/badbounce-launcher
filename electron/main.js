@@ -12,7 +12,7 @@ const csvfetch = require('./csvfetch');
 const media = require('./media');
 const progress = require('./progress');
 
-const DEFAULT_SETTINGS = { day1: '2026-11-13', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
+const DEFAULT_SETTINGS = { day1: '2026-11-11', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
 const HIDDEN = process.argv.includes('--hidden');
 const DEV_URL = process.env.BB_DEV_URL; // e.g. http://localhost:5173 during development
 
@@ -35,7 +35,7 @@ const dataDir = () => path.join(vault(), '.claude-workspace', 'launcher-data');
 const stateFile = () => path.join(dataDir(), 'state.json');
 
 /* ---------- state ---------- */
-function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
+function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
 function loadState() {
   try {
     const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
@@ -49,6 +49,11 @@ function loadState() {
     // Mo 2026-11-13: the Konzepte are final, the upload warm-up starts again today (Day 1 = 13 Nov). One time only.
     if (!(st.migrations || {}).warmup1113) {
       st.settings.day1 = '2026-11-13'; st.migrations = { ...(st.migrations || {}), warmup1113: true };
+      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
+    }
+    // Mo 2026-11-13: the first video gets posted today (13 Nov = Day 3 = first post), so Day 1 = 11 Nov. One time only.
+    if (!(st.migrations || {}).firstPostToday1113) {
+      st.settings.day1 = '2026-11-11'; st.migrations = { ...(st.migrations || {}), firstPostToday1113: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
     return st;
