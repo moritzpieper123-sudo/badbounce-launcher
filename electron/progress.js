@@ -137,7 +137,8 @@ function create(show) {
     shell.openExternal(url); return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (e, url) => { if (/^https:\/\/claude\.ai\/(login|signup|magic-link)/.test(url)) { e.preventDefault(); signIn(url); } });
-  win.webContents.on('did-finish-load', () => checkLogin());
+  win.webContents.on('did-finish-load', () => { checkLogin(); pushTheme(); });
+  win.webContents.on('did-frame-finish-load', () => setTimeout(pushTheme, 300));
   win.webContents.on('before-input-event', (e, i) => {
     if (i.type !== 'keyDown') return;
     if (i.key === 'F11') { e.preventDefault(); toggleFull(); }
@@ -183,6 +184,24 @@ function command(c) {
   return info();
 }
 
+// Theme: the launcher's theme mode (auto / dark / medium / light) is pushed into the Progress page.
+// The page lives in a claudeusercontent frame inside claude.ai, so every frame of the window gets it;
+// the page saves it to its own data, so the iPad follows too.
+const THEMES = ['auto', 'dark', 'medium', 'light'];
+function pushTheme() {
+  if (!alive()) return;
+  const m = cfg().theme; if (!THEMES.includes(m)) return;
+  const js = `window.bbSetTheme && window.bbSetTheme(${JSON.stringify(m)})`;
+  let frames = [];
+  try { frames = win.webContents.mainFrame.framesInSubtree; } catch { /* */ }
+  for (const f of frames) { try { f.executeJavaScript(js).catch(() => {}); } catch { /* */ } }
+}
+function setTheme(m) {
+  if (!THEMES.includes(m)) return;
+  if (cfg().theme !== m) setCfg({ theme: m });
+  pushTheme();
+}
+
 function start(opts) {
   readCfg = opts.readCfg; writeCfg = opts.writeCfg; onChange = opts.onChange || onChange;
   ipcMain.handle('progressInfo', async () => { await checkLogin(); return info(); });
@@ -196,5 +215,6 @@ function start(opts) {
   screen.on('display-added', moved); screen.on('display-removed', moved);
   screen.on('display-metrics-changed', () => { if (visible() && isFull()) place(true); });
   if (cfg().autostart) create(true);
+  setInterval(pushTheme, 60e3);
 }
-module.exports = { start, toggle, quitting: false, menuItems: () => [{ label: 'Show / hide progress screen', click: toggle }] };
+module.exports = { start, toggle, setTheme, quitting: false, menuItems: () => [{ label: 'Show / hide progress screen', click: toggle }] };
