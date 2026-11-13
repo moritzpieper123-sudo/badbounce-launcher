@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('bb', {
   onCsvStatus: (cb) => on('csvStatus', cb),
   onCsvFiles: (cb) => on('csvFiles', cb),
   vaultGraph: () => ipcRenderer.invoke('vaultGraph'),
+  finals: () => ipcRenderer.invoke('finals'),
   onGraphChanged: (cb) => on('graphChanged', cb),
   noteText: (id) => ipcRenderer.invoke('noteText', id),
   openNote: (id) => ipcRenderer.invoke('openNote', id),
