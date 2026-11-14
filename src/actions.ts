@@ -13,7 +13,9 @@ export function markUploaded(snap: Snapshot, num: number) {
   const now = new Date(snap.now);
   const plan = buildPlan(snap, now, 30);
   const slot = plan.find((s) => !s.uploaded && s.state !== 'missed');
-  return (st: AppState): AppState => ({ ...st, uploads: { ...st.uploads, [String(num)]: { at: new Date().toISOString(), slot: slot ? slot.when.toISOString() : undefined } } });
+  const real = new Date().toISOString(), slotIso = slot ? slot.when.toISOString() : undefined;
+  // counts as posted at its slot time, whenever it was really posted (Mo 2026-11-14)
+  return (st: AppState): AppState => ({ ...st, uploads: { ...st.uploads, [String(num)]: { at: slotIso ?? real, realAt: real, slot: slotIso } } });
 }
 export function unmarkUploaded(num: number) {
   return (st: AppState): AppState => { const u = { ...st.uploads }; delete u[String(num)]; return { ...st, uploads: u }; };
