@@ -35,7 +35,7 @@ const dataDir = () => path.join(vault(), '.claude-workspace', 'launcher-data');
 const stateFile = () => path.join(dataDir(), 'state.json');
 
 /* ---------- state ---------- */
-function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
+function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
 function loadState() {
   try {
     const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
@@ -65,6 +65,13 @@ function loadState() {
       up['2'] = { ...(up['2'] || {}), at: (up['2'] && up['2'].at) || slot2, slot: slot2 };
       delete up['3'];
       st.uploads = up; st.migrations = { ...(st.migrations || {}), posted1114: true };
+      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
+    }
+    // #1 was marked at 00:21 on 14 Nov but went online on 13 Nov at 18:30: use the real post time (day counts, CSV matching).
+    if (!(st.migrations || {}).postTime1114) {
+      const u1 = (st.uploads || {})['1'];
+      if (u1 && u1.slot) u1.at = u1.slot;
+      st.migrations = { ...(st.migrations || {}), postTime1114: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
     return st;
