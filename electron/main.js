@@ -35,7 +35,7 @@ const dataDir = () => path.join(vault(), '.claude-workspace', 'launcher-data');
 const stateFile = () => path.join(dataDir(), 'state.json');
 
 /* ---------- state ---------- */
-function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
+function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
 function loadState() {
   try {
     const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
@@ -54,6 +54,16 @@ function loadState() {
     // Mo 2026-11-13: the first video gets posted today (13 Nov = Day 3 = first post), so Day 1 = 11 Nov. One time only.
     if (!(st.migrations || {}).firstPostToday1113) {
       st.settings.day1 = '2026-11-11'; st.migrations = { ...(st.migrations || {}), firstPostToday1113: true };
+      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
+    }
+    // Mo 2026-11-14: #1 was posted on 13 Nov at 18:30 (Day 3 slot). #2 and #3 were only generated, not posted. One time only.
+    if (!(st.migrations || {}).posted1114) {
+      st.settings.day1 = '2026-11-11';
+      const up = { ...(st.uploads || {}) };
+      const slot1 = new Date(2026, 10, 13, 18, 30, 0, 0).toISOString();
+      up['1'] = { ...(up['1'] || {}), at: (up['1'] && up['1'].at) || slot1, slot: slot1 };
+      delete up['2']; delete up['3'];
+      st.uploads = up; st.migrations = { ...(st.migrations || {}), posted1114: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
     return st;

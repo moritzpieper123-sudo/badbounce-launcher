@@ -8,11 +8,11 @@ export async function doUploadPack(num: number, toast: (m: string) => void) {
   if (r.ok) toast(`#${num}: video + thumbnail are in ${r.folder ?? 'Downloads'}, description copied`);
   else toast(`Could not prepare #${num}: ${r.error ?? 'unknown error'}`);
 }
-/** Marks a video uploaded; it keeps the slot it filled. */
+/** Marks a video uploaded. It fills the oldest free slot (Mo 2026-11-14), no matter when it is posted. */
 export function markUploaded(snap: Snapshot, num: number) {
   const now = new Date(snap.now);
-  const plan = buildPlan(snap, now, 2);
-  const slot = plan.find((s) => s.video?.num === num && !s.uploaded);
+  const plan = buildPlan(snap, now, 30);
+  const slot = plan.find((s) => !s.uploaded && s.state !== 'missed');
   return (st: AppState): AppState => ({ ...st, uploads: { ...st.uploads, [String(num)]: { at: new Date().toISOString(), slot: slot ? slot.when.toISOString() : undefined } } });
 }
 export function unmarkUploaded(num: number) {
