@@ -88,6 +88,7 @@ export function konzeptScores(snap: Snapshot): Record<number, number> {
   return out;
 }
 
+const BACKLOG_DAYS = 14;
 /** Builds the plan from the start of `from` for `days` days; fills open slots with ready videos (Konzept rotation). */
 export function buildPlan(snap: Snapshot, from: Date, days: number): PlannedSlot[] {
   const st = snap.state, now = new Date(snap.now), today = ymd(now);
@@ -121,19 +122,28 @@ export function buildPlan(snap: Snapshot, from: Date, days: number): PlannedSlot
 
   const out: PlannedSlot[] = [];
   let nextMarked = false;
-  for (let i = 0; i < days; i++) {
-    const day = addDays(parseYmd(ymd(from)), i), ds = ymd(day);
+  // Mo 2026-11-14: a posted video always fills the OLDEST free slot, whatever time it is posted.
+  // So free slots of earlier days stay open ("overdue") and come first; only slots older than
+  // BACKLOG_DAYS count as missed. Earlier days before `from` only add their open slots.
+  const fromDay = parseYmd(ymd(from)), oldest = addDays(parseYmd(today), -BACKLOG_DAYS);
+  let first = fromDay;
+  for (let d = parseYmd(day1) > oldest ? parseYmd(day1) : oldest; d < fromDay; d = addDays(d, 1)) {
+    if (slotsForDay(d, day1).some((t) => !uploadsBySlot.has(at(d, t).toISOString()))) { first = d; break; }
+  }
+  const total = dayDiff(addDays(fromDay, days - 1), first) + 1;
+  for (let i = 0; i < total; i++) {
+    const day = addDays(first, i), ds = ymd(day), before = day < fromDay;
     for (const time of slotsForDay(day, day1)) {
       const when = at(day, time), key = when.toISOString();
       const upNum = uploadsBySlot.get(key);
       if (upNum != null) {
         const v = byNum.get(upNum) || null;
         if (v) { prevK = v.konzept; if (v.konzept != null) rotIdx = ROTATION.indexOf(v.konzept); }
-        out.push({ date: ds, time, when, video: v, uploaded: true, state: 'uploaded' });
+        if (!before) out.push({ date: ds, time, when, video: v, uploaded: true, state: 'uploaded' });
         continue;
       }
       const past = when.getTime() < now.getTime();
-      if (past && ds < today) { out.push({ date: ds, time, when, video: null, uploaded: false, state: 'missed' }); continue; }
+      if (past && day < oldest) { out.push({ date: ds, time, when, video: null, uploaded: false, state: 'missed' }); continue; }
       const v = pick();
       if (v) { prevK = v.konzept; if (v.konzept != null) rotIdx = ROTATION.indexOf(v.konzept); }
       let state: PlannedSlot['state'] = v ? 'ready' : 'missing';
@@ -185,16 +195,7 @@ export function autoTasks(snap: Snapshot): Task[] {
   const b = bufferInfo(snap);
   const genN = b.missing2;
   if (genN > 0) tasks.push(mk(`gen:${today}`, { title: `Make ${genN} video${genN > 1 ? 's' : ''} (Gen x${genN})`, tag: 'Gen batch', prio: b.days < 1 ? 'Urgent' : 'High', due: today }));
-  // comment reminders
-  for (const [n, u] of Object.entries(st.uploads)) {
-    const t = new Date(u.at);
-    const due = new Date(t.getTime() + st.settings.commentReminderMin * 60000);
-    const key = `cm:${n}`;
-    if (now.getTime() >= due.getTime() && now.getTime() - due.getTime() < 6 * 3600000) {
-      const v = snap.videos.find((x) => x.num === +n);
-      tasks.push(mk(key, { title: `Reply to comments on #${n}`, tag: kName(v?.konzept), konzept: v?.konzept ?? null, prio: '', due: today, videoNum: +n }));
-    }
-  }
+  // (comment reminders removed, Mo 2026-11-14)
   // weekly CSV
   if (csvDue(snap)) tasks.push(mk(`csv:${csvWeekKey(now)}`, { title: 'Import weekly TikTok Studio CSV', tag: 'Analytics', prio: 'High', due: today }));
   return tasks;
@@ -258,11 +259,6 @@ export function dueAlerts(snap: Snapshot): Alert[] {
   if (h >= 9 && b.missing2 > 0) out.push({ key: `make:${today}:${h >= 20 ? 'eve' : 'morn'}`, kind: 'make', title: `Make ${b.missing2} video${b.missing2 > 1 ? 's' : ''}`, sub: 'Today and tomorrow are not covered yet', action: 'gen' });
   else if (h >= 9 && b.days < 1 && dayNumber(addDays(now, 1), snap.state.settings.day1) >= 3) out.push({ key: `buffer:${today}`, kind: 'buffer', title: 'Video buffer under 1 day', sub: `${b.readyCount} ready video${b.readyCount === 1 ? '' : 's'} left`, action: 'gen' });
   if (csvDue(snap)) out.push({ key: `csv:${today}:${h}`, kind: 'csv', title: 'Import the weekly TikTok CSV', sub: 'TikTok Studio · Analytics · Download data', action: 'csv' });
-  for (const [n, u] of Object.entries(snap.state.uploads)) {
-    const due = new Date(new Date(u.at).getTime() + snap.state.settings.commentReminderMin * 60000);
-    const m = minsUntil(due, now);
-    if (m <= 0 && m > -60) out.push({ key: `cm:${n}`, kind: 'comment', title: `Reply to comments on #${n}`, sub: `Posted ${snap.state.settings.commentReminderMin} min ago`, action: 'open', videoNum: +n });
-  }
   return out;
 }
 
@@ -356,7 +352,7 @@ export function matchPosts(snap: Snapshot) {
     let n: number | null = p.link ? byLink.get(normLink(p.link)) ?? null : null;
     if (n == null && p.postTime) {
       const t = Date.parse(p.postTime);
-      if (!isNaN(t)) { let best: [number, number] | null = null; for (const [k, u] of Object.entries(snap.state.uploads)) { const d = Math.abs(Date.parse(u.at) - t); if (d < 3 * 3600000 && (!best || d < best[1])) best = [+k, d]; } if (best) n = best[0]; }
+      if (!isNaN(t)) { let best: [number, number] | null = null; for (const [k, u] of Object.entries(snap.state.uploads)) { const d = Math.min(Math.abs(Date.parse(u.at) - t), u.realAt ? Math.abs(Date.parse(u.realAt) - t) : Infinity); if (d < 3 * 3600000 && (!best || d < best[1])) best = [+k, d]; } if (best) n = best[0]; }
     }
     if (n == null) { const m = p.title.match(/#(\d+)/); if (m) n = +m[1]; }
     const v = n != null ? snap.videos.find((x) => x.num === n) : undefined;

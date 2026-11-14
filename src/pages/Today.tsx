@@ -26,7 +26,7 @@ export default function Today() {
   const week = Array.from({ length: 7 }, (_, i) => addDays(now, i - 6));
   const weekVals = week.map((d) => days.find((x) => x.date === ymd(d))?.views ?? null);
   const hasWeek = weekVals.some((v) => v != null);
-  const upByDay = week.map((d) => Object.values(snap.state.uploads).filter((u) => ymd(new Date(u.at)) === ymd(d)).length);
+  const upByDay = week.map((d) => Object.values(snap.state.uploads).filter((u) => ymd(new Date(u.slot || u.at)) === ymd(d)).length); // the day of the slot it filled
   const barVals = hasWeek ? weekVals.map((v) => v ?? 0) : upByDay;
   const maxBar = Math.max(1, ...barVals);
   const isMonday = now.getDay() === 1;

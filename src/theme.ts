@@ -39,10 +39,13 @@ let mode: Mode = readMode();
 const listeners = new Set<() => void>();
 export const themeFor = (m: Mode): Theme => (m === 'auto' ? sunTheme() : m);
 function apply() { const t = themeFor(mode); if (document.documentElement.dataset.theme !== t) document.documentElement.dataset.theme = t; listeners.forEach((l) => l()); }
-export function setMode(m: Mode) { mode = m; try { localStorage.setItem('bb-theme-mode', m); } catch { /* ignore */ } apply(); }
+// tells the launcher (and with it the Progress screen) which theme mode is chosen
+const sendMode = () => { try { (window as unknown as { bb?: { themeMode?: (m: Mode) => void } }).bb?.themeMode?.(mode); } catch { /* ignore */ } };
+export function setMode(m: Mode) { mode = m; try { localStorage.setItem('bb-theme-mode', m); } catch { /* ignore */ } apply(); sendMode(); }
 export const getMode = () => mode;
 if (!document.body.classList.contains('island-body')) {
   apply();
+  sendMode();
   setInterval(() => { if (mode === 'auto') apply(); }, 60e3);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && mode === 'auto') apply(); });
 }

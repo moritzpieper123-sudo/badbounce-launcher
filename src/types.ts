@@ -17,7 +17,8 @@ export interface Video {
 }
 
 export interface UploadRec {
-  at: string;        // ISO time it was marked uploaded
+  at: string;        // ISO post time = the slot time it filled (Mo 2026-11-14: a late post counts at its slot time)
+  realAt?: string;   // ISO time it was actually marked uploaded
   slot?: string;     // ISO slot it filled
   link?: string;     // TikTok post link
 }

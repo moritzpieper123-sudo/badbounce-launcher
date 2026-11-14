@@ -1,6 +1,7 @@
 // Badbounce Launcher — Electron main process
 const { app, BrowserWindow, ipcMain, shell, clipboard, screen, globalShortcut, protocol, net, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
+const { Readable } = require('stream');
 const fs = require('fs');
 const os = require('os');
 const { pathToFileURL } = require('url');
@@ -35,7 +36,7 @@ const dataDir = () => path.join(vault(), '.claude-workspace', 'launcher-data');
 const stateFile = () => path.join(dataDir(), 'state.json');
 
 /* ---------- state ---------- */
-function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
+function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
 function loadState() {
   try {
     const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
@@ -54,6 +55,24 @@ function loadState() {
     // Mo 2026-11-13: the first video gets posted today (13 Nov = Day 3 = first post), so Day 1 = 11 Nov. One time only.
     if (!(st.migrations || {}).firstPostToday1113) {
       st.settings.day1 = '2026-11-11'; st.migrations = { ...(st.migrations || {}), firstPostToday1113: true };
+      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
+    }
+    // Mo 2026-11-14: #1 was posted on 13 Nov at 18:30 (Day 3 slot), #2 on 14 Nov at 12:30. #3 was only generated, not posted. One time only.
+    if (!(st.migrations || {}).posted1114) {
+      st.settings.day1 = '2026-11-11';
+      const up = { ...(st.uploads || {}) };
+      const slot1 = new Date(2026, 10, 13, 18, 30, 0, 0).toISOString(), slot2 = new Date(2026, 10, 14, 12, 30, 0, 0).toISOString();
+      up['1'] = { ...(up['1'] || {}), at: (up['1'] && up['1'].at) || slot1, slot: slot1 };
+      up['2'] = { ...(up['2'] || {}), at: (up['2'] && up['2'].at) || slot2, slot: slot2 };
+      delete up['3'];
+      st.uploads = up; st.migrations = { ...(st.migrations || {}), posted1114: true };
+      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
+    }
+    // #1 was marked at 00:21 on 14 Nov but went online on 13 Nov at 18:30: use the real post time (day counts, CSV matching).
+    if (!(st.migrations || {}).postTime1114) {
+      const u1 = (st.uploads || {})['1'];
+      if (u1 && u1.slot) u1.at = u1.slot;
+      st.migrations = { ...(st.migrations || {}), postTime1114: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
     return st;
@@ -386,13 +405,26 @@ else {
     app.setAppUserModelId(AUMID);
     fixShortcuts();
     if (restartWithUpdate(HIDDEN)) return;
-    protocol.handle('bbfile', (req) => {
+    // vault files for the UI. Videos need byte ranges (206), else Chromium stalls after the first chunk (Overview player froze after ~1 s).
+    const MIME = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8' };
+    protocol.handle('bbfile', async (req) => {
       const u = new URL(req.url); const p = decodeURIComponent(u.pathname.replace(/^\//, ''));
-      return net.fetch(pathToFileURL(p).toString());
+      let size;
+      try { size = (await fs.promises.stat(p)).size; } catch { return new Response('not found', { status: 404 }); }
+      const type = MIME[path.extname(p).toLowerCase()] || 'application/octet-stream';
+      const m = /bytes=(\d*)-(\d*)/.exec(req.headers.get('range') || '');
+      if (!m) return new Response(Readable.toWeb(fs.createReadStream(p)), { status: 200, headers: { 'Content-Type': type, 'Content-Length': String(size), 'Accept-Ranges': 'bytes' } });
+      let start = m[1] ? +m[1] : size - +m[2], end = m[1] && m[2] ? +m[2] : size - 1;
+      if (!m[1]) end = size - 1;
+      start = Math.max(0, start); end = Math.min(end, size - 1);
+      if (start > end) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } });
+      return new Response(Readable.toWeb(fs.createReadStream(p, { start, end })), { status: 206, headers: { 'Content-Type': type, 'Content-Length': String(end - start + 1), 'Content-Range': `bytes ${start}-${end}/${size}`, 'Accept-Ranges': 'bytes' } });
     });
     createMain(!HIDDEN);
     createIsland();
     progress.start({ readCfg, writeCfg, onChange: () => sendAll('progressChanged') });
+    // the launcher's theme button also sets the Progress screen's theme
+    ipcMain.on('themeMode', (_e, m) => progress.setTheme(String(m)));
     try {
       tray = new Tray(nativeImage.createFromPath(iconPath()).resize({ width: 16, height: 16 }));
       tray.setToolTip('Badbounce Launcher');
