@@ -1,6 +1,7 @@
 // Badbounce Launcher — Electron main process
 const { app, BrowserWindow, ipcMain, shell, clipboard, screen, globalShortcut, protocol, net, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
+const { Readable } = require('stream');
 const fs = require('fs');
 const os = require('os');
 const { pathToFileURL } = require('url');
@@ -404,9 +405,20 @@ else {
     app.setAppUserModelId(AUMID);
     fixShortcuts();
     if (restartWithUpdate(HIDDEN)) return;
-    protocol.handle('bbfile', (req) => {
+    // vault files for the UI. Videos need byte ranges (206), else Chromium stalls after the first chunk (Overview player froze after ~1 s).
+    const MIME = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8' };
+    protocol.handle('bbfile', async (req) => {
       const u = new URL(req.url); const p = decodeURIComponent(u.pathname.replace(/^\//, ''));
-      return net.fetch(pathToFileURL(p).toString());
+      let size;
+      try { size = (await fs.promises.stat(p)).size; } catch { return new Response('not found', { status: 404 }); }
+      const type = MIME[path.extname(p).toLowerCase()] || 'application/octet-stream';
+      const m = /bytes=(\d*)-(\d*)/.exec(req.headers.get('range') || '');
+      if (!m) return new Response(Readable.toWeb(fs.createReadStream(p)), { status: 200, headers: { 'Content-Type': type, 'Content-Length': String(size), 'Accept-Ranges': 'bytes' } });
+      let start = m[1] ? +m[1] : size - +m[2], end = m[1] && m[2] ? +m[2] : size - 1;
+      if (!m[1]) end = size - 1;
+      start = Math.max(0, start); end = Math.min(end, size - 1);
+      if (start > end) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } });
+      return new Response(Readable.toWeb(fs.createReadStream(p, { start, end })), { status: 206, headers: { 'Content-Type': type, 'Content-Length': String(end - start + 1), 'Content-Range': `bytes ${start}-${end}/${size}`, 'Accept-Ranges': 'bytes' } });
     });
     createMain(!HIDDEN);
     createIsland();
