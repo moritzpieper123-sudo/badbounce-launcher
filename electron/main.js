@@ -56,13 +56,14 @@ function loadState() {
       st.settings.day1 = '2026-11-11'; st.migrations = { ...(st.migrations || {}), firstPostToday1113: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
-    // Mo 2026-11-14: #1 was posted on 13 Nov at 18:30 (Day 3 slot). #2 and #3 were only generated, not posted. One time only.
+    // Mo 2026-11-14: #1 was posted on 13 Nov at 18:30 (Day 3 slot), #2 on 14 Nov at 12:30. #3 was only generated, not posted. One time only.
     if (!(st.migrations || {}).posted1114) {
       st.settings.day1 = '2026-11-11';
       const up = { ...(st.uploads || {}) };
-      const slot1 = new Date(2026, 10, 13, 18, 30, 0, 0).toISOString();
+      const slot1 = new Date(2026, 10, 13, 18, 30, 0, 0).toISOString(), slot2 = new Date(2026, 10, 14, 12, 30, 0, 0).toISOString();
       up['1'] = { ...(up['1'] || {}), at: (up['1'] && up['1'].at) || slot1, slot: slot1 };
-      delete up['2']; delete up['3'];
+      up['2'] = { ...(up['2'] || {}), at: (up['2'] && up['2'].at) || slot2, slot: slot2 };
+      delete up['3'];
       st.uploads = up; st.migrations = { ...(st.migrations || {}), posted1114: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
