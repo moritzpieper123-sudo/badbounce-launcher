@@ -89,6 +89,28 @@ export function konzeptScores(snap: Snapshot): Record<number, number> {
 }
 
 const BACKLOG_DAYS = 14;
+/** Which slot each posted video fills (Mo 2026-11-14/15): posts fill the free slots strictly in order,
+ *  oldest slot first, in the order they were posted, no matter when or on which device they were marked.
+ *  Computed every time, so a wrong stored `slot` (e.g. marked on an older phone app) can never shift the plan.
+ *  A slot more than BACKLOG_DAYS older than the post is skipped (counts as missed). */
+export function slotMap(st: AppState): Map<number, string> {
+  const out = new Map<number, string>();
+  const posted = Object.entries(st.uploads).map(([n, u]) => ({ n: +n, t: Date.parse(u.realAt || u.at) || 0 }))
+    .sort((a, b) => a.t - b.t || a.n - b.n);
+  if (!posted.length) return out;
+  let day = parseYmd(st.settings.day1), guard = 0, i = 0;
+  const queue: Date[] = [];
+  while (i < posted.length && guard++ < 400) {
+    for (const t of slotsForDay(day, st.settings.day1)) queue.push(at(day, t));
+    day = addDays(day, 1);
+    while (queue.length && i < posted.length) {
+      const s = queue[0];
+      if (s.getTime() < posted[i].t - BACKLOG_DAYS * 86400000) { queue.shift(); continue; }
+      out.set(posted[i].n, s.toISOString()); queue.shift(); i++;
+    }
+  }
+  return out;
+}
 /** Builds the plan from the start of `from` for `days` days; fills open slots with ready videos (Konzept rotation). */
 export function buildPlan(snap: Snapshot, from: Date, days: number): PlannedSlot[] {
   const st = snap.state, now = new Date(snap.now), today = ymd(now);
@@ -96,7 +118,7 @@ export function buildPlan(snap: Snapshot, from: Date, days: number): PlannedSlot
   const byNum = new Map(snap.videos.map((v) => [v.num, v] as const));
   // uploads keyed by slot
   const uploadsBySlot = new Map<string, number>();
-  for (const [n, u] of Object.entries(st.uploads)) if (u.slot) uploadsBySlot.set(u.slot, +n);
+  for (const [n, slot] of slotMap(st)) uploadsBySlot.set(slot, n);
   const pool = snap.videos.filter((v) => isReady(v) && !isUploaded(st, v.num)).sort((a, b) => a.num - b.num);
   const scores = konzeptScores(snap);
   const useScores = Object.keys(scores).length >= 2;
@@ -357,7 +379,8 @@ export function matchPosts(snap: Snapshot) {
     if (n == null) { const m = p.title.match(/#(\d+)/); if (m) n = +m[1]; }
     const v = n != null ? snap.videos.find((x) => x.num === n) : undefined;
     const u = n != null ? snap.state.uploads[String(n)] : undefined;
-    const slot = u?.slot ? hm(new Date(u.slot)) : u ? hm(new Date(u.at)) : null;
+    const sm = n != null ? slotMap(snap.state).get(n) : undefined;
+    const slot = sm ? hm(new Date(sm)) : u ? hm(new Date(u.at)) : null;
     out.push({ post: p, num: n, konzept: v?.konzept ?? null, slot });
   }
   return out;
@@ -408,7 +431,8 @@ export function slotTable(snap: Snapshot) {
 /** consistency: per day since day 1 → planned, uploaded */
 export function consistency(snap: Snapshot, days = 35) {
   const now = new Date(snap.now), st = snap.state;
-  const ups = Object.values(st.uploads).map((u) => ymd(new Date(u.slot || u.at)));
+  const sm = slotMap(st);
+  const ups = Object.entries(st.uploads).map(([n, u]) => ymd(new Date(sm.get(+n) || u.at)));
   const out: { date: string; planned: number; done: number; future: boolean }[] = [];
   for (let i = days - 1; i >= 0; i--) {
     const d = addDays(now, -i), ds = ymd(d);
