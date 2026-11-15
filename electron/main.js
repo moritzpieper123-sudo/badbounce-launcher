@@ -36,7 +36,7 @@ const dataDir = () => path.join(vault(), '.claude-workspace', 'launcher-data');
 const stateFile = () => path.join(dataDir(), 'state.json');
 
 /* ---------- state ---------- */
-function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
+function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true, posted1115: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
 function loadState() {
   try {
     const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
@@ -66,6 +66,13 @@ function loadState() {
       up['2'] = { ...(up['2'] || {}), at: (up['2'] && up['2'].at) || slot2, slot: slot2 };
       delete up['3'];
       st.uploads = up; st.migrations = { ...(st.migrations || {}), posted1114: true };
+      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
+    }
+    // Mo 2026-11-15: #3 is online too (posted for the 14 Nov 18:30 slot) but was never marked. One time only.
+    if (!(st.migrations || {}).posted1115) {
+      st.uploads = st.uploads || {};
+      if (!st.uploads['3']) { const s3 = new Date(2026, 10, 14, 18, 30, 0, 0).toISOString(); st.uploads['3'] = { at: s3, slot: s3 }; }
+      st.migrations = { ...(st.migrations || {}), posted1115: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
     // #1 was marked at 00:21 on 14 Nov but went online on 13 Nov at 18:30: use the real post time (day counts, CSV matching).
