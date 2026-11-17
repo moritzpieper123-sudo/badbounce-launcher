@@ -58,16 +58,19 @@ export default function Schedule() {
       </div>;
     })()}
 
-    <section className="hide-phone" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+    <section className="hide-phone sched-week">
       {days.map((d) => {
-        const ds = ymd(d), slots = plan.filter((s) => s.date === ds), n = dayNumber(d, snap.state.settings.day1), isT = ds === ymd(now);
-        return <div key={ds} className="glass card" style={{ padding: 14, gap: 10, borderColor: isT ? 'rgba(255,198,58,.55)' : undefined }}>
-          <div><div style={{ fontWeight: 700 }}>{d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</div><div className="small dim">{n >= 1 ? `Day ${n} · ${postsForDay(n)} post${postsForDay(n) === 1 ? '' : 's'}` : 'Before start'}</div></div>
+        const ds = ymd(d), slots = plan.filter((s) => s.date === ds), n = dayNumber(d, snap.state.settings.day1), isT = ds === ymd(now), past = ds < ymd(now);
+        return <div key={ds} className={`glass card sched-day ${isT ? 'today' : ''} ${past ? 'past' : ''}`}>
+          <div className="sched-day-h"><div className="wd">{isT ? 'Today' : d.toLocaleDateString('en-GB', { weekday: 'long' })}</div><div className="dt num">{d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div><div className="small dim">{n >= 1 ? `Day ${n} · ${postsForDay(n)} post${postsForDay(n) === 1 ? '' : 's'}` : 'Before start'}</div></div>
+          <div className="sched-day-b">
           {n >= 1 && n <= 2 && <div className="small muted">Warm-up: profile, 20–30 min For You, no posts.</div>}
           {slots.map((s) => <div key={s.time} style={{ borderRadius: 12, padding: '8px 10px', background: 'rgba(var(--wrgb),.06)', borderLeft: `3px solid ${color[s.state]}` }}>
             <div className="between"><span className="num" style={{ fontWeight: 700 }}>{s.time}</span><span className="small" style={{ color: color[s.state] }}>{label[s.state]}</span></div>
             {s.video ? <div className="row small" style={{ gap: 6, marginTop: 4 }}><span className="dot" style={{ background: kColor(s.video.konzept) }} />#{s.video.num} · K{s.video.konzept ?? '?'} {KONZEPTE[s.video.konzept ?? 0]?.name ?? ''}</div> : <div className="small dim" style={{ marginTop: 4 }}>no video yet</div>}
           </div>)}
+          {n > 2 && !slots.length && <div className="small dim">No uploads</div>}
+          </div>
         </div>;
       })}
     </section>

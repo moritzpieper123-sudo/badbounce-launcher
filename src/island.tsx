@@ -189,7 +189,7 @@ function UploadTile({ flash }: { flash: (m: string) => void }) {
     </div> : <div className="dk-next empty" title="No ready video"><Icon name="film" size={20} color="#FF8F7A" /></div>}
     <div className="dk-sched">
       {days.map(({ d, i, slots }) => <div key={i} className={`dk-srow ${i === 0 ? 'today' : ''}`}>
-        <span className="dk-sday">{i === 0 ? 'Today' : i === 1 ? 'Tmrw' : d.toLocaleDateString('en-GB', { weekday: 'short' })}</span>
+        <span className="dk-sday">{i === 0 ? 'Today' : i === 1 ? 'Tmrw' : d.toLocaleDateString('en-GB', { weekday: 'short' })}<small>{d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })}</small></span>
         <div className="dk-spills">
           {slots.length ? slots.map((x) => <span key={x.time} className={`dk-spill ${x.state}`} style={{ ['--c' as string]: SC[x.state] }} title={`${x.time} · ${x.video ? 'video #' + x.video.num : 'no video yet'} · ${x.state}`}>
             <b className="num">{x.time}</b>
