@@ -61,7 +61,6 @@ export default function Settings() {
         <h2>Schedule</h2>
         <label className="f">Day 1 of the warm-up<input className="in" type="date" value={s.day1} onChange={(e) => set({ day1: e.target.value })} /></label>
         <label className="f">CSV reminder day<select className="in" value={s.csvWeekday} onChange={(e) => set({ csvWeekday: +e.target.value })}>{['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => <option key={d} value={i}>{d}</option>)}</select></label>
-        <label className="f">Comment reminder after upload (minutes)<input className="in" type="number" min={5} max={120} value={s.commentReminderMin} onChange={(e) => set({ commentReminderMin: +e.target.value || 20 })} /></label>
       </div>
       <Appearance />
       {isDesktop && <div className="glass card">

@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('bb', {
   openNote: (id) => ipcRenderer.invoke('openNote', id),
   openGraphWindow: () => ipcRenderer.send('openGraphWindow'),
   win: (a) => ipcRenderer.send('win', a),
+  themeMode: (m) => ipcRenderer.send('themeMode', m),
   checkUpdate: () => ipcRenderer.invoke('checkUpdate'),
   progressInfo: () => ipcRenderer.invoke('progressInfo'),
   progressSet: (p) => ipcRenderer.invoke('progressSet', p),
