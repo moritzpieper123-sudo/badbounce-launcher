@@ -906,3 +906,11 @@ main.content > .grid > *:nth-child(4) { animation-delay: .22s; } main.content > 
 .sched-day.today .sched-day-h .wd { color: var(--yellow-text); }
 .sched-day.past { opacity: .62; }
 .sched-day-b { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+
+/* Overview player: no blur layer behind the video (picture froze on Windows GPUs) */
+.ov-detail.glass { -webkit-backdrop-filter: none; backdrop-filter: none; background-color: rgba(11,17,36,.82); animation: none !important; }
+.ov-detail .vp video { transform: translateZ(0); }
+/* Overview picker: numbered cards */
+.ov-card .ov-num { position: absolute; left: 10px; top: 10px; min-width: 30px; height: 30px; padding: 0 8px; border-radius: 15px; display: grid; place-items: center; background: #FFC63A; color: #0B1124; font-weight: 800; font-size: 15px; box-shadow: 0 4px 12px rgba(0,0,0,.35); }
+.ov-card .poster .tag { left: auto; right: 10px; }
+.ov-name .ov-n { color: var(--yellow-text, #FFC63A); margin-right: 6px; }

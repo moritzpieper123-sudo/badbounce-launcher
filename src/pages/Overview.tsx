@@ -32,7 +32,7 @@ export default function Overview() {
           <span className="chip" style={{ background: kColor(cur.c.k) + '33', color: kColor(cur.c.k) }}><span className="dot" style={{ background: kColor(cur.c.k) }} />{cur.c.id}</span>
           <span className="chip ov-ref">Reference only · not for upload</span>
         </div>
-        <h2 className="ov-title">{cur.c.name}</h2>
+        <h2 className="ov-title"><span className="ov-n">{list.indexOf(cur) + 1}.</span>{cur.c.name}</h2>
         <p className="ov-about">{cur.c.about}</p>
         <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>{cur.c.facts.map((t) => <span key={t} className="chip">{t}</span>)}</div>
         <div className="ov-sec">
@@ -50,11 +50,12 @@ export default function Overview() {
       </div>
     </div>}
     <div className="lib ov-grid">
-      {list.map(({ c, f }) => {
+      {list.map(({ c, f }, i) => {
         const url = f?.thumb ? bb.fileUrl(f.thumb) : '';
-        return <button key={c.id} className={`glass card ov-card ${sel === c.id ? 'on' : ''}`} onClick={() => { setSel(c.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }} aria-label={`${c.id} ${c.name}`}>
+        return <button key={c.id} className={`glass card ov-card ${sel === c.id ? 'on' : ''}`} onClick={() => { setSel(c.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }} aria-label={`${i + 1}. ${c.id} ${c.name}`}>
           <div className="poster" style={{ backgroundImage: url ? `url("${url}")` : undefined }}>
             {!url && <div className="ball" />}
+            <span className="ov-num">{i + 1}</span>
             <span className="tag"><span className="chip" style={{ background: 'rgba(0,0,0,.6)' }}><span className="dot" style={{ background: kColor(c.k) }} />{c.id}</span></span>
             <span className="ov-play"><Icon name="play" size={18} /></span>
           </div>

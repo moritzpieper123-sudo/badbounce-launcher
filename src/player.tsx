@@ -19,6 +19,21 @@ export function Player({ src, active, markers, onMarkers }: { src: string; activ
   // pause when folded away, play when opened
   useEffect(() => { const el = v.current; if (!el) return; if (active) el.play().catch(() => {}); else el.pause(); }, [active]);
   useEffect(() => { const el = v.current; if (!el) return; let raf = 0; const loop = () => { setT(el.currentTime); raf = requestAnimationFrame(loop); }; if (playing) raf = requestAnimationFrame(loop); return () => cancelAnimationFrame(raf); }, [playing]);
+  // Watchdog: on some Windows GPUs the picture stops updating while the clock runs on.
+  // If no new frame was shown for 0.6 s of play time, nudge the decoder by seeking in place.
+  useEffect(() => {
+    const el = v.current as (HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number; cancelVideoFrameCallback?: (h: number) => void }) | null;
+    if (!el || !playing || !el.requestVideoFrameCallback) return;
+    let lastFrameAt = el.currentTime, h = 0;
+    const onFrame = () => { lastFrameAt = el.currentTime; h = el.requestVideoFrameCallback!(onFrame); };
+    h = el.requestVideoFrameCallback(onFrame);
+    const iv = window.setInterval(() => {
+      if (el.paused || el.seeking) return;
+      const gap = el.currentTime - lastFrameAt;
+      if (gap > 0.6 || gap < -0.6 && el.currentTime > 0.6) { lastFrameAt = el.currentTime; el.currentTime = el.currentTime; }
+    }, 400);
+    return () => { window.clearInterval(iv); el.cancelVideoFrameCallback?.(h); };
+  }, [playing, src]);
   const seekTo = (s: number) => { const el = v.current; if (!el) return; el.currentTime = Math.max(0, Math.min(dur || 0, s)); setT(el.currentTime); };
   const at = (x: number) => { const r = bar.current!.getBoundingClientRect(); return Math.max(0, Math.min(1, (x - r.left) / r.width)) * (dur || 0); };
   const toggle = () => { const el = v.current; if (!el) return; if (el.paused) el.play(); else el.pause(); };

@@ -17,6 +17,9 @@ const DEFAULT_SETTINGS = { day1: '2026-11-11', quietFrom: 22, quietTo: 8, island
 const HIDDEN = process.argv.includes('--hidden');
 const DEV_URL = process.env.BB_DEV_URL; // e.g. http://localhost:5173 during development
 
+// Overview video picture froze after ~1 s on Mo's PC while the clock ran on: keep video out of
+// DirectComposition overlays (known Chromium/Windows freeze with layered, blurred UIs).
+app.commandLine.appendSwitch('disable-direct-composition-video-overlays');
 protocol.registerSchemesAsPrivileged([{ scheme: 'bbfile', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, bypassCSP: true } }]);
 
 /* ---------- config + paths ---------- */
