@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../ctx';
 import { bb } from '../bridge';
 import { Icon, KChip, Tick } from '../ui';
-import { buildPlan, fmtIn, fmtLate, KONZEPTE, minsUntil, setTaskCol, kColor, ymd, bufferInfo, dayDiff, parseYmd } from '../logic';
+import { buildPlan, fmtIn, fmtLate, KONZEPTE, minsUntil, setTaskCol, kColor, ymd, bufferInfo, dayDiff, parseYmd, vn } from '../logic';
 import { TikTokLogo } from '../logos';
 import { doUploadPack, markUploaded, setLink, unmarkUploaded } from '../actions';
 import type { Task, Video } from '../types';
@@ -46,7 +46,7 @@ export function NextUpload({ compact = false }: { compact?: boolean }) {
       {!compact && <Thumb v={v} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
         <span className="small" style={{ fontWeight: 700, color: late ? 'var(--red)' : 'var(--yellow-text)', letterSpacing: '.04em' }}>{(late ? `${fmtLate(mins).toUpperCase()} · ` : `${fmtIn(mins).toUpperCase()} · `) + dayLabel + next.time}</span>
-        <span style={{ fontSize: 18, fontWeight: 700 }}>Upload #{v.num}</span>
+        <span style={{ fontSize: 18, fontWeight: 700 }}>Upload #{vn(v.num)}</span>
         <span className="row small" style={{ color: 'var(--muted)', gap: 6 }}><span className="dot" style={{ background: kColor(v.konzept) }} />Konzept {v.konzept ?? '?'} · {KONZEPTE[v.konzept ?? 0]?.name ?? v.title}</span>
         <div className="row" style={{ marginTop: 6, gap: 8 }}>
           <button className="btn primary sm" onClick={() => doUploadPack(v.num, toast)}><Icon name="upload" size={15} /> Upload pack</button>
@@ -69,7 +69,7 @@ export function SlotList({ date }: { date: Date }) {
     {slots.map((s) => <div key={s.time} className="slotline">
       <span className="bar" style={{ background: color[s.state] }} />
       <span className="num muted" style={{ width: 48 }}>{s.time}</span>
-      <span style={{ flex: 1, color: s.uploaded ? 'var(--dim)' : 'var(--text)' }}>{s.video ? `#${s.video.num} · Konzept ${s.video.konzept ?? '?'} ${KONZEPTE[s.video.konzept ?? 0]?.name ?? ''}` : 'No video assigned'}</span>
+      <span style={{ flex: 1, color: s.uploaded ? 'var(--dim)' : 'var(--text)' }}>{s.video ? `#${vn(s.video.num)} · Konzept ${s.video.konzept ?? '?'} ${KONZEPTE[s.video.konzept ?? 0]?.name ?? ''}` : 'No video assigned'}</span>
       <span className="small" style={{ color: color[s.state] }}>{label[s.state]}</span>
     </div>)}
   </div>;
@@ -80,7 +80,7 @@ export function TaskRow({ t }: { t: Task }) {
   const done = t.col === 'done';
   const toggle = async () => {
     if (t.auto?.startsWith('up:') && t.videoNum != null) {
-      if (!done) { await update(markUploaded(snap, t.videoNum)); toast(`#${t.videoNum} marked uploaded`); }
+      if (!done) { await update(markUploaded(snap, t.videoNum)); toast(`#${vn(t.videoNum)} marked uploaded`); }
       else { await update(unmarkUploaded(t.videoNum)); }
       return;
     }

@@ -5,7 +5,7 @@ import '@fontsource-variable/inter';
 import './styles.css';
 import { useSnapshot } from './store';
 import { bb } from './bridge';
-import { bufferInfo, dueAlerts, fmtLate, isQuiet, islandStatus, KONZEPTE, kColor, buildPlan, fmtIn, minsUntil, ymd, addDays, allTasks, ROTATION, type Alert } from './logic';
+import { bufferInfo, dueAlerts, fmtLate, isQuiet, islandStatus, KONZEPTE, kColor, buildPlan, fmtIn, minsUntil, ymd, addDays, allTasks, ROTATION, type Alert, vn } from './logic';
 import { AppCtx } from './ctx';
 import { useTaskDrag, COLS } from './taskDrag';
 import type { Task } from './types';
@@ -177,13 +177,13 @@ function UploadTile({ flash }: { flash: (m: string) => void }) {
   const thumb = v?.thumbFile ? bb.fileUrl(v.thumbFile) : '';
   return <div className="isl-tile y dk dk-up">
     {v ? <div className="dk-next">
-      <div className="dk-thumb" style={thumb ? { backgroundImage: `url("${thumb}")` } : undefined} title={`Next upload #${v.num} · ${next!.time}`}>
-        {!thumb && <Icon name="film" size={16} color="#FFD978" />}<b>#{v.num}</b>
+      <div className="dk-thumb" style={thumb ? { backgroundImage: `url("${thumb}")` } : undefined} title={`Next upload #${vn(v.num)} · ${next!.time}`}>
+        {!thumb && <Icon name="film" size={16} color="#FFD978" />}<b>#{vn(v.num)}</b>
       </div>
       <div className="dk-nextside">
         <span className="dk-count" style={{ color: mins < 0 ? '#FF8F7A' : '#FFD978' }} title={`${next!.time} · ${mins < 0 ? fmtLate(mins) : fmtIn(mins)}`}><Icon name="calendar" size={11} color="currentColor" />{short(mins)}</span>
         <button className="dk-ib y" onClick={() => doUploadPack(v.num, flash)} title="Upload pack: video, thumbnail, description" aria-label="Upload pack"><Icon name="upload" size={15} color="#1A1404" sw={2.4} /></button>
-        <button className="dk-ib" onClick={async () => { await update(markUploaded(snap, v.num)); flash(`#${v.num} done`); }} title="Mark uploaded" aria-label="Mark uploaded"><Tick size={12} color="#7FD9A8" /></button>
+        <button className="dk-ib" onClick={async () => { await update(markUploaded(snap, v.num)); flash(`#${vn(v.num)} done`); }} title="Mark uploaded" aria-label="Mark uploaded"><Tick size={12} color="#7FD9A8" /></button>
         <button className="dk-ib" onClick={() => bb.openUrl('https://www.tiktok.com/tiktokstudio/upload')} title="Open TikTok Studio" aria-label="Open TikTok Studio"><TikTokLogo size={14} /></button>
       </div>
     </div> : <div className="dk-next empty" title="No ready video"><Icon name="film" size={20} color="#FF8F7A" /></div>}
@@ -193,7 +193,7 @@ function UploadTile({ flash }: { flash: (m: string) => void }) {
         <div className="dk-spills">
           {slots.length ? slots.map((x) => <span key={x.time} className={`dk-spill ${x.state}`} style={{ ['--c' as string]: SC[x.state] }} title={`${x.time} · ${x.video ? 'video #' + x.video.num : 'no video yet'} · ${x.state}`}>
             <b className="num">{x.time}</b>
-            {x.uploaded ? <Tick size={10} color="#7FD9A8" /> : x.video ? <em>#{x.video.num}</em> : <em className="warn">!</em>}
+            {x.uploaded ? <Tick size={10} color="#7FD9A8" /> : x.video ? <em>#{vn(x.video.num)}</em> : <em className="warn">!</em>}
           </span>) : <span className="dk-spill rest"><Icon name="moon" size={11} color="currentColor" />rest</span>}
         </div>
       </div>)}

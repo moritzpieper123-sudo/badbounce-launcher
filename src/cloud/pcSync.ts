@@ -4,7 +4,7 @@
    - uploads ready, not yet posted videos (+ thumbnails) so the phone can save them
    - pulls reference videos added on the phone into Ideas/files */
 import { bb } from '../bridge';
-import { isReady } from '../logic';
+import { isReady, vn } from '../logic';
 import type { AppState, Snapshot } from '../types';
 import { sb, pullRow, pushRow, subscribeRow, uid, type CloudVideo } from './client';
 
@@ -42,7 +42,7 @@ async function uploadFiles(snap: Snapshot, m: Mem, id: string) {
       const p = `${id}/v/${v.num}/${name}`; keep.add(p);
       const sig = `${file}|${v.createdMs}`;
       if (m.files[p] === sig) continue;
-      setStatus(`Uploading #${v.num} for the phone…`);
+      setStatus(`Uploading #${vn(v.num)} for the phone…`);
       const blob = await (await fetch(bb.fileUrl(file))).blob();
       const { error } = await sb.storage.from('videos').upload(p, blob, { upsert: true, contentType: name.endsWith('mp4') ? 'video/mp4' : 'image/png' });
       if (error) throw error;

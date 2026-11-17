@@ -1,12 +1,12 @@
 import type { AppState, Snapshot } from './types';
 import { bb } from './bridge';
-import { buildPlan } from './logic';
+import { buildPlan, vn } from './logic';
 
 /** Upload pack: video + thumbnail to Downloads, description to clipboard. */
 export async function doUploadPack(num: number, toast: (m: string) => void) {
   const r = await bb.uploadPack(num);
-  if (r.ok) toast(`#${num}: video + thumbnail are in ${r.folder ?? 'Downloads'}, description copied`);
-  else toast(`Could not prepare #${num}: ${r.error ?? 'unknown error'}`);
+  if (r.ok) toast(`#${vn(num)}: video + thumbnail are in ${r.folder ?? 'Downloads'}, description copied`);
+  else toast(`Could not prepare #${vn(num)}: ${r.error ?? 'unknown error'}`);
 }
 /** Marks a video uploaded. It fills the oldest free slot (Mo 2026-11-14), no matter when it is posted. */
 export function markUploaded(snap: Snapshot, num: number) {

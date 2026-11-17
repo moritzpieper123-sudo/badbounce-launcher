@@ -3,7 +3,7 @@ import { doUploadPack, markUploaded } from '../actions';
 import { bb } from '../bridge';
 import { Icon, Tick } from '../ui';
 import { useApp } from '../ctx';
-import { addDays, dayDiff, buildPlan, dayNumber, parseYmd, phaseLabel, ymd, kColor, KONZEPTE, postsForDay, ROTATION } from '../logic';
+import { addDays, dayDiff, buildPlan, dayNumber, parseYmd, phaseLabel, ymd, kColor, KONZEPTE, postsForDay, ROTATION, vn } from '../logic';
 import { Header, BufferMeter } from './parts';
 
 export default function Schedule() {
@@ -45,12 +45,12 @@ export default function Schedule() {
           {n < 1 && <div className="small muted">The plan starts on {parseYmd(snap.state.settings.day1).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}.</div>}
           {slots.map((x) => <div key={x.time} className="pslot" style={{ borderLeftColor: color[x.state] }}>
             <div className="between" style={{ alignItems: 'center' }}><span className="num" style={{ fontSize: 22, fontWeight: 800 }}>{x.time}</span><span className="spill" style={{ color: color[x.state], borderColor: color[x.state] }}>{label[x.state]}</span></div>
-            {x.video ? <div className="row small" style={{ gap: 8 }}><span className="dot" style={{ background: kColor(x.video.konzept) }} /><b>#{x.video.num}</b><span className="muted">K{x.video.konzept ?? '?'} {KONZEPTE[x.video.konzept ?? 0]?.name ?? ''}</span></div>
+            {x.video ? <div className="row small" style={{ gap: 8 }}><span className="dot" style={{ background: kColor(x.video.konzept) }} /><b>#{vn(x.video.num)}</b><span className="muted">K{x.video.konzept ?? '?'} {KONZEPTE[x.video.konzept ?? 0]?.name ?? ''}</span></div>
               : <div className="small muted">No video yet</div>}
             {!x.uploaded && x.state !== 'missed' && <div className="row" style={{ gap: 8 }}>
               {x.video ? <>
                 <button className="btn sm primary" onClick={() => doUploadPack(x.video!.num, toast)}><Icon name="upload" size={13} /> Upload pack</button>
-                <button className="btn sm" onClick={async () => { await update(markUploaded(snap, x.video!.num)); toast(`#${x.video!.num} marked uploaded`); }}><Tick size={11} color="currentColor" /> Done</button>
+                <button className="btn sm" onClick={async () => { await update(markUploaded(snap, x.video!.num)); toast(`#${vn(x.video!.num)} marked uploaded`); }}><Tick size={11} color="currentColor" /> Done</button>
               </> : <button className="btn sm" onClick={() => { bb.runGen(1); toast('"Gen" copied'); }}><Icon name="play" size={12} /> Gen</button>}
             </div>}
           </div>)}
@@ -67,7 +67,7 @@ export default function Schedule() {
           {n >= 1 && n <= 2 && <div className="small muted">Warm-up: profile, 20–30 min For You, no posts.</div>}
           {slots.map((s) => <div key={s.time} style={{ borderRadius: 12, padding: '8px 10px', background: 'rgba(var(--wrgb),.06)', borderLeft: `3px solid ${color[s.state]}` }}>
             <div className="between"><span className="num" style={{ fontWeight: 700 }}>{s.time}</span><span className="small" style={{ color: color[s.state] }}>{label[s.state]}</span></div>
-            {s.video ? <div className="row small" style={{ gap: 6, marginTop: 4 }}><span className="dot" style={{ background: kColor(s.video.konzept) }} />#{s.video.num} · K{s.video.konzept ?? '?'} {KONZEPTE[s.video.konzept ?? 0]?.name ?? ''}</div> : <div className="small dim" style={{ marginTop: 4 }}>no video yet</div>}
+            {s.video ? <div className="row small" style={{ gap: 6, marginTop: 4 }}><span className="dot" style={{ background: kColor(s.video.konzept) }} />#{vn(s.video.num)} · K{s.video.konzept ?? '?'} {KONZEPTE[s.video.konzept ?? 0]?.name ?? ''}</div> : <div className="small dim" style={{ marginTop: 4 }}>no video yet</div>}
           </div>)}
           {n > 2 && !slots.length && <div className="small dim">No uploads</div>}
           </div>

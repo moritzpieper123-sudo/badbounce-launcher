@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../ctx';
-import { buildPlan, kColor, KONZEPTE, ymd } from '../logic';
+import { buildPlan, kColor, KONZEPTE, ymd, vn } from '../logic';
 import { doUploadPack, markUploaded, setLink, unmarkUploaded } from '../actions';
 import { Header, NextUpload, Thumb } from './parts';
 import { Icon } from '../ui';
@@ -25,11 +25,11 @@ export default function Upload() {
       {plan.length ? <table className="t"><thead><tr><th>Slot</th><th>Video</th><th>Konzept</th><th style={{ textAlign: 'right' }}>Actions</th></tr></thead><tbody>
         {plan.map((s) => <tr key={s.when.toISOString()}>
           <td className="num">{s.date === ymd(now) ? 'Today' : s.when.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })} {s.time}</td>
-          <td>#{s.video!.num}</td>
+          <td>#{vn(s.video!.num)}</td>
           <td><span className="row" style={{ gap: 6 }}><span className="dot" style={{ background: kColor(s.video!.konzept) }} />K{s.video!.konzept ?? '?'} {KONZEPTE[s.video!.konzept ?? 0]?.name}</span></td>
           <td style={{ textAlign: 'right' }}><div className="row" style={{ justifyContent: 'flex-end' }}>
             <button className="btn sm" onClick={() => doUploadPack(s.video!.num, toast)}>Upload pack</button>
-            <button className="btn sm" onClick={async () => { await update(markUploaded(snap, s.video!.num)); toast(`#${s.video!.num} marked uploaded`); }}>Mark uploaded</button>
+            <button className="btn sm" onClick={async () => { await update(markUploaded(snap, s.video!.num)); toast(`#${vn(s.video!.num)} marked uploaded`); }}>Mark uploaded</button>
           </div></td>
         </tr>)}
       </tbody></table> : <div className="empty">No ready videos in the queue.</div>}

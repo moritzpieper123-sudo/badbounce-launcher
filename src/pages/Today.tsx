@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../ctx';
-import { addDays, allTasks, buildPlan, dayNumber, fmtDay, fmtNum, kpis, phaseLabel, ymd, parseYmd, konzeptTable, KONZEPTE, isReady, weeklyReview, ROTATION, kColor, uid, slotMap } from '../logic';
+import { addDays, allTasks, buildPlan, dayNumber, fmtDay, fmtNum, kpis, phaseLabel, ymd, parseYmd, konzeptTable, KONZEPTE, isReady, weeklyReview, ROTATION, kColor, uid, slotMap, vn } from '../logic';
 import { Rings, Spark, Icon, Count } from '../ui';
 import { Header, NextUpload, BufferMeter, DueLabel } from './parts';
 import { NowPlaying } from '../music';
@@ -121,7 +121,7 @@ function GenTool() {
     </div>
     <div className="row small" style={{ gap: 6, flexWrap: 'wrap' }}><span className="dim">Next Konzepte</span>{nextK.map((k, i) => <span key={i} className="chip"><span className="dot" style={{ width: 6, height: 6, background: kColor(k) }} />K{k} {KONZEPTE[k]?.name}</span>)}</div>
     {r ? <div className="row small" style={{ gap: 8 }}><Icon name="film" size={15} color="var(--frost)" /><span className="muted" style={{ whiteSpace: 'nowrap' }}>Rendering {r.video ?? ''}</span><div className="progress" style={{ flex: 1 }}><div style={{ width: `${Math.round((r.progress ?? 0) * 100)}%`, background: 'var(--frost)' }} /></div><span className="num">{Math.round((r.progress ?? 0) * 100)}%</span></div>
-      : last ? <span className="small dim">Last made: #{last.num} · K{last.konzept ?? '?'} {KONZEPTE[last.konzept ?? 0]?.name ?? ''}{isReady(last) ? '' : ' · not complete yet'}</span> : null}
+      : last ? <span className="small dim">Last made: #{vn(last.num)} · K{last.konzept ?? '?'} {KONZEPTE[last.konzept ?? 0]?.name ?? ''}{isReady(last) ? '' : ' · not complete yet'}</span> : null}
     <div style={{ marginTop: 'auto' }}><BufferMeter /></div>
   </div>;
 }
@@ -140,7 +140,7 @@ function UploadPlan() {
       {days.map(({ d, ds, slots }, i) => <div key={ds} className="uday">
         <span className="uday-l">{i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })}</span>
         <div className="uslots">{slots.length ? slots.map((x) => <span key={x.time} className={`uslot ${x.state}`} title={x.state} style={{ ['--c' as string]: SLOT_COL[x.state] }}>
-          <b className="num">{x.time}</b><small>{x.uploaded ? '✓' : x.video ? `#${x.video.num}` : '–'}</small></span>)
+          <b className="num">{x.time}</b><small>{x.uploaded ? '✓' : x.video ? `#${vn(x.video.num)}` : '–'}</small></span>)
           : <span className="small dim">{dayNumber(d, snap.state.settings.day1) <= 2 ? 'Warm-up, no posts' : 'No slots'}</span>}</div>
       </div>)}
     </div>

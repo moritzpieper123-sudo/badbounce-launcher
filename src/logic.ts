@@ -13,6 +13,13 @@ export const KONZEPTE: Record<number, { name: string; color: string }> = {
   9: { name: 'Sheet drop', color: '#FFB05C' },
   10: { name: 'Gamble crush', color: '#FFD84A' },
 };
+/** Display a video number: 11 -> "11", 11.01 -> "11a" (letter variants such as #11a). */
+export function vn(n: number | null | undefined): string {
+  if (n == null) return '?';
+  if (Number.isInteger(n)) return String(n);
+  const i = Math.floor(n), l = Math.round((n - i) * 100);
+  return l >= 1 && l <= 26 ? `${i}${String.fromCharCode(96 + l)}` : String(n);
+}
 export const ROTATION = [1, 2, 4, 5, 6, 7, 3, 8, 9, 10];
 export const kName = (k: number | null | undefined) => (k && KONZEPTE[k] ? `Konzept ${k}` : 'No Konzept');
 export const kColor = (k: number | null | undefined) => (k && KONZEPTE[k] ? KONZEPTE[k].color : '#AAC3F0');
@@ -211,7 +218,7 @@ export function autoTasks(snap: Snapshot): Task[] {
   });
   for (const s of plan.filter((p) => p.date === today)) {
     const key = `up:${s.date}:${s.time}`;
-    if (s.video) tasks.push(mk(key, { title: `Upload #${s.video.num} at ${s.time}`, tag: kName(s.video.konzept), konzept: s.video.konzept, prio: s.state === 'overdue' ? 'Urgent' : 'High', due: s.date, videoNum: s.video.num }, s.uploaded));
+    if (s.video) tasks.push(mk(key, { title: `Upload #${vn(s.video.num)} at ${s.time}`, tag: kName(s.video.konzept), konzept: s.video.konzept, prio: s.state === 'overdue' ? 'Urgent' : 'High', due: s.date, videoNum: s.video.num }, s.uploaded));
     else if (!s.uploaded) tasks.push(mk(key, { title: `Upload at ${s.time}: no video ready`, tag: 'Schedule', prio: 'Urgent', due: s.date }));
   }
   const b = bufferInfo(snap);
@@ -273,8 +280,8 @@ export function dueAlerts(snap: Snapshot): Alert[] {
   const plan = buildPlan(snap, now, 2);
   for (const s of plan.filter((p) => p.date === today && !p.uploaded)) {
     const m = minsUntil(s.when, now);
-    if (m <= 30 && m > 0) out.push({ key: `pre:${s.date}:${s.time}`, kind: 'upload', title: s.video ? `Upload #${s.video.num} ${fmtIn(m)}` : `Upload at ${s.time}: no video ready`, sub: s.video ? `${s.time} · ${kName(s.video.konzept)} ${KONZEPTE[s.video.konzept ?? 0]?.name ?? ''}` : 'Make a video first', action: s.video ? 'upload' : 'gen', videoNum: s.video?.num });
-    if (m <= 0 && m > -180) { const bucket = Math.floor(-m / 30); out.push({ key: `late:${s.date}:${s.time}:${bucket}`, kind: 'overdue', title: s.video ? `#${s.video.num} is overdue` : `Slot ${s.time} is overdue`, sub: `${fmtLate(m)} · was due ${s.time}`, action: s.video ? 'upload' : 'gen', videoNum: s.video?.num }); }
+    if (m <= 30 && m > 0) out.push({ key: `pre:${s.date}:${s.time}`, kind: 'upload', title: s.video ? `Upload #${vn(s.video.num)} ${fmtIn(m)}` : `Upload at ${s.time}: no video ready`, sub: s.video ? `${s.time} · ${kName(s.video.konzept)} ${KONZEPTE[s.video.konzept ?? 0]?.name ?? ''}` : 'Make a video first', action: s.video ? 'upload' : 'gen', videoNum: s.video?.num });
+    if (m <= 0 && m > -180) { const bucket = Math.floor(-m / 30); out.push({ key: `late:${s.date}:${s.time}:${bucket}`, kind: 'overdue', title: s.video ? `#${vn(s.video.num)} is overdue` : `Slot ${s.time} is overdue`, sub: `${fmtLate(m)} · was due ${s.time}`, action: s.video ? 'upload' : 'gen', videoNum: s.video?.num }); }
   }
   const b = bufferInfo(snap);
   const h = now.getHours();
@@ -376,7 +383,7 @@ export function matchPosts(snap: Snapshot) {
       const t = Date.parse(p.postTime);
       if (!isNaN(t)) { let best: [number, number] | null = null; for (const [k, u] of Object.entries(snap.state.uploads)) { const d = Math.min(Math.abs(Date.parse(u.at) - t), u.realAt ? Math.abs(Date.parse(u.realAt) - t) : Infinity); if (d < 3 * 3600000 && (!best || d < best[1])) best = [+k, d]; } if (best) n = best[0]; }
     }
-    if (n == null) { const m = p.title.match(/#(\d+)/); if (m) n = +m[1]; }
+    if (n == null) { const m = p.title.match(/#(\d+)([a-z])?\b/i); if (m) n = +m[1] + (m[2] ? (m[2].toLowerCase().charCodeAt(0) - 96) / 100 : 0); }
     const v = n != null ? snap.videos.find((x) => x.num === n) : undefined;
     const u = n != null ? snap.state.uploads[String(n)] : undefined;
     const sm = n != null ? slotMap(snap.state).get(n) : undefined;

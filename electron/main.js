@@ -139,15 +139,18 @@ function mp4Duration(file) {
     fs.closeSync(fd); durCache.set(key, result); return result;
   } catch { return null; }
 }
+/** "#11" -> 11, "#11a" -> 11.01, "#11b" -> 11.02: letter variants get their own number (Mo 2026-11-17:
+ *  #11a was hidden because it shared 11 with #11, so marking #11 as posted also hid #11a). */
+function vnum(m) { return +m[1] + (m[2] ? (m[2].toLowerCase().charCodeAt(0) - 96) / 100 : 0); }
 function readIndex() {
   const map = {};
   try {
     const t = fs.readFileSync(path.join(vault(), 'Results', 'Results Index.md'), 'utf8');
     for (const line of t.split(/\r?\n/)) {
       const c = line.split('|').map((x) => x.trim()); if (c.length < 4) continue;
-      const m = (c[1] || '').match(/#?(\d+)/); if (!m) continue;
+      const m = (c[1] || '').match(/#?(\d+)([a-z])?/i); if (!m) continue;
       const k = (c[2] || '').match(/(\d+)/);
-      map[+m[1]] = { konzept: k ? +k[1] : null, title: c[3] || '' };
+      map[vnum(m)] = { konzept: k ? +k[1] : null, title: c[3] || '' };
     }
   } catch { /* no index */ }
   return map;
@@ -157,8 +160,8 @@ function scanVideos() {
   let names = []; try { names = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { return out; }
   const idx = readIndex();
   for (const name of names) {
-    const m = name.match(/^#\s*(\d+)/); if (!m) continue;
-    const num = +m[1], folder = path.join(dir, name);
+    const m = name.match(/^#\s*(\d+)([a-z])?(?![\w])/i); if (!m) continue;
+    const num = vnum(m), folder = path.join(dir, name);
     let files = []; try { files = fs.readdirSync(folder); } catch { continue; }
     const pick = (re, pref) => files.find((f) => pref && pref.test(f)) || files.find((f) => re.test(f));
     const vid = pick(/\.(mp4|mov)$/i, /^Badbounce/i);
@@ -171,7 +174,7 @@ function scanVideos() {
     const konzept = km ? +km[1] : idx[num]?.konzept ?? null;
     const titleM = notes.match(/^#\s+(.+)$/m);
     let created = 0; try { created = fs.statSync(folder).birthtimeMs || fs.statSync(folder).mtimeMs; } catch { /* */ }
-    out.push({ num, folder, konzept, title: idx[num]?.title || (titleM ? titleM[1] : `#${num}`), hasVideo: !!vid, hasThumb: !!th, hasDesc: !!de,
+    out.push({ num, folder, konzept, title: idx[num]?.title || (titleM ? titleM[1] : name), hasVideo: !!vid, hasThumb: !!th, hasDesc: !!de,
       videoFile: vid && path.join(folder, vid), thumbFile: th && path.join(folder, th), descFile: de && path.join(folder, de), description: desc,
       durationSec: vid ? mp4Duration(path.join(folder, vid)) : null, createdMs: created });
   }

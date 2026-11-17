@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../ctx';
-import { isReady, kColor, KONZEPTE, uid, ymd } from '../logic';
+import { isReady, kColor, KONZEPTE, uid, ymd, vn } from '../logic';
 import { doUploadPack } from '../actions';
 import { Header } from './parts';
 import { Icon, KChip, Stages } from '../ui';
@@ -14,9 +14,9 @@ export default function Library() {
   const [open, setOpen] = useState<number | null>(null);
   const vids = [...snap.videos].filter((v) => k == null || v.konzept === k).sort((a, b) => b.num - a.num);
   const partTwo = async (num: number, konzept: number | null) => {
-    const t: Task = { id: uid(), title: `Part 2 of #${num}: rematch / follow-up`, tag: konzept ? `Konzept ${konzept}` : 'Part 2', konzept, prio: 'High', col: 'todo', due: ymd(new Date()), createdAt: new Date().toISOString() };
+    const t: Task = { id: uid(), title: `Part 2 of #${vn(num)}: rematch / follow-up`, tag: konzept ? `Konzept ${konzept}` : 'Part 2', konzept, prio: 'High', col: 'todo', due: ymd(new Date()), createdAt: new Date().toISOString() };
     await update((st) => ({ ...st, tasks: [t, ...st.tasks] }));
-    toast(`Part 2 task for #${num} added`);
+    toast(`Part 2 task for #${vn(num)} added`);
   };
   return <>
     <Header title="Library" sub={`${snap.videos.length} videos in Results`} right={<>
@@ -37,7 +37,7 @@ export default function Library() {
             <span className="tag"><KChip k={v.konzept} label={`K${v.konzept ?? '?'}`} /></span>
             {v.durationSec != null && <span className="chip" style={{ position: 'absolute', right: 8, top: 8, background: 'rgba(0,0,0,.55)' }} title={short ? 'Under 1 minute: counts for reach, not for Creator Rewards payouts' : 'Over 1 minute'}>{Math.round(v.durationSec)} s{short ? ' · <1 min' : ''}</span>}
           </div>
-          <div className="between"><b>#{v.num}</b><span className="small muted">{KONZEPTE[v.konzept ?? 0]?.name ?? ''}</span></div>
+          <div className="between"><b>#{vn(v.num)}</b><span className="small muted">{KONZEPTE[v.konzept ?? 0]?.name ?? ''}</span></div>
           <Stages n={stage} />
           <span className="small dim">{up ? `Uploaded ${new Date(up.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : isReady(v) ? 'Ready to upload' : v.hasVideo ? 'Needs thumbnail/description' : 'In progress'}</span>
           <div className="row" style={{ gap: 6 }}>

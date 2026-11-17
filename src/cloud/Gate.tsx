@@ -1,3 +1,4 @@
+import { vn } from '../logic';
 import React, { useEffect, useRef, useState } from 'react';
 import { cloudConfigured, onAuth, session } from './client';
 import { LoginForm } from './SyncCard';
@@ -43,7 +44,7 @@ export function ShareSheet() {
   const save = () => { for (const f of d.files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); } };
   return <div className="sheet-back" onClick={() => setD(null)}>
     <div className="glass card sheet" onClick={(e) => e.stopPropagation()}>
-      <h2>#{d.num} is ready</h2>
+      <h2>#{vn(d.num)} is ready</h2>
       <span className="small muted">1. Save the video and thumbnail · 2. Open TikTok and upload · 3. Paste the description (already copied) · 4. Tick it done here.</span>
       {canShare ? <button className="btn primary" onClick={share}>Save video + thumbnail</button> : <button className="btn primary" onClick={save}>Download files</button>}
       <button className="btn" onClick={() => navigator.clipboard.writeText(d.desc).then(() => setMsg('Description copied'))}>Copy description again</button>

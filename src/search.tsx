@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from './ui';
 import { bb, isDesktop, type GraphNode } from './bridge';
-import { allTasks, buildPlan, KONZEPTE } from './logic';
+import { allTasks, buildPlan, KONZEPTE, vn } from './logic';
 import { setMode } from './theme';
 import type { Snapshot } from './types';
 
@@ -83,10 +83,10 @@ export function Search({ snap, go, pages, actions }: { snap: Snapshot; go: (p: s
     for (const [n, k] of Object.entries(KONZEPTE)) add({ k: 'k' + n, icon: 'sparkle', title: `Konzept ${n} · ${k.name}`, sub: 'Konzept · videos in the library', words: `k${n} concept konzept ${n}`, weight: 1.6, go: () => go('library') });
     // content
     for (const x of allTasks(snap)) add({ k: 't' + x.id, icon: 'check', title: x.title, sub: `Task · ${x.col === 'done' ? 'done' : x.col === 'prog' ? 'in progress' : 'to do'}${x.due ? ' · due ' + x.due : ''}`, words: `${x.tag} ${x.prio} aufgabe task`, weight: 1.4, go: () => go('board') });
-    for (const v of snap.videos) add({ k: 'v' + v.num, icon: 'film', title: `#${v.num} ${v.title}`, sub: `Video · Konzept ${v.konzept ?? '?'} ${KONZEPTE[v.konzept ?? 0]?.name ?? ''}`, words: `${v.num} video ${(v.description ?? '').slice(0, 200)}`, weight: 1.3, go: () => go('library') });
+    for (const v of snap.videos) add({ k: 'v' + v.num, icon: 'film', title: `#${vn(v.num)} ${v.title}`, sub: `Video · Konzept ${v.konzept ?? '?'} ${KONZEPTE[v.konzept ?? 0]?.name ?? ''}`, words: `${v.num} video ${(v.description ?? '').slice(0, 200)}`, weight: 1.3, go: () => go('library') });
     for (const i of snap.state.ideas) add({ k: 'i' + i.id, icon: 'bulb', title: i.text || '(idea)', sub: `Idea${i.used ? ' · used' : ''}`, words: `${i.link ?? ''} idee idea`, weight: 1.2, go: () => go('ideas') });
     for (const m of snap.mail?.items ?? []) add({ k: 'm' + m.id, icon: 'mail', title: m.subject || '(no subject)', sub: `Mail · ${m.from}`, words: `${m.snippet} ${m.fromAddr ?? ''} mail email`, weight: 1.1, go: () => go('mail') });
-    try { for (const s of buildPlan(snap, new Date(snap.now), 7)) add({ k: 's' + s.date + s.time, icon: 'calendar', title: `${new Date(s.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })} · ${s.time}`, sub: `Upload slot${s.video ? ` · #${s.video.num}` : ' · no video yet'}${s.uploaded ? ' · done' : ''}`, words: `slot upload termin ${new Date(s.date).toLocaleDateString('de-DE', { weekday: 'long' })}`, weight: 1, go: () => go('schedule') }); } catch { /* plan not available */ }
+    try { for (const s of buildPlan(snap, new Date(snap.now), 7)) add({ k: 's' + s.date + s.time, icon: 'calendar', title: `${new Date(s.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })} · ${s.time}`, sub: `Upload slot${s.video ? ` · #${vn(s.video.num)}` : ' · no video yet'}${s.uploaded ? ' · done' : ''}`, words: `slot upload termin ${new Date(s.date).toLocaleDateString('de-DE', { weekday: 'long' })}`, weight: 1, go: () => go('schedule') }); } catch { /* plan not available */ }
     for (const n of notes) add({ k: 'n' + n.id, icon: 'graph', title: n.name, sub: `Note · ${n.id}`, words: `note notiz obsidian ${n.tags.join(' ')}`, weight: 1.2, go: () => { try { sessionStorage.setItem('bb-graph-q', n.name); } catch { /* ignore */ } go('vault'); } });
     return out;
   }, [snap, pages, notes, go]);

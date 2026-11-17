@@ -3,6 +3,7 @@ import type { BB } from '../bridge';
 import type { AppState, Snapshot, Video } from '../types';
 import { DEFAULT_SETTINGS } from '../types';
 import { sb, pullRow, pushRow, subscribeRow, uid, type CloudVideo } from './client';
+import { vn } from '../logic';
 
 const emptyState = (): AppState => ({ version: 1, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } });
 let lastVideos: CloudVideo[] = [];
@@ -60,8 +61,8 @@ export const webBridge: BB = {
     if (!v.videoPath) return { ok: false, error: 'the PC has not uploaded this video yet (keep the launcher open on the PC)' };
     await signAll([v.videoPath, v.thumbPath].filter(Boolean) as string[]);
     const files: File[] = [];
-    const vu = urlOf(v.videoPath); if (vu) files.push(new File([await (await fetch(vu)).blob()], `Badbounce #${num}.mp4`, { type: 'video/mp4' }));
-    const tu = urlOf(v.thumbPath); if (tu) files.push(new File([await (await fetch(tu)).blob()], `Thumbnail #${num}.png`, { type: 'image/png' }));
+    const vu = urlOf(v.videoPath); if (vu) files.push(new File([await (await fetch(vu)).blob()], `Badbounce #${vn(num)}.mp4`, { type: 'video/mp4' }));
+    const tu = urlOf(v.thumbPath); if (tu) files.push(new File([await (await fetch(tu)).blob()], `Thumbnail #${vn(num)}.png`, { type: 'image/png' }));
     window.dispatchEvent(new CustomEvent<ShareDetail>('bb-share', { detail: { num, files, desc } }));
     return { ok: true, folder: 'the share sheet' };
   },
