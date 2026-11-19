@@ -50,10 +50,15 @@ export interface Idea {
 }
 
 export interface DayStat { date: string; views?: number; likes?: number; comments?: number; shares?: number; profileViews?: number; followers?: number; newFollowers?: number; }
-export interface PostStat { title: string; link?: string; postTime?: string; views?: number; likes?: number; comments?: number; shares?: number; saves?: number; avgWatch?: number; fullWatch?: number; newFollowers?: number; }
+export interface PostStat { title: string; link?: string; postTime?: string; views?: number; likes?: number; comments?: number; shares?: number; saves?: number; avgWatch?: number; fullWatch?: number; newFollowers?: number; retention?: number[]; traffic?: Breakdown[]; }
+
+export interface Breakdown { label: string; pct: number }
+export interface Audience { at: string; traffic?: Breakdown[]; age?: Breakdown[]; gender?: Breakdown[]; countries?: Breakdown[]; activeHours?: number[]; }
 
 export interface Stats {
   importedAt?: string;
+  audience?: Audience;                                  // viewers / followers / traffic (stats fetch)
+  snaps?: { t: string; v: Record<string, number[]> }[]; // per fetch: video id -> [views, likes, comments, shares, saves]
   days: DayStat[];
   posts: PostStat[];
 }

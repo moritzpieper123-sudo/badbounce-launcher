@@ -7,6 +7,7 @@ import { Icon, Rings, Count } from '../ui';
 import { bb, isDesktop } from '../bridge';
 import { importCsvTexts } from '../csvImport';
 import { TikTokLogo } from '../logos';
+import AnalyticsExtra from './AnalyticsExtra';
 
 export default function Analytics() {
   const { snap, update, toast } = useApp();
@@ -71,6 +72,8 @@ export default function Analytics() {
         <div className="between small dim"><span>{series[0].d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span><span>Today</span></div>
       </> : <div className="empty">The chart fills after the first CSV import.</div>}
     </section>
+
+    <AnalyticsExtra />
 
     <section className="grid g-2">
       <div className="glass card">
