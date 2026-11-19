@@ -11,7 +11,7 @@ import { Gate, ShareSheet } from './cloud/Gate';
 import { cloudConfigured } from './cloud/client';
 import { listenPhone, syncTick } from './cloud/pcSync';
 import { useRef } from 'react';
-import { csvDue, bufferInfo, allTasks, ymd } from './logic';
+import { csvDue, bufferInfo, allTasks, ymd, mergeStats, type CsvResult } from './logic';
 import type { AppState, Snapshot } from './types';
 import type { CsvStatus } from './bridge';
 import { importCsvTexts } from './csvImport';
@@ -67,6 +67,13 @@ function App() {
   const updRef = useRef(update); updRef.current = update;
   useEffect(() => bb.onCsvStatus?.((st) => { setCsv(st); if (st.state === 'error' || st.state === 'login' || st.state === 'needs-you') setMsg(st.msg); }), []);
   useEffect(() => bb.onCsvFiles?.(async (files) => { await importCsvTexts(files, updRef.current, setMsg); }), []);
+  // live stats fetch (no CSV): per-video numbers + follower count, merged like a CSV
+  useEffect(() => bb.onStatsPosts?.(async (r) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const res: CsvResult = { kind: 'posts', days: r.followers != null ? [{ date: today, followers: r.followers }] : [], posts: r.posts, found: [], rows: r.posts.length };
+    await updRef.current((st) => ({ ...st, stats: mergeStats(st.stats, [res]) }));
+  }), []);
+  useEffect(() => bb.onStatsStatus?.((st) => { if (st.state === 'error') setMsg(st.msg); }), []);
   // PC: keep the phone in sync
   const snapRef = useRef(snap); snapRef.current = snap;
   const apply = useCallback((st: AppState) => update(() => st), [update]);

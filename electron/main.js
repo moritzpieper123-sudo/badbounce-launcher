@@ -10,6 +10,7 @@ const gmail = require('./gmail');
 const updater = require('./updater');
 const graph = require('./graph');
 const csvfetch = require('./csvfetch');
+const statsfetch = require('./statsfetch');
 const media = require('./media');
 const progress = require('./progress');
 
@@ -336,6 +337,8 @@ ipcMain.on('openGraphWindow', () => {
 });
 /* background TikTok CSV fetch */
 ipcMain.handle('csvFetch', () => csvfetch.start({ status: (st) => sendAll('csvStatus', st), files: (f) => sendAll('csvFiles', f) }));
+const runStats = () => statsfetch.run({ dataDir, status: (st) => sendAll('statsStatus', st), result: (r) => sendAll('statsPosts', r) });
+ipcMain.handle('statsFetch', () => { runStats(); });
 ipcMain.on('csvShow', () => csvfetch.show());
 ipcMain.on('csvCancel', () => csvfetch.cancel((st) => sendAll('csvStatus', st)));
 function toggleFull() { if (!mainWin) return; const full = !mainWin.isFullScreen(); mainWin.setFullScreen(full); const c = readCfg(); c.windowed = !full; writeCfg(c); }
@@ -456,6 +459,7 @@ else {
     media.start((m) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('media', m); }, path.join(dataDir(), 'media-log.txt'));
     app.on('before-quit', () => media.stop());
     autoBackup(); setInterval(autoBackup, 3600000);
+    setTimeout(runStats, 40e3); setInterval(runStats, 30 * 60e3); // live stats in the background, every 30 min
     // re-scan the vault every 20 s so new Gen results appear on their own
     setInterval(broadcast, 20000);
     // look for a new version in OneDrive every 5 min; install it right away while the window is hidden
