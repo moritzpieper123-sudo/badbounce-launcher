@@ -371,7 +371,20 @@ export function mergeStats(old: Stats, res: CsvResult[]): Stats {
   const postKey = (p: PostStat) => p.link || `${p.title}|${p.postTime}`;
   const posts = new Map(old.posts.map((p) => [postKey(p), p] as const));
   for (const r of res) for (const p of r.posts) posts.set(postKey(p), { ...(posts.get(postKey(p)) || {}), ...p });
-  return { importedAt: new Date().toISOString(), days: [...days.values()].sort((a, b) => a.date.localeCompare(b.date)), posts: [...posts.values()] };
+  return { ...old, importedAt: new Date().toISOString(), days: [...days.values()].sort((a, b) => a.date.localeCompare(b.date)), posts: [...posts.values()] };
+}
+
+/** Live stats fetch result -> stats: posts, today's follower count, a snapshot for the growth curves, audience data. */
+export function applyFetch(old: Stats, r: { posts: PostStat[]; followers?: number; at: string; audience?: import('./types').Audience }): Stats {
+  const today = r.at.slice(0, 10);
+  const res: CsvResult = { kind: 'posts', days: r.followers != null ? [{ date: today, followers: r.followers }] : [], posts: r.posts, found: [], rows: r.posts.length };
+  const st = mergeStats(old, [res]);
+  const v: Record<string, number[]> = {};
+  for (const p of r.posts) if (p.link) v[normLink(p.link)] = [p.views ?? 0, p.likes ?? 0, p.comments ?? 0, p.shares ?? 0, p.saves ?? 0];
+  const snaps = [...(old.snaps || [])];
+  const last = snaps[snaps.length - 1];
+  if (last && Date.parse(r.at) - Date.parse(last.t) < 2 * 3600000) snaps[snaps.length - 1] = { t: r.at, v }; else snaps.push({ t: r.at, v });
+  return { ...st, snaps: snaps.slice(-800), audience: r.audience && Object.keys(r.audience).length > 1 ? { ...(old.audience || {}), ...r.audience } : old.audience };
 }
 
 /* ---------- analytics ---------- */
@@ -394,7 +407,7 @@ export function matchPosts(snap: Snapshot) {
   }
   return out;
 }
-const normLink = (s: string) => { const m = s.match(/video\/(\d+)/); return m ? m[1] : s.trim().replace(/[?#].*$/, '').replace(/\/$/, ''); };
+export const normLink = (s: string) => { const m = s.match(/video\/(\d+)/); return m ? m[1] : s.trim().replace(/[?#].*$/, '').replace(/\/$/, ''); };
 
 /** CSVs give watch rates as 35.2 or 0.352: always return percent */
 export const pctNorm = (v: number) => (v <= 1 ? v * 100 : v);

@@ -37,7 +37,7 @@ export interface BB {
   onMedia?(cb: (m: MediaNow | null) => void): () => void;
   statsFetch?(): Promise<void>;
   onStatsStatus?(cb: (s: CsvStatus) => void): () => void;
-  onStatsPosts?(cb: (r: { posts: PostStat[]; followers?: number; at: string }) => void): () => void;
+  onStatsPosts?(cb: (r: { posts: PostStat[]; followers?: number; at: string; audience?: import('./types').Audience }) => void): () => void;
   csvShow?(): void;
   csvCancel?(): void;
   onCsvStatus?(cb: (s: CsvStatus) => void): () => void;
