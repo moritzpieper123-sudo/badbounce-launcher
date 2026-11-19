@@ -211,19 +211,11 @@ export function bufferInfo(snap: Snapshot) {
 /* ---------- tasks ---------- */
 export function autoTasks(snap: Snapshot): Task[] {
   const st = snap.state, now = new Date(snap.now), today = ymd(now);
-  const plan = buildPlan(snap, now, 3);
   const tasks: Task[] = [];
   const mk = (key: string, t: Omit<Task, 'id' | 'col' | 'createdAt' | 'auto'>, doneNow = false): Task => ({
     id: 'auto:' + key, auto: key, createdAt: snap.now, col: doneNow ? 'done' : st.autoCols[key] || 'todo', ...t,
   });
-  for (const s of plan.filter((p) => p.date === today)) {
-    const key = `up:${s.date}:${s.time}`;
-    if (s.video) tasks.push(mk(key, { title: `Upload #${vn(s.video.num)} at ${s.time}`, tag: kName(s.video.konzept), konzept: s.video.konzept, prio: s.state === 'overdue' ? 'Urgent' : 'High', due: s.date, videoNum: s.video.num }, s.uploaded));
-    else if (!s.uploaded) tasks.push(mk(key, { title: `Upload at ${s.time}: no video ready`, tag: 'Schedule', prio: 'Urgent', due: s.date }));
-  }
-  const b = bufferInfo(snap);
-  const genN = b.missing2;
-  if (genN > 0) tasks.push(mk(`gen:${today}`, { title: `Make ${genN} video${genN > 1 ? 's' : ''} (Gen x${genN})`, tag: 'Gen batch', prio: b.days < 1 ? 'Urgent' : 'High', due: today }));
+  // upload + Gen tasks removed (Mo 2026-11-19): auto tasks = weekly CSV only, everything else is Mo's own notes
   // (comment reminders removed, Mo 2026-11-14)
   // weekly CSV
   if (csvDue(snap)) tasks.push(mk(`csv:${csvWeekKey(now)}`, { title: 'Import weekly TikTok Studio CSV', tag: 'Analytics', prio: 'High', due: today }));
