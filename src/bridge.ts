@@ -1,6 +1,6 @@
 import { cloudConfigured } from './cloud/client';
 import { webBridge } from './cloud/webBridge';
-import type { AppState, MailBody, Snapshot, Video } from './types';
+import type { AppState, MailBody, PostStat, Snapshot, Video } from './types';
 import { DEFAULT_SETTINGS } from './types';
 
 export interface BB {
@@ -35,6 +35,9 @@ export interface BB {
   mediaNow?(): Promise<MediaNow | null>;
   mediaCmd?(c: string): void;
   onMedia?(cb: (m: MediaNow | null) => void): () => void;
+  statsFetch?(): Promise<void>;
+  onStatsStatus?(cb: (s: CsvStatus) => void): () => void;
+  onStatsPosts?(cb: (r: { posts: PostStat[]; followers?: number; at: string }) => void): () => void;
   csvShow?(): void;
   csvCancel?(): void;
   onCsvStatus?(cb: (s: CsvStatus) => void): () => void;
