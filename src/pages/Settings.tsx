@@ -16,7 +16,7 @@ function Appearance() {
   return <div className="glass card">
     <div className="between"><h2>Appearance</h2><span className="small dim">Now: {theme === 'dark' ? 'night' : theme === 'medium' ? 'dusk' : 'day'}</span></div>
     <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>{MODES.map((m) => <button key={m} className={`btn sm ${mode === m ? 'white' : ''}`} onClick={() => setMode(m)}>{label[m]}</button>)}</div>
-    <label className="row" style={{ justifyContent: 'space-between', cursor: 'pointer' }}><span><b>Liquid sounds</b><div className="small dim">Soft water sounds on buttons, moving tasks and finished uploads</div></span><input type="checkbox" checked={snd} onChange={(e) => { setSnd(e.target.checked); setSfx(e.target.checked); }} style={{ width: 20, height: 20, accentColor: '#FFC63A' }} /></label>
+    <label className="row" style={{ justifyContent: 'space-between', cursor: 'pointer' }}><span><b>UI sounds</b><div className="small dim">Soft ticks on buttons and moving tasks, a bell for finished uploads</div></span><input type="checkbox" checked={snd} onChange={(e) => { setSnd(e.target.checked); setSfx(e.target.checked); }} style={{ width: 20, height: 20, accentColor: '#FFC63A' }} /></label>
     <div className="small muted" style={{ lineHeight: 1.6 }}>Auto follows the sun in Hamm (NRW). Today: sunrise {f(t.rise)}, sunset {f(t.set)}.<br />Dark until {f(shift(t.rise, -45))} · medium until {f(shift(t.rise, 45))} · light until {f(shift(t.set, -45))} · medium until {f(shift(t.set, 45))} · then dark.</div>
   </div>;
 }
