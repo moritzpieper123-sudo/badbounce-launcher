@@ -4,16 +4,19 @@ import { Header } from './parts';
 import { bb, isDesktop, type ProgressInfo } from '../bridge';
 import { SyncCard } from '../cloud/SyncCard';
 import type { Settings as S } from '../types';
+import { sfxOn, setSfx } from '../sfx';
 import { MODES, setMode, sunTimes, useTheme, type Mode } from '../theme';
 
 function Appearance() {
   const { mode, theme } = useTheme();
+  const [snd, setSnd] = React.useState(sfxOn());
   const t = sunTimes(new Date()), f = (d: Date) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const shift = (d: Date, m: number) => new Date(d.getTime() + m * 60e3);
   const label: Record<Mode, string> = { auto: 'Auto', dark: 'Dark', medium: 'Medium', light: 'Light' };
   return <div className="glass card">
     <div className="between"><h2>Appearance</h2><span className="small dim">Now: {theme === 'dark' ? 'night' : theme === 'medium' ? 'dusk' : 'day'}</span></div>
     <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>{MODES.map((m) => <button key={m} className={`btn sm ${mode === m ? 'white' : ''}`} onClick={() => setMode(m)}>{label[m]}</button>)}</div>
+    <label className="row" style={{ justifyContent: 'space-between', cursor: 'pointer' }}><span><b>Liquid sounds</b><div className="small dim">Soft water sounds on buttons, moving tasks and finished uploads</div></span><input type="checkbox" checked={snd} onChange={(e) => { setSnd(e.target.checked); setSfx(e.target.checked); }} style={{ width: 20, height: 20, accentColor: '#FFC63A' }} /></label>
     <div className="small muted" style={{ lineHeight: 1.6 }}>Auto follows the sun in Hamm (NRW). Today: sunrise {f(t.rise)}, sunset {f(t.set)}.<br />Dark until {f(shift(t.rise, -45))} · medium until {f(shift(t.rise, 45))} · light until {f(shift(t.set, -45))} · medium until {f(shift(t.set, 45))} · then dark.</div>
   </div>;
 }

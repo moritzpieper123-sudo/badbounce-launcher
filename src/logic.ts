@@ -70,7 +70,10 @@ export function phaseLabel(dayNo: number) {
   const p = postsForDay(dayNo);
   return p >= 4 ? 'Full plan · 4 a day' : `Ramp-up · ${p} a day`;
 }
-export function slotsForDay(day: Date, day1: string) { return SLOT_SETS[postsForDay(dayNumber(day, day1))] || []; }
+export function slotsForDay(day: Date, day1: string, skip?: string[]) {
+  const all = SLOT_SETS[postsForDay(dayNumber(day, day1))] || [];
+  return skip && skip.length ? all.filter((t) => !skip.includes(at(day, t).toISOString())) : all;
+}
 
 /* ---------- videos ---------- */
 export const isReady = (v: Video) => v.hasVideo && v.hasThumb && v.hasDesc;
@@ -108,7 +111,7 @@ export function slotMap(st: AppState): Map<number, string> {
   let day = parseYmd(st.settings.day1), guard = 0, i = 0;
   const queue: Date[] = [];
   while (i < posted.length && guard++ < 400) {
-    for (const t of slotsForDay(day, st.settings.day1)) queue.push(at(day, t));
+    for (const t of slotsForDay(day, st.settings.day1, st.settings.skipSlots)) queue.push(at(day, t));
     day = addDays(day, 1);
     while (queue.length && i < posted.length) {
       const s = queue[0];
@@ -157,12 +160,12 @@ export function buildPlan(snap: Snapshot, from: Date, days: number): PlannedSlot
   const fromDay = parseYmd(ymd(from)), oldest = addDays(parseYmd(today), -BACKLOG_DAYS);
   let first = fromDay;
   for (let d = parseYmd(day1) > oldest ? parseYmd(day1) : oldest; d < fromDay; d = addDays(d, 1)) {
-    if (slotsForDay(d, day1).some((t) => !uploadsBySlot.has(at(d, t).toISOString()))) { first = d; break; }
+    if (slotsForDay(d, day1, st.settings.skipSlots).some((t) => !uploadsBySlot.has(at(d, t).toISOString()))) { first = d; break; }
   }
   const total = dayDiff(addDays(fromDay, days - 1), first) + 1;
   for (let i = 0; i < total; i++) {
     const day = addDays(first, i), ds = ymd(day), before = day < fromDay;
-    for (const time of slotsForDay(day, day1)) {
+    for (const time of slotsForDay(day, day1, st.settings.skipSlots)) {
       const when = at(day, time), key = when.toISOString();
       const upNum = uploadsBySlot.get(key);
       if (upNum != null) {
@@ -221,8 +224,15 @@ export function autoTasks(snap: Snapshot): Task[] {
   if (csvDue(snap)) tasks.push(mk(`csv:${csvWeekKey(now)}`, { title: 'Import weekly TikTok Studio CSV', tag: 'Analytics', prio: 'High', due: today }));
   return tasks;
 }
+export const DONE_KEEP_MS = 5 * 3600 * 1000; // done tasks vanish after 5 h (Mo 2026-11-19)
 export function allTasks(snap: Snapshot): Task[] {
-  return [...autoTasks(snap), ...snap.state.tasks];
+  const st = snap.state, now = snap.now;
+  const nowMs = typeof now === 'number' ? now : Date.parse(String(now)) || Date.now();
+  const stale = (t: Task, doneAt?: string) => t.col === 'done' && nowMs - (Date.parse(doneAt || '') || 0) > DONE_KEEP_MS;
+  return [
+    ...autoTasks(snap).filter((t) => !stale(t, t.auto ? st.autoDoneAt?.[t.auto] : undefined)),
+    ...st.tasks.filter((t) => !stale(t, t.doneAt)),
+  ];
 }
 
 /* ---------- CSV due ---------- */
@@ -435,7 +445,7 @@ export function consistency(snap: Snapshot, days = 35) {
   const out: { date: string; planned: number; done: number; future: boolean }[] = [];
   for (let i = days - 1; i >= 0; i--) {
     const d = addDays(now, -i), ds = ymd(d);
-    out.push({ date: ds, planned: dayNumber(d, st.settings.day1) >= 1 ? slotsForDay(d, st.settings.day1).length : -1, done: ups.filter((x) => x === ds).length, future: false });
+    out.push({ date: ds, planned: dayNumber(d, st.settings.day1) >= 1 ? slotsForDay(d, st.settings.day1, st.settings.skipSlots).length : -1, done: ups.filter((x) => x === ds).length, future: false });
   }
   let streak = 0;
   for (let i = out.length - 1; i >= 0; i--) { const o = out[i]; if (o.planned < 0) break; if (i === out.length - 1 && o.done < o.planned) continue; if (o.done >= o.planned) streak++; else break; }
@@ -464,6 +474,7 @@ export function weeklyReview(snap: Snapshot) {
 
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 export function setTaskCol(st: AppState, t: Task, col: Col): AppState {
-  if (t.auto) return { ...st, autoCols: { ...st.autoCols, [t.auto]: col } };
-  return { ...st, tasks: st.tasks.map((x) => (x.id === t.id ? { ...x, col } : x)) };
+  const stamp = new Date().toISOString();
+  if (t.auto) return { ...st, autoCols: { ...st.autoCols, [t.auto]: col }, autoDoneAt: { ...(st.autoDoneAt || {}), [t.auto]: col === 'done' ? stamp : '' } };
+  return { ...st, tasks: st.tasks.map((x) => (x.id === t.id ? { ...x, col, doneAt: col === 'done' ? stamp : undefined } : x)) };
 }

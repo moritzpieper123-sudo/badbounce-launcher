@@ -19,14 +19,14 @@ export default function Board() {
   const tasks = allTasks(snap);
   const { drag, over, undo, setUndo, move, onDown } = useTaskDrag(tasks);
   const [form, setForm] = useState(false);
-  const [title, setTitle] = useState(''); const [k, setK] = useState<string>(''); const [prio, setPrio] = useState<Task['prio']>(''); const [due, setDue] = useState(ymd(new Date()));
+  const [title, setTitle] = useState(''); const [k, setK] = useState<string>(''); const [prio, setPrio] = useState<Task['prio']>(''); const [due, setDue] = useState('');
 
   const addTask = async () => {
     if (!title.trim()) return;
     const kn = k ? +k : null;
     const t: Task = { id: uid(), title: title.trim(), tag: kn ? kName(kn) : 'Task', konzept: kn, prio, col: 'todo', due: due || undefined, createdAt: new Date().toISOString() };
     await update((st) => ({ ...st, tasks: [t, ...st.tasks] }));
-    setTitle(''); setForm(false); toast('Task added');
+    setTitle(''); setDue(''); setForm(false); toast('Task added');
   };
   const dragged = drag ? tasks.find((t) => t.id === drag.id) : null;
   const card = (t: Task, ghost = false) => {
@@ -60,7 +60,7 @@ export default function Board() {
       <label className="f" style={{ flex: '2 1 260px' }}>Task<input className="in" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} autoFocus placeholder="What needs doing?" /></label>
       <label className="f">Konzept<select className="in" value={k} onChange={(e) => setK(e.target.value)}><option value="">None</option>{Object.keys(KONZEPTE).map(Number).map((n) => <option key={n} value={n}>Konzept {n} · {KONZEPTE[n].name}</option>)}</select></label>
       <label className="f">Priority<select className="in" value={prio} onChange={(e) => setPrio(e.target.value as Task['prio'])}><option value="">Normal</option><option>High</option><option>Urgent</option></select></label>
-      <label className="f">Due<input className="in" type="date" value={due} onChange={(e) => setDue(e.target.value)} /></label>
+      <label className="f">Due (optional)<input className="in" type="date" value={due} onChange={(e) => setDue(e.target.value)} />{due && <button type="button" className="btn sm" style={{ marginTop: 4 }} onClick={() => setDue('')}>No due date</button>}</label>
       <button className="btn primary" onClick={addTask}>Add</button>
     </div>}
     <div className="board">
