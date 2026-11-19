@@ -5,6 +5,7 @@ import { useApp } from './ctx';
 import { setTaskCol } from './logic';
 import { markUploaded, unmarkUploaded } from './actions';
 import { bb } from './bridge';
+import { sfx } from './sfx';
 import type { Col, Task } from './types';
 
 export const COLS: { key: Col; name: string; dot: string }[] = [
@@ -22,6 +23,7 @@ export function useTaskDrag(tasks: Task[]) {
   const move = async (t: Task, col: Col) => {
     if (t.col === col) return;
     const from = t.col;
+    sfx(col === 'done' ? 'done' : 'drop');
     if (t.auto?.startsWith('up:') && t.videoNum != null) {
       if (col === 'done') await update((st) => setTaskCol(markUploaded(snap, t.videoNum!)(st), t, col));
       else await update((st) => setTaskCol(from === 'done' ? unmarkUploaded(t.videoNum!)(st) : st, t, col));

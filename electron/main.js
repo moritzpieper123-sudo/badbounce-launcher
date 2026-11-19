@@ -40,7 +40,7 @@ const dataDir = () => path.join(vault(), '.claude-workspace', 'launcher-data');
 const stateFile = () => path.join(dataDir(), 'state.json');
 
 /* ---------- state ---------- */
-function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true, posted1115: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
+function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true, posted1115: true, skip1119: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
 function loadState() {
   try {
     const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
@@ -84,6 +84,13 @@ function loadState() {
       const u1 = (st.uploads || {})['1'];
       if (u1 && u1.slot) u1.at = u1.slot;
       st.migrations = { ...(st.migrations || {}), postTime1114: true };
+      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
+    }
+    // Mo 2026-11-19: #19 fills today's 15:30 slot, today's 18:30 and 21:00 slots are skipped, #18 goes to 20 Nov 12:30. One time only.
+    if (!(st.migrations || {}).skip1119) {
+      const skip = [new Date(2026, 10, 19, 18, 30, 0, 0).toISOString(), new Date(2026, 10, 19, 21, 0, 0, 0).toISOString()];
+      st.settings.skipSlots = Array.from(new Set([...(st.settings.skipSlots || []), ...skip]));
+      st.migrations = { ...(st.migrations || {}), skip1119: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
     return st;

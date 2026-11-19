@@ -4,6 +4,7 @@ import { bb } from '../bridge';
 import { Icon, KChip, Tick } from '../ui';
 import { buildPlan, fmtIn, fmtLate, KONZEPTE, minsUntil, setTaskCol, kColor, ymd, bufferInfo, dayDiff, parseYmd, vn } from '../logic';
 import { TikTokLogo } from '../logos';
+import { sfx } from '../sfx';
 import { doUploadPack, markUploaded, setLink, unmarkUploaded } from '../actions';
 import type { Task, Video } from '../types';
 
@@ -84,6 +85,7 @@ export function TaskRow({ t }: { t: Task }) {
       else { await update(unmarkUploaded(t.videoNum)); }
       return;
     }
+    sfx(done ? 'drop' : 'done');
     await update((st) => setTaskCol(st, t, done ? 'todo' : 'done'));
   };
   return <div className={`task ${done ? 'done' : ''}`}>

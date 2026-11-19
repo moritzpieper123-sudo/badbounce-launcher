@@ -34,6 +34,7 @@ export interface Task {
   createdAt: string;
   auto?: string;     // key for auto-generated tasks
   videoNum?: number; // linked video (upload tasks)
+  doneAt?: string;   // when it was moved to Done (done tasks vanish after 5 h)
 }
 
 export interface Idea {
@@ -69,6 +70,7 @@ export interface Settings {
   projectUrl: string;
   autostart: boolean;
   csvWeekday: number;         // 0 = Sunday
+  skipSlots?: string[];       // ISO times of upload slots that are skipped (not shown, not filled)
 }
 
 export interface AppState {
@@ -77,6 +79,7 @@ export interface AppState {
   notes: Record<string, string>;
   tasks: Task[];
   autoCols: Record<string, Col>;
+  autoDoneAt?: Record<string, string>; // when an auto task was moved to Done
   ideas: Idea[];
   stats: Stats;
   milestonesSeen: number[];

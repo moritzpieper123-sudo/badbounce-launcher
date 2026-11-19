@@ -29,6 +29,7 @@ import Ideas from './pages/Ideas';
 import Tools from './pages/Tools';
 import Settings from './pages/Settings';
 import Mail from './pages/Mail';
+import { installClickSfx } from './sfx';
 
 const PAGES = [
   { id: 'today', label: 'Today', short: 'Today', icon: 'home' },
@@ -267,4 +268,5 @@ if (!isDesktop) {
   let lastTouch = 0;
   document.addEventListener('touchend', (e) => { const n = Date.now(); if (n - lastTouch < 300 && !(e.target as HTMLElement).closest('input,textarea,select')) e.preventDefault(); lastTouch = n; }, { passive: false });
 }
+installClickSfx();
 createRoot(document.getElementById('root')!).render(<Gate><App /></Gate>);
