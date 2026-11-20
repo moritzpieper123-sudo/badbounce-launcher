@@ -50,10 +50,10 @@ export interface Idea {
 }
 
 export interface DayStat { date: string; views?: number; likes?: number; comments?: number; shares?: number; profileViews?: number; followers?: number; newFollowers?: number; }
-export interface PostStat { title: string; link?: string; postTime?: string; views?: number; likes?: number; comments?: number; shares?: number; saves?: number; avgWatch?: number; fullWatch?: number; newFollowers?: number; retention?: number[]; traffic?: Breakdown[]; }
+export interface PostStat { title: string; link?: string; postTime?: string; views?: number; likes?: number; comments?: number; shares?: number; saves?: number; avgWatch?: number; fullWatch?: number; newFollowers?: number; retention?: number[]; retentionSecs?: number; traffic?: Breakdown[]; hist?: [number, number][]; histStep?: number; }
 
 export interface Breakdown { label: string; pct: number }
-export interface Audience { at: string; traffic?: Breakdown[]; age?: Breakdown[]; gender?: Breakdown[]; countries?: Breakdown[]; activeHours?: number[]; }
+export interface Audience { at: string; traffic?: Breakdown[]; age?: Breakdown[]; gender?: Breakdown[]; countries?: Breakdown[]; activeHours?: number[]; viewerHours?: number[]; fAge?: Breakdown[]; fGender?: Breakdown[]; fCountries?: Breakdown[]; viewers?: { ago: number; total: number; fresh: number }[]; uniqueViewers?: number; netFollowers?: { ago: number; n: number }[]; followerNum?: number; }
 
 export interface Stats {
   importedAt?: string;

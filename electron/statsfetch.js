@@ -64,96 +64,88 @@ function pickMetrics(json) {
   delete out.views; // views already come from the profile; only used as a sanity probe
   return out;
 }
-/* ---------- audience / traffic / retention (Studio answers; key names are matched loosely, raw JSON is dumped for tuning) ---------- */
-const LABEL_KEYS = ['name', 'label', 'key', 'type', 'source', 'country', 'region', 'territory', 'gender', 'age', 'age_range', 'range', 'category'];
-const VALUE_KEYS = ['percentage', 'percent', 'ratio', 'rate', 'proportion', 'value', 'count', 'num', 'number'];
-function toBreakdown(arr) {
-  if (!Array.isArray(arr) || arr.length < 2 || arr.length > 40) return null;
-  const rows = [];
-  for (const it of arr) {
-    if (!it || typeof it !== 'object') return null;
-    const lk = LABEL_KEYS.find((k) => typeof it[k] === 'string' && it[k]);
-    const vk = VALUE_KEYS.find((k) => n(it[k]) !== undefined);
-    if (!lk || !vk) return null;
-    rows.push({ label: String(it[lk]), v: n(it[vk]) });
-  }
-  const tot = rows.reduce((s, r) => s + Math.max(0, r.v), 0);
-  if (!(tot > 0)) return null;
-  const scale = tot <= 1.05 ? 100 : tot <= 100.5 ? 1 : 100 / tot; // shares already (0-1 or 0-100): keep, even for a partial top list; counts: normalise
-  return rows.map((r) => ({ label: r.label.replace(/_/g, ' '), pct: Math.round(Math.max(0, r.v) * scale * 10) / 10 })).sort((a, b) => b.pct - a.pct);
-}
-function objToBreakdown(o) { // {for_you: 0.8, following: 0.1, ...}
-  if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
-  const e = Object.entries(o).map(([k, v]) => [k, n(v && typeof v === 'object' ? v.value ?? v.percentage ?? v.ratio : v)]).filter(([, v]) => v !== undefined);
-  if (e.length < 2 || e.length > 30) return null;
-  return toBreakdown(e.map(([k, v]) => ({ name: k, value: v })));
-}
-/** Find the first value under a key matching `re` and turn it into a breakdown (array of {name,value} or {name:value}). */
-function findBreakdown(json, re) {
-  let out = null; const seen = new Set();
-  const walk = (o, d) => {
-    if (out || !o || typeof o !== 'object' || d > 9 || seen.has(o)) return; seen.add(o);
-    for (const [k, v] of Object.entries(o)) {
-      if (out) return;
-      if (re.test(k) && v && typeof v === 'object') { out = toBreakdown(v) || objToBreakdown(v) || (v.list && toBreakdown(v.list)) || (v.items && toBreakdown(v.items)) || null; if (out) return; }
-      if (v && typeof v === 'object') walk(v, d + 1);
-    }
-  };
-  walk(json, 0); return out;
-}
-const pickTraffic = (json) => findBreakdown(json, /(traffic|source|channel)/i);
-const pickAge = (json) => findBreakdown(json, /(^|_)age/i);
-const pickGender = (json) => findBreakdown(json, /gender/i);
-const pickCountries = (json) => findBreakdown(json, /(countr|region|territor|location|geo)/i);
-/** 24 numbers (hour 0-23) from an "active hours" answer. */
-function pickActiveHours(json) {
-  let out = null; const seen = new Set();
-  const walk = (o, d) => {
-    if (out || !o || typeof o !== 'object' || d > 9 || seen.has(o)) return; seen.add(o);
-    for (const [k, v] of Object.entries(o)) {
-      if (out) return;
-      if (/(active|online|hour)/i.test(k) && Array.isArray(v) && v.length >= 24) {
-        const nums = v.map((x) => (x && typeof x === 'object' ? n(x.value ?? x.count ?? x.num ?? x.ratio) : n(x)));
-        if (nums.every((x) => x !== undefined)) { out = nums.slice(0, 24); return; }
-      }
-      if (v && typeof v === 'object') walk(v, d + 1);
-    }
-  };
-  walk(json, 0);
-  if (!out) return null;
-  const mx = Math.max(...out); return mx > 0 ? out.map((x) => Math.round((x / mx) * 100)) : null; // 0-100, busiest hour = 100
-}
-/** Retention curve of one video: array of numbers (share still watching) -> max 50 points, percent. */
-function pickRetention(json) {
-  let out = null; const seen = new Set();
-  const walk = (o, d) => {
-    if (out || !o || typeof o !== 'object' || d > 9 || seen.has(o)) return; seen.add(o);
-    for (const [k, v] of Object.entries(o)) {
-      if (out) return;
-      if (/(retention|duration_?curve|watch_?curve|play_?curve|completion_?curve)/i.test(k) && v && typeof v === 'object') {
-        const arr = Array.isArray(v) ? v : (v.list || v.values || v.data || v.curve);
-        if (Array.isArray(arr) && arr.length >= 5) {
-          const nums = arr.map((x) => (x && typeof x === 'object' ? n(x.value ?? x.ratio ?? x.rate ?? x.percentage) : n(x)));
-          if (nums.every((x) => x !== undefined)) { out = nums; return; }
-        }
-      }
-      if (v && typeof v === 'object') walk(v, d + 1);
-    }
-  };
-  walk(json, 0);
-  if (!out) return null;
-  const mx = Math.max(...out); const scale = mx <= 1.5 ? 100 : 1;
-  const step = Math.max(1, Math.ceil(out.length / 50));
-  return out.filter((_, i) => i % step === 0).map((x) => Math.round(x * scale * 10) / 10);
-}
-function pickAudience(hits) {
-  const a = {};
+/* ---------- TikTok Studio insight answers (https://www.tiktok.com/aweme/v2/data/insight/...) ----------
+   The answers have fixed key names (verified on real data 2026-11-20). Every answer holds many keys, most of them null; the
+   non-null ones of all answers of a page are merged first (mergeInsight), then picked with the exact key names below. */
+function mergeInsight(hits) {
+  const M = {};
   for (const h of hits) {
-    a.age = a.age || pickAge(h.json) || undefined; a.gender = a.gender || pickGender(h.json) || undefined;
-    a.countries = a.countries || pickCountries(h.json) || undefined; a.activeHours = a.activeHours || pickActiveHours(h.json) || undefined;
-    a.traffic = a.traffic || pickTraffic(h.json) || undefined;
+    if (!/\/aweme\/v\d\/data\/insight/.test(h.url || '') || !h.json || typeof h.json !== 'object') continue;
+    for (const [k, v] of Object.entries(h.json)) if (v !== null && v !== undefined && M[k] === undefined) M[k] = v;
   }
-  return Object.fromEntries(Object.entries(a).filter(([, v]) => v));
+  return M;
+}
+const ok = (x) => x && typeof x === 'object' && (x.status === undefined || x.status === 0);
+const r1 = (x) => Math.round(x * 10) / 10;
+/** [{key, value: 0..1}] -> [{label, pct}] sorted, percent with one decimal; null when empty / all zero */
+function shareList(list, keyName = 'key') {
+  if (!Array.isArray(list)) return null;
+  const rows = list.map((x) => ({ label: String(x?.[keyName] ?? ''), v: n(x?.value) })).filter((x) => x.label && x.v !== undefined && x.v >= 0);
+  const tot = rows.reduce((s, x) => s + x.v, 0); if (!(tot > 0)) return null;
+  return rows.map((x) => ({ label: x.label, pct: r1((x.v / tot) * 100) })).filter((x) => x.pct > 0).sort((a, b) => b.pct - a.pct);
+}
+const pickShares = (o) => (ok(o) ? shareList(o.value) : null);
+function pickCountries(o) { // {country_percent_list: [{country_name:'DE', country_vv_percent:0.13}, ..., {country_name:'Others', is_other:true}]}
+  if (!o || !Array.isArray(o.country_percent_list)) return null;
+  const rows = o.country_percent_list.map((x) => ({ label: x.is_other ? 'Others' : String(x.country_name || ''), v: n(x.country_vv_percent) })).filter((x) => x.label && x.v !== undefined && x.v > 0);
+  const tot = rows.reduce((s, x) => s + x.v, 0); if (!(tot > 0)) return null;
+  const list = rows.map((x) => ({ label: x.label, pct: r1((x.v / tot) * 100) }));
+  return [...list.filter((x) => x.label !== 'Others').sort((a, b) => b.pct - a.pct), ...list.filter((x) => x.label === 'Others')];
+}
+/** [{status, value:[24 numbers]}] one entry per day -> 24 numbers (0-100, busiest hour = 100); null when no activity at all */
+function pickHours(list) {
+  if (!Array.isArray(list)) return null;
+  const days = list.filter((d) => d && d.status === 0 && Array.isArray(d.value) && d.value.length === 24);
+  if (!days.length) return null;
+  const sum = Array.from({ length: 24 }, (_, h) => days.reduce((s, d) => s + (n(d.value[h]) || 0), 0));
+  const mx = Math.max(...sum); return mx > 0 ? sum.map((x) => Math.round((x / mx) * 100)) : null;
+}
+/** Account audience from the merged answers of the Viewers + Followers pages. */
+function pickAudience(M) {
+  const a = {};
+  const set = (k, v) => { if (v && (!Array.isArray(v) || v.length)) a[k] = v; };
+  set('age', pickShares(M.viewer_age_distribution)); set('gender', pickShares(M.viewer_gender_percent)); set('countries', pickCountries(M.viewer_country_city_percent));
+  set('fAge', pickShares(M.follower_age_distribution)); set('fGender', pickShares(M.follower_gender_percent)); set('fCountries', pickCountries(M.follower_location_percent));
+  const fh = pickHours(M.follower_active_history_hours), vh = pickHours(M.viewer_active_history_hours);
+  set('activeHours', fh); set('viewerHours', vh);
+  // new vs returning viewers per day (days_before_today -7 .. -1; status 2 = TikTok has no number yet)
+  const uv = Array.isArray(M.unique_viewer) ? M.unique_viewer : [], nv = Array.isArray(M.new_viewer) ? M.new_viewer : [];
+  const vw = uv.map((u, i) => ({ ago: -u.days_before_today, total: u.status === 0 ? n(u.value) : undefined, fresh: nv[i] && nv[i].status === 0 ? n(nv[i].value) : undefined })).filter((x) => x.total !== undefined);
+  if (vw.length) a.viewers = vw.map((x) => ({ ago: x.ago, total: x.total, fresh: Math.min(x.total, x.fresh ?? 0) }));
+  if (ok(M.unique_viewer_num) && n(M.unique_viewer_num.value) !== undefined) a.uniqueViewers = n(M.unique_viewer_num.value);
+  // net follower change per day, 16 days ending today (last entry = today, still running)
+  if (Array.isArray(M.net_follower_history)) {
+    const L = M.net_follower_history.length;
+    const nf = M.net_follower_history.map((x, i) => ({ ago: L - 1 - i, n: x && x.status === 0 ? n(x.value) : undefined })).filter((x) => x.n !== undefined);
+    if (nf.length) a.netFollowers = nf;
+  }
+  if (ok(M.follower_num) && n(M.follower_num.value) !== undefined) a.followerNum = n(M.follower_num.value);
+  return a;
+}
+/** One video's Studio answers -> extra PostStat fields (exact keys). */
+function pickVideoInsight(M) {
+  const o = {};
+  const v = (x) => (x && x.value && ok(x.value) ? n(x.value.value) : x && ok(x) && !x.value?.status ? n(x.value) : undefined);
+  const avg = v(M.video_per_duration_realtime); if (avg !== undefined) o.avgWatch = r1(avg);
+  const fin = v(M.video_finish_rate_realtime); if (fin !== undefined) o.fullWatch = r1(fin * 100);
+  const nf = v(M.realtime_new_followers) ?? (ok(M.video_new_followers) ? n(M.video_new_followers.value) : undefined); if (nf !== undefined) o.newFollowers = nf;
+  const rt = M.video_retention_rate_realtime && M.video_retention_rate_realtime.value && M.video_retention_rate_realtime.value.list;
+  if (Array.isArray(rt) && rt.length >= 3) {
+    const pts = rt.map((x) => n(x.value)).filter((x) => x !== undefined);
+    const secs = Math.round((n(rt[rt.length - 1].timestamp) || 0) / 1000);
+    const step = Math.max(1, Math.ceil(pts.length / 60));
+    o.retention = pts.filter((_, i) => i % step === 0).map((x) => r1(x * 100));
+    if (secs > 0) o.retentionSecs = secs;
+  }
+  const tr = M.video_traffic_source_percent_realtime && M.video_traffic_source_percent_realtime.value;
+  const trs = ok(tr) ? shareList(tr.value) : null; if (trs) o.traffic = trs;
+  const hv = M.realtime_video_view_history;
+  if (hv && ok(hv) && Array.isArray(hv.list) && hv.list.length) {
+    const step = hv.interval === 1 ? 3600 : 86400;
+    const pts = hv.list.map((x) => [n(x.key), n(x.value)]).filter((x) => x[0] !== undefined && x[1] !== undefined);
+    if (pts.length) { o.hist = pts; o.histStep = step; }
+  }
+  return o;
 }
 
 /** Followers + first video list from the page's embedded JSON (works without the XHR). */
@@ -227,9 +219,7 @@ async function run({ dataDir, status, result }) {
       await wait(2200);
       const hits = s2.hits.splice(0); s2.stop();
       dump(`studio-${id}.json`, hits);
-      const m = {}; for (const h of hits) Object.assign(m, Object.fromEntries(Object.entries(pickMetrics(h.json)).filter(([k]) => m[k] === undefined)));
-      Object.assign(p, m);
-      for (const h of hits) { const r = pickRetention(h.json); if (r && !p.retention) p.retention = r; const t = pickTraffic(h.json); if (t && !p.traffic) p.traffic = t; }
+      Object.assign(p, pickVideoInsight(mergeInsight(hits)));
     }
     // audience pages: viewers (age, gender, countries, traffic) + followers (active hours); same login, skipped if not logged in
     let audience = {};
@@ -242,7 +232,7 @@ async function run({ dataDir, status, result }) {
         await wait(3500);
         const hits = s3.hits.splice(0); s3.stop();
         dump(`audience-${name}.json`, hits);
-        audience = { ...audience, ...Object.fromEntries(Object.entries(pickAudience(hits)).filter(([k]) => audience[k] === undefined)) };
+        audience = { ...audience, ...Object.fromEntries(Object.entries(pickAudience(mergeInsight(hits))).filter(([k]) => audience[k] === undefined)) };
       }
       if (Object.keys(audience).length) audience.at = new Date().toISOString();
     }
@@ -257,4 +247,4 @@ async function run({ dataDir, status, result }) {
   }
 }
 
-module.exports = { run, isRunning: () => running, itemToPost, pickMetrics, readRehydration, pickAudience, pickRetention, pickTraffic, pickActiveHours };
+module.exports = { run, isRunning: () => running, itemToPost, pickMetrics, readRehydration, mergeInsight, pickAudience, pickVideoInsight };

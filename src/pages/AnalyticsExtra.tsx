@@ -2,7 +2,7 @@
    snapshots), 10-14 use the audience / traffic / retention numbers the stats fetch reads from TikTok Studio. */
 import React, { useState } from 'react';
 import { useApp } from '../ctx';
-import { addDays, fmtNum, kColor, kpis, matchPosts, MILESTONES, normLink, parseYmd, pctNorm, vn, ymd } from '../logic';
+import { addDays, cleanDays, etaText, fmtNum, kColor, kpis, matchPosts, MILESTONES, normLink, parseYmd, pctNorm, vn, ymd } from '../logic';
 import { bb, isDesktop } from '../bridge';
 import { Icon } from '../ui';
 import type { Breakdown, Snapshot } from '../types';
@@ -15,8 +15,8 @@ const DAY = 86400000;
 /* ---------- data helpers ---------- */
 /** Daily numbers: from the CSV days when they exist, else the growth between two fetch snapshots. */
 function daily(snap: Snapshot, metric: Metric, range: number) {
-  const st = snap.state.stats, now = new Date(snap.now), idx = METRICS.find((m) => m[0] === metric)![3];
-  const haveDays = st.days.some((d) => d[metric] != null);
+  const st = snap.state.stats, now = new Date(snap.now), idx = METRICS.find((m) => m[0] === metric)![3], days = cleanDays(st.days);
+  const haveDays = days.some((d) => d[metric] != null);
   const bySnap = new Map<string, number>();
   if (!haveDays) {
     const sn = st.snaps || [];
@@ -28,30 +28,40 @@ function daily(snap: Snapshot, metric: Metric, range: number) {
   }
   return Array.from({ length: range }, (_, i) => {
     const d = addDays(now, i - range + 1), k = ymd(d);
-    const v = haveDays ? st.days.find((x) => x.date === k)?.[metric] : bySnap.get(k);
+    const v = haveDays ? days.find((x) => x.date === k)?.[metric] : bySnap.get(k);
     return { d, v: v ?? 0, has: v != null };
   });
 }
 const sum = (a: { v: number }[]) => a.reduce((s, x) => s + x.v, 0);
 
 /* ---------- tiny SVG charts ---------- */
-function Line({ lines, h = 150, xl }: { lines: { color: string; pts: [number, number][]; dot?: boolean }[]; h?: number; xl?: [string, string] }) {
+type LineDef = { name?: string; color: string; pts: [number, number][]; dot?: boolean };
+/** Line chart. Move the mouse over it: a guide line + a box show the exact value of every line at that point. */
+function Line({ lines, h = 150, xl, fx, fy = fmtNum, unit = '' }: { lines: LineDef[]; h?: number; xl?: [string, string]; fx?: (x: number) => string; fy?: (y: number) => string; unit?: string }) {
+  const [hv, setHv] = useState<number | null>(null);
   const all = lines.flatMap((l) => l.pts); if (all.length < 2) return <div className="empty">Not enough points yet.</div>;
   const x0 = Math.min(...all.map((p) => p[0])), x1 = Math.max(...all.map((p) => p[0])), y1 = Math.max(1e-9, ...all.map((p) => p[1])), y0 = Math.min(0, ...all.map((p) => p[1]));
   const X = (x: number) => 8 + ((x - x0) / Math.max(1e-9, x1 - x0)) * 584, Y = (y: number) => h - 10 - ((y - y0) / Math.max(1e-9, y1 - y0)) * (h - 24);
-  return <div>
-    <svg viewBox={`0 0 600 ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: h }} role="img">
+  const near = (l: LineDef, x: number) => l.pts.reduce((b, p) => (Math.abs(p[0] - x) < Math.abs(b[0] - x) ? p : b), l.pts[0]);
+  const snapX = hv == null ? null : near({ color: '', pts: all }, hv)[0];
+  return <div style={{ position: 'relative' }}>
+    <svg viewBox={`0 0 600 ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: h, cursor: 'crosshair' }} role="img"
+      onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setHv(x0 + (((e.clientX - r.left) / r.width) * 600 - 8) / 584 * (x1 - x0)); }} onMouseLeave={() => setHv(null)}>
       {[0, 0.5, 1].map((f) => <line key={f} x1="0" x2="600" y1={Y(y0 + (y1 - y0) * f)} y2={Y(y0 + (y1 - y0) * f)} stroke="rgba(170,195,240,.12)" strokeWidth="1" vectorEffect="non-scaling-stroke" />)}
       {lines.map((l, i) => { const d = l.pts.map((p, j) => `${j ? 'L' : 'M'}${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' '); const e = l.pts[l.pts.length - 1];
         return <g key={i}><path d={d} fill="none" stroke={l.color} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" style={{ filter: `drop-shadow(0 0 5px ${l.color})` }} />
           {l.dot !== false && <circle cx={X(e[0])} cy={Y(e[1])} r="4" fill={l.color} vectorEffect="non-scaling-stroke" />}</g>; })}
+      {snapX != null && <line x1={X(snapX)} x2={X(snapX)} y1="0" y2={h} stroke="rgba(255,255,255,.35)" strokeWidth="1" vectorEffect="non-scaling-stroke" />}
     </svg>
-    <div className="between small dim"><span>{xl?.[0]}</span><span>{xl?.[1]} · peak {fmtNum(Math.round(y1))}</span></div>
+    {snapX != null && <div className="small" style={{ position: 'absolute', top: 0, left: `${Math.min(80, Math.max(20, (X(snapX) / 600) * 100))}%`, transform: 'translateX(-50%)', background: 'rgba(14,18,32,.94)', color: '#F4F6FF', border: '1px solid rgba(170,195,240,.3)', borderRadius: 10, padding: '6px 9px', pointerEvents: 'none', whiteSpace: 'nowrap', zIndex: 5 }}>
+      <div style={{ opacity: 0.7 }}>{fx ? fx(snapX) : fy(snapX)}</div>
+      {lines.map((l, i) => { const p = near(l, snapX); return <div key={i} className="row" style={{ gap: 6 }}><span style={{ width: 8, height: 8, borderRadius: 3, background: l.color }} />{l.name ? `${l.name}: ` : ''}<b>{fy(p[1])}{unit}</b></div>; })}</div>}
+    <div className="between small dim"><span>{xl?.[0]}</span><span>{xl?.[1]} · peak {fy(y1)}{unit}</span></div>
   </div>;
 }
 function Bars({ rows, unit = '' }: { rows: { label: string; v: number; color?: string; sub?: string }[]; unit?: string }) {
   const mx = Math.max(1e-9, ...rows.map((r) => r.v));
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>{rows.map((r, i) => <div key={i} className="row" style={{ gap: 8 }}>
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>{rows.map((r, i) => <div key={i} className="row" title={`${r.label}: ${r.sub ?? `${Math.round(r.v * 10) / 10}${unit}`}`} style={{ gap: 8 }}>
     <span className="small" style={{ width: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.label}>{r.label}</span>
     <div className="progress" style={{ height: 11, borderRadius: 6 }}><div style={{ width: `${(r.v / mx) * 100}%`, background: r.color || BLUE, borderRadius: 6 }} /></div>
     <span className="small num" style={{ width: 70, textAlign: 'right' }}>{r.sub ?? `${Math.round(r.v * 10) / 10}${unit}`}</span></div>)}</div>;
@@ -60,10 +70,13 @@ function Donut({ rows }: { rows: Breakdown[] }) {
   const cols = ['#FFC63A', '#AAC3F0', '#7FD9A8', '#FF8F7A', '#B8A2FF', '#7FD0E8'], r = 42, c = 2 * Math.PI * r; let off = 0;
   const tot = rows.reduce((s, x) => s + x.pct, 0) || 1;
   return <div className="row" style={{ gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
-    <svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Traffic sources">{rows.slice(0, 6).map((x, i) => { const len = (x.pct / tot) * c, el = <circle key={i} cx="60" cy="60" r={r} fill="none" stroke={cols[i]} strokeWidth="16" strokeDasharray={`${Math.max(0, len - 2)} ${c}`} strokeDashoffset={-off} transform="rotate(-90 60 60)" />; off += len; return el; })}</svg>
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>{rows.slice(0, 6).map((x, i) => <span key={i} className="row small" style={{ gap: 7 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: cols[i] }} />{x.label} <b>{x.pct}%</b></span>)}</div>
+    <svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Traffic sources">{rows.slice(0, 6).map((x, i) => { const len = (x.pct / tot) * c, el = <circle key={i} cx="60" cy="60" r={r} fill="none" stroke={cols[i]} strokeWidth="16" strokeDasharray={`${Math.max(0, len - 2)} ${c}`} strokeDashoffset={-off} transform="rotate(-90 60 60)"><title>{`${x.label}: ${x.pct}%`}</title></circle>; off += len; return el; })}</svg>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>{rows.slice(0, 6).map((x, i) => <span key={i} className="row small" title={`${x.label}: ${x.pct}%`} style={{ gap: 7 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: cols[i] }} />{x.label} <b>{x.pct}%</b></span>)}</div>
   </div>;
 }
+const Help = ({ children }: { children: React.ReactNode }) => <span className="small dim" style={{ lineHeight: 1.4 }}>{children}</span>;
+const country = (c: string) => { if (c === 'Others') return 'Other countries'; try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(c) || c; } catch { return c; } };
+const fd = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 const Empty = ({ children }: { children: React.ReactNode }) => <div className="empty" style={{ lineHeight: 1.5 }}>{children}</div>;
 const Spark = ({ v, color = '#FFC63A' }: { v: number[]; color?: string }) => {
   if (v.length < 3) return null; const mx = Math.max(...v, 1);
@@ -76,14 +89,18 @@ export default function AnalyticsExtra() {
   const st = snap.state.stats, now = new Date(snap.now);
   const [range, setRange] = useState(30);
   const [metrics, setMetrics] = useState<Metric[]>(['views']);
+  const [sinceMode, setSinceMode] = useState<'abs' | 'pct'>('abs');
+  const [who, setWho] = useState<'viewers' | 'followers'>('viewers');
   const k = kpis(snap), matched = matchPosts(snap), aud = st.audience;
+  const days = cleanDays(st.days);
   const hasAny = st.days.length > 0 || st.posts.length > 0;
   if (!hasAny) return null;
   const fileUrl = (n: number | null) => { const v = n != null ? snap.videos.find((x) => x.num === n) : undefined; return v?.thumbFile ? bb.fileUrl(v.thumbFile) : ''; };
   const label = (m: (typeof matched)[number]) => (m.num != null ? `#${vn(m.num)}` : m.post.title.slice(0, 16) || 'Video');
+  const dayLabel = (i: number, n: number) => fd(addDays(now, i - n + 1));
 
   /* 1 followers over time */
-  const fol = st.days.filter((d) => d.followers != null && d.date >= ymd(addDays(now, -range + 1))).map((d) => [parseYmd(d.date).getTime(), d.followers!] as [number, number]);
+  const fol = days.filter((d) => d.followers != null && d.date >= ymd(addDays(now, -range + 1))).map((d) => [parseYmd(d.date).getTime(), d.followers!] as [number, number]);
   /* 2 multi-metric lines */
   const series = METRICS.filter((m) => metrics.includes(m[0])).map((m) => { const d = daily(snap, m[0], range); return { m, d }; });
   /* 3 engagement per post */
@@ -92,12 +109,23 @@ export default function AnalyticsExtra() {
   /* 4 top / flop */
   const ranked = matched.filter((m) => (m.post.views || 0) > 0).sort((a, b) => (b.post.views || 0) - (a.post.views || 0));
   const top = ranked.slice(0, 3), flop = ranked.length >= 6 ? ranked.slice(-3).reverse() : [];
-  /* 5 views since posting */
+  /* 5 views since posting: TikTok's own per-video view history (hourly for new videos, daily for older ones), else our fetch snapshots */
   const sn = st.snaps || [];
-  const since = matched.filter((m) => m.post.link && m.post.postTime).map((m) => {
-    const id = normLink(m.post.link!), t0 = Date.parse(m.post.postTime!);
-    const pts = sn.map((s) => [(Date.parse(s.t) - t0) / 3600000, s.v[id]?.[0]] as [number, number | undefined]).filter((p): p is [number, number] => p[1] != null && p[0] >= 0 && p[0] <= 168);
-    return { m, pts };
+  const since = matched.filter((m) => m.post.postTime).map((m) => {
+    const t0 = Date.parse(m.post.postTime!); let pts: [number, number][] = [], src = '';
+    const h = m.post.hist;
+    if (h && h.length >= 2 && m.post.histStep) {
+      let cum = 0; const step = m.post.histStep;
+      pts = ([[0, 0], ...h.map(([key, v]) => { cum += v; return [Math.max(0, (key + step) * 1000 - t0) / DAY, cum] as [number, number]; })] as [number, number][]).filter((p) => p[0] <= 14);
+      src = 'TikTok history';
+    } else if (m.post.link) {
+      const id = normLink(m.post.link);
+      pts = sn.map((x) => [(Date.parse(x.t) - t0) / DAY, x.v[id]?.[0]] as [number, number | undefined]).filter((p): p is [number, number] => p[1] != null && p[0] >= 0 && p[0] <= 14);
+      src = 'our refreshes';
+    }
+    const fin = pts.length ? pts[pts.length - 1][1] : 0;
+    if (sinceMode === 'pct' && fin > 0) pts = pts.map((p) => [p[0], (p[1] / fin) * 100]);
+    return { m, pts, src };
   }).filter((x) => x.pts.length >= 3).sort((a, b) => Date.parse(b.m.post.postTime!) - Date.parse(a.m.post.postTime!)).slice(0, 6);
   const lc = ['#FFC63A', '#AAC3F0', '#7FD9A8', '#FF8F7A', '#B8A2FF', '#7FD0E8'];
   /* 6 weekday x slot heatmap */
@@ -105,25 +133,28 @@ export default function AnalyticsExtra() {
   for (const m of matched) { if (!m.slot || !m.post.postTime || m.post.views == null) continue; const wd = (new Date(m.post.postTime).getDay() + 6) % 7; slots.add(m.slot); const c = cell.get(`${wd}|${m.slot}`) || { s: 0, n: 0 }; c.s += m.post.views; c.n++; cell.set(`${wd}|${m.slot}`, c); }
   const slotList = [...slots].sort(), cmax = Math.max(1, ...[...cell.values()].map((c) => c.s / c.n));
   /* 7 watch vs length */
-  const sc = matched.filter((m) => m.num != null && m.post.fullWatch != null).map((m) => ({ m, len: snap.videos.find((v) => v.num === m.num)?.durationSec ?? null, y: pctNorm(m.post.fullWatch!) })).filter((x) => x.len != null) as { m: (typeof matched)[number]; len: number; y: number }[];
-  /* 8 week vs last week */
+  const sc = matched.filter((m) => m.num != null && m.post.fullWatch != null).map((m) => ({ m, len: snap.videos.find((v) => v.num === m.num)?.durationSec ?? m.post.retentionSecs ?? null, y: pctNorm(m.post.fullWatch!) })).filter((x) => x.len != null) as { m: (typeof matched)[number]; len: number; y: number }[];
+  /* 8 week vs last week (week = last 7 days incl. today) */
   const w = (metric: Metric) => { const a = daily(snap, metric, 14); return [sum(a.slice(7)), sum(a.slice(0, 7))] as const; };
-  const folAt = (off: number) => st.days.filter((d) => d.followers != null && d.date <= ymd(addDays(now, off))).pop()?.followers;
-  const f0 = folAt(-14), f1 = folAt(-7), f2 = folAt(0);
+  const nfIn = (from: number, to: number) => { const r = days.filter((d) => d.newFollowers != null && d.date >= ymd(addDays(now, from)) && d.date <= ymd(addDays(now, to))); return r.length >= 4 ? r.reduce((x, d) => x + d.newFollowers!, 0) : null; };
   const postsIn = (a: number, b: number) => st.posts.filter((p) => p.postTime && Date.parse(p.postTime) >= now.getTime() - a * DAY && Date.parse(p.postTime) < now.getTime() - b * DAY).length;
-  const rows8: { l: string; a: number; b: number; fmt?: (x: number) => string }[] = [
+  const rows8: { l: string; a: number | null; b: number | null }[] = [
     ...METRICS.map((m) => { const [a, b] = w(m[0]); return { l: m[1], a, b }; }),
-    { l: 'New followers', a: f2 != null && f1 != null ? f2 - f1 : 0, b: f1 != null && f0 != null ? f1 - f0 : 0 },
+    { l: 'New followers', a: nfIn(-6, 0), b: nfIn(-13, -7) },
     { l: 'Posts', a: postsIn(7, 0), b: postsIn(14, 7) },
   ];
-  /* 9 forecast */
+  /* 9 forecast: pace = average net follower gain of the last 7 finished days */
   const ni = MILESTONES.findIndex((m) => (k.followers ?? 0) < m), next = ni < 0 ? null : MILESTONES[ni];
-  const gain7 = k.followers7 ?? 0, daysTo = next && gain7 > 0 ? Math.ceil(((next - (k.followers ?? 0)) / gain7) * 7) : null;
+  const pace = k.pace, f = k.followers ?? 0;
   const pace30 = k.views7 * (30 / 7);
-  const etaDate = (d: number) => addDays(now, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-  /* 14 followers by video */
+  /* traffic: per video shares, weighted by that video's views */
+  const trafficPosts = st.posts.filter((p) => p.traffic?.length && (p.views || 0) > 0);
+  const trafficAgg = (() => { if (!trafficPosts.length) return aud?.traffic || null; const t = new Map<string, number>(); let tot = 0; for (const p of trafficPosts) { for (const x of p.traffic!) t.set(x.label, (t.get(x.label) || 0) + x.pct * p.views!); tot += 100 * p.views!; } return [...t.entries()].map(([label, v]) => ({ label, pct: Math.round((v / tot) * 1000) / 10 })).filter((x) => x.pct >= 0.1).sort((a, b) => b.pct - a.pct); })();
+  /* followers by video */
   const byFol = matched.filter((m) => (m.post.newFollowers || 0) > 0).sort((a, b) => (b.post.newFollowers || 0) - (a.post.newFollowers || 0)).slice(0, 8);
-  const card = (m: (typeof matched)[number], i: number, bad = false) => <div key={i} className="glass card" style={{ padding: 10, gap: 6, minWidth: 0 }}>
+  const hours = who === 'followers' ? (aud?.activeHours || null) : (aud?.viewerHours || aud?.activeHours || null);
+  const ageR = who === 'viewers' ? aud?.age : aud?.fAge, genR = who === 'viewers' ? aud?.gender : aud?.fGender, couR = who === 'viewers' ? aud?.countries : aud?.fCountries;
+  const card = (m: (typeof matched)[number], i: number, bad = false) => <div key={i} className="glass card" title={`${label(m)} · ${fmtNum(m.post.views)} views${m.post.fullWatch != null ? ` · ${pctNorm(m.post.fullWatch).toFixed(1)}% watched to the end` : ''}`} style={{ padding: 10, gap: 6, minWidth: 0 }}>
     <div className="row" style={{ gap: 10, alignItems: 'flex-start' }}>
       {fileUrl(m.num) ? <img src={fileUrl(m.num)} alt="" style={{ width: 44, height: 78, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }} /> : <div style={{ width: 44, height: 78, borderRadius: 8, background: 'rgba(170,195,240,.12)', flexShrink: 0 }} />}
       <div style={{ minWidth: 0, flex: 1 }}>
@@ -131,75 +162,96 @@ export default function AnalyticsExtra() {
         <div style={{ fontWeight: 800, fontSize: 20, color: bad ? 'var(--red)' : 'var(--green)' }}>{fmtNum(m.post.views)}</div>
         <div className="small dim">{m.post.fullWatch != null ? `${pctNorm(m.post.fullWatch).toFixed(0)}% watched to end` : 'views'}{m.post.avgWatch != null ? ` · ${m.post.avgWatch.toFixed(1)} s avg` : ''}</div>
       </div></div>
-    {m.post.retention && <><Spark v={m.post.retention} color={bad ? '#FF8F7A' : '#7FD9A8'} /><span className="small dim">Retention: share still watching, start to end</span></>}
+    {m.post.retention && <div title={`Retention: ${m.post.retention.map((x, j) => `${Math.round((j / Math.max(1, m.post.retention!.length - 1)) * (m.post.retentionSecs || 0))}s ${x}%`).filter((_, j) => j % 6 === 0).join(' · ')}`}><Spark v={m.post.retention} color={bad ? '#FF8F7A' : '#7FD9A8'} /><span className="small dim">Share still watching, start to end{m.post.retentionSecs ? ` (${m.post.retentionSecs} s)` : ''}</span></div>}
   </div>;
   const askFetch = isDesktop && bb.statsFetch ? <button className="btn sm" onClick={() => bb.statsFetch?.()}><Icon name="download" size={13} /> Refresh stats now</button> : null;
 
   return <>
     <section className="between" style={{ marginTop: 6 }}><h2 style={{ margin: 0 }}>More analytics</h2>
       <div className="row" style={{ gap: 6 }}>{[7, 30, 90].map((r) => <button key={r} className={`btn sm ${range === r ? 'white' : ''}`} onClick={() => setRange(r)}>{r}D</button>)}</div></section>
+    <span className="small dim">Move the mouse over any chart, bar or box to see the exact numbers. Every card says in one line what it means.</span>
 
     <section className="grid g-2">
-      <div className="glass card"><div className="between"><h2>Followers over time</h2><span style={{ fontWeight: 700, color: 'var(--green)' }}>{k.followers7 != null ? `${k.followers7 >= 0 ? '+' : ''}${k.followers7} in 7 days` : ''}</span></div>
-        {fol.length >= 2 ? <Line lines={[{ color: '#FFC63A', pts: fol }]} xl={[new Date(fol[0][0]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }), 'Today']} /> : <Empty>The curve builds up day by day, from every stats refresh.</Empty>}</div>
+      <div className="glass card"><div className="between"><h2>Followers over time</h2><span style={{ fontWeight: 700, color: 'var(--green)' }} title="Followers now minus followers 7 days ago">{k.followers7 != null ? `${k.followers7 >= 0 ? '+' : ''}${k.followers7} in 7 days` : ''}</span></div>
+        {fol.length >= 2 ? <Line lines={[{ name: 'Followers', color: '#FFC63A', pts: fol }]} fx={(x) => new Date(x).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} xl={[fd(new Date(fol[0][0])), 'Today']} /> : <Empty>The curve builds up day by day, from every stats refresh.</Empty>}
+        <Help>Your follower count at the end of each day. Older days are rebuilt from TikTok's daily follower changes.</Help></div>
       <div className="glass card"><div className="between"><h2>Daily numbers</h2>
         <div className="row" style={{ gap: 5, flexWrap: 'wrap' }}>{METRICS.map((m) => <button key={m[0]} className={`btn sm ${metrics.includes(m[0]) ? 'white' : ''}`} onClick={() => setMetrics((x) => (x.includes(m[0]) ? (x.length > 1 ? x.filter((y) => y !== m[0]) : x) : [...x, m[0]]))}>{m[1]}</button>)}</div></div>
-        <Line lines={series.map(({ m, d }) => ({ color: m[2], pts: d.map((x, i) => [i, x.v] as [number, number]) }))} xl={[addDays(now, -range + 1).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }), 'Today']} />
-        <span className="small dim">{series.some((s) => s.d.some((x) => x.has)) ? 'Each metric is scaled to the biggest value shown.' : 'Fills from the CSV or after two stats refreshes.'}</span></div>
+        <Line lines={series.map(({ m, d }) => ({ name: m[1], color: m[2], pts: d.map((x, i) => [i, x.v] as [number, number]) }))} fx={(x) => dayLabel(Math.round(x), range)} xl={[fd(addDays(now, -range + 1)), 'Today']} />
+        <Help>{series.some((s) => s.d.some((x) => x.has)) ? 'One line per metric (the lines share one scale, so views dwarf likes). Days TikTok has no numbers for yet show as 0.' : 'Fills from the CSV or after two stats refreshes.'}</Help></div>
     </section>
 
     <section className="grid g-2">
-      <div className="glass card"><div className="between"><h2>Engagement per post</h2><span className="small dim">likes + comments + shares + saves per view · last 20</span></div>
-        {eng.length ? <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 130 }}>{eng.map((e, i) => { const mx = Math.max(...eng.map((x) => x.rate)); return <div key={i} title={`${label(e.m)}: ${e.rate.toFixed(1)}%`} style={{ flex: 1, height: Math.max(4, (e.rate / mx) * 120), background: kColor(e.m.konzept), borderRadius: 6, opacity: 0.9 }} />; })}</div> : <Empty>Needs posts with views and post time.</Empty>}
-        {eng.length > 0 && <div className="small dim">Colour = Konzept · best {Math.max(...eng.map((e) => e.rate)).toFixed(1)}% · average {(eng.reduce((s, e) => s + e.rate, 0) / eng.length).toFixed(1)}%</div>}</div>
+      <div className="glass card"><div className="between"><h2>Engagement per post</h2><span className="small dim">last 20 posts</span></div>
+        {eng.length ? <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 130 }}>{eng.map((e, i) => { const mx = Math.max(...eng.map((x) => x.rate)); return <div key={i} title={`${label(e.m)}: ${e.rate.toFixed(1)}% (${fmtNum(e.m.post.views)} views)`} style={{ flex: 1, height: Math.max(4, (e.rate / mx) * 120), background: kColor(e.m.konzept), borderRadius: 6, opacity: 0.9 }} />; })}</div> : <Empty>Needs posts with views and post time.</Empty>}
+        {eng.length > 0 && <div className="small dim">Colour = Konzept · best {Math.max(...eng.map((e) => e.rate)).toFixed(1)}% · average {(eng.reduce((s, e) => s + e.rate, 0) / eng.length).toFixed(1)}%</div>}
+        <Help>(likes + comments + shares + saves) ÷ views, per video. Higher = the video made people react, not only watch.</Help></div>
       <div className="glass card"><h2>Week vs. last week</h2>
-        <table className="t"><thead><tr><th></th><th>This week</th><th>Last week</th><th></th></tr></thead><tbody>{rows8.map((r) => <tr key={r.l}><td>{r.l}</td><td><b>{fmtNum(r.a)}</b></td><td className="dim">{fmtNum(r.b)}</td><td>{arrow(r.a, r.b)}</td></tr>)}</tbody></table></div>
+        <table className="t"><thead><tr><th></th><th>This week</th><th>Last week</th><th></th></tr></thead><tbody>{rows8.map((r) => <tr key={r.l} title={`${r.l}: ${r.a == null ? 'no data' : fmtNum(r.a)} in the last 7 days vs ${r.b == null ? 'no data' : fmtNum(r.b)} in the 7 days before`}><td>{r.l}</td><td><b>{r.a == null ? '–' : fmtNum(r.a)}</b></td><td className="dim">{r.b == null ? '–' : fmtNum(r.b)}</td><td>{r.a != null && r.b != null ? arrow(r.a, r.b) : <span className="dim">–</span>}</td></tr>)}</tbody></table>
+        <Help>This week = the last 7 days including today. "–" = TikTok gave no number for that week yet. The arrow shows up only when last week had at least 10.</Help></div>
     </section>
 
     <section className="glass card"><div className="between"><h2>Top and weakest videos</h2><span className="small dim">by views</span></div>
       {top.length ? <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))' }}>{top.map((m, i) => card(m, i))}{flop.map((m, i) => card(m, i + 10, true))}</div> : <Empty>Needs posts with views.</Empty>}
-      {top.length > 0 && !top.some((m) => m.post.retention) && <span className="small dim">Retention curves appear here once the stats fetch has read them from TikTok Studio (needs the TikTok login).</span>}</section>
+      <Help>Green = best 3, red = weakest 3. The small curve is the retention: how many viewers are still watching at each second (100% at the start). A steep drop in the first seconds = weak hook.</Help></section>
 
     <section className="grid g-2">
-      <div className="glass card"><div className="between"><h2>Views since posting</h2><span className="small dim">first 7 days, last 6 videos</span></div>
-        {since.length ? <><Line lines={since.map((s, i) => ({ color: lc[i], pts: s.pts }))} xl={['Posted', '7 days']} /><div className="row small" style={{ gap: 10, flexWrap: 'wrap' }}>{since.map((s, i) => <span key={i} className="row" style={{ gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: lc[i] }} />{label(s.m)}</span>)}</div></> : <Empty>The stats refresh runs every 30 min. After a few runs, one line per video shows how fast it grows.</Empty>}</div>
+      <div className="glass card"><div className="between"><h2>Views since posting</h2>
+        <div className="row" style={{ gap: 5 }}><button className={`btn sm ${sinceMode === 'abs' ? 'white' : ''}`} onClick={() => setSinceMode('abs')}>Views</button><button className={`btn sm ${sinceMode === 'pct' ? 'white' : ''}`} onClick={() => setSinceMode('pct')}>% of total</button></div></div>
+        {since.length ? <><Line lines={since.map((x, i) => ({ name: label(x.m), color: lc[i], pts: x.pts }))} fx={(x) => `${x < 1 ? `${Math.round(x * 24)} h` : `${x.toFixed(1)} days`} after posting`} fy={sinceMode === 'pct' ? (y) => y.toFixed(0) : fmtNum} unit={sinceMode === 'pct' ? '%' : ''} xl={['Posted', 'days after posting →']} /><div className="row small" style={{ gap: 10, flexWrap: 'wrap' }}>{since.map((x, i) => <span key={i} className="row" title={`${label(x.m)} · source: ${x.src}`} style={{ gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: lc[i] }} />{label(x.m)}</span>)}</div></> : <Empty>Needs the stats refresh with the TikTok login. Every video then shows how fast it collects views.</Empty>}
+        <Help>Running total of views per video after it went online (last 6 videos). "% of total" shows how fast a video gets its views, even if one is much bigger. TikTok only keeps hourly numbers for the first days and daily numbers for about a week, so older videos start later.</Help></div>
       <div className="glass card"><div className="between"><h2>Weekday and slot</h2><span className="small dim">average views</span></div>
         {slotList.length ? <div style={{ display: 'grid', gridTemplateColumns: `38px repeat(${slotList.length}, 1fr)`, gap: 5, alignItems: 'center' }}>
           <span />{slotList.map((s) => <span key={s} className="small dim num" style={{ textAlign: 'center' }}>{s}</span>)}
-          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, wd) => <React.Fragment key={d}><span className="small dim">{d}</span>{slotList.map((s) => { const c = cell.get(`${wd}|${s}`); const a = c ? c.s / c.n : 0; return <div key={s} title={c ? `${fmtNum(Math.round(a))} avg views · ${c.n} post${c.n > 1 ? 's' : ''}` : 'no posts'} style={{ height: 26, borderRadius: 7, background: c ? `rgba(255,198,58,${0.12 + 0.8 * (a / cmax)})` : 'rgba(var(--wrgb),.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--text)' }}>{c ? fmtNum(Math.round(a)) : ''}</div>; })}</React.Fragment>)}
-        </div> : <Empty>Fills once posts are matched to slots and post times.</Empty>}</div>
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, wd) => <React.Fragment key={d}><span className="small dim">{d}</span>{slotList.map((s) => { const c = cell.get(`${wd}|${s}`); const a = c ? c.s / c.n : 0; return <div key={s} title={c ? `${d} ${s}: ${fmtNum(Math.round(a))} avg views · ${c.n} post${c.n > 1 ? 's' : ''}` : `${d} ${s}: no posts`} style={{ height: 26, borderRadius: 7, background: c ? `rgba(255,198,58,${0.12 + 0.8 * (a / cmax)})` : 'rgba(var(--wrgb),.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--text)' }}>{c ? fmtNum(Math.round(a)) : ''}</div>; })}</React.Fragment>)}
+        </div> : <Empty>Fills once posts are matched to slots and post times.</Empty>}
+        <Help>Average views of the videos posted at that weekday and time. Brighter = more views. One viral video can colour a whole cell, so look at the post count in the hover box.</Help></div>
     </section>
 
     <section className="grid g-2">
       <div className="glass card"><div className="between"><h2>Watched to the end vs. length</h2><span className="small dim">each dot = a video</span></div>
-        {sc.length >= 2 ? (() => { const lx = Math.max(...sc.map((s) => s.len)), vx = Math.max(...sc.map((s) => s.m.post.views || 1)); return <><svg viewBox="0 0 300 150" style={{ width: '100%', height: 150 }} role="img">
+        {sc.length >= 2 ? (() => { const lx = Math.max(...sc.map((s) => s.len)), vx = Math.max(...sc.map((s) => s.m.post.views || 1)), my = Math.max(10, ...sc.map((s) => s.y)); return <><svg viewBox="0 0 300 150" style={{ width: '100%', height: 150 }} role="img">
           <line x1="22" y1="130" x2="296" y2="130" stroke="rgba(170,195,240,.25)" /><line x1="22" y1="8" x2="22" y2="130" stroke="rgba(170,195,240,.25)" />
-          {sc.map((s, i) => <circle key={i} cx={22 + (s.len / lx) * 262} cy={130 - (Math.min(100, s.y) / 100) * 118} r={4 + ((s.m.post.views || 0) / vx) * 9} fill={kColor(s.m.konzept)} fillOpacity=".75"><title>{`${label(s.m)}: ${s.len.toFixed(0)} s, ${s.y.toFixed(0)}% watched, ${fmtNum(s.m.post.views)} views`}</title></circle>)}
-          <text x="4" y="14" fontSize="9" fill="currentColor" opacity=".5">100%</text><text x="296" y="143" fontSize="9" textAnchor="end" fill="currentColor" opacity=".5">{lx.toFixed(0)} s</text></svg><span className="small dim">Up = more people watch to the end · right = longer video · size = views</span></>; })() : <Empty>Needs video length and the watched-to-end rate of at least 2 videos.</Empty>}</div>
+          {sc.map((s, i) => <circle key={i} cx={22 + (s.len / lx) * 262} cy={130 - (Math.min(my, s.y) / my) * 118} r={4 + ((s.m.post.views || 0) / vx) * 9} fill={kColor(s.m.konzept)} fillOpacity=".75"><title>{`${label(s.m)}: ${s.len.toFixed(0)} s long, ${s.y.toFixed(1)}% watched to the end, ${fmtNum(s.m.post.views)} views`}</title></circle>)}
+          <text x="4" y="14" fontSize="9" fill="currentColor" opacity=".5">{my.toFixed(0)}%</text><text x="296" y="143" fontSize="9" textAnchor="end" fill="currentColor" opacity=".5">{lx.toFixed(0)} s</text></svg></>; })() : <Empty>Needs the watched-to-the-end rate of at least 2 videos (stats refresh with login).</Empty>}
+        <Help>Up = more people watch to the very end. Right = longer video. Bigger dot = more views. The scale goes up to the best video, not to 100%.</Help></div>
       <div className="glass card"><h2>Forecast</h2>
         <div className="small" style={{ display: 'flex', flexDirection: 'column', gap: 9, lineHeight: 1.5 }}>
-          <span>{next ? <>Next milestone <b>{fmtNum(next)} followers</b>: {daysTo ? <>about <b>{etaDate(daysTo)}</b> ({daysTo} days) at this week's pace of {gain7}/week</> : <span className="dim">needs a positive week to estimate</span>}</> : 'All milestones reached.'}</span>
+          <span title="Average net follower gain of the last 7 finished days">Pace: {pace.perDay != null ? <><b>{pace.perDay >= 0 ? '+' : ''}{pace.perDay.toFixed(1)} followers/day</b> <span className="dim">({pace.total >= 0 ? '+' : ''}{pace.total} in the last {pace.days} days)</span></> : <span className="dim">needs 4+ days of follower numbers</span>}</span>
+          {pace.spiky && <span style={{ color: 'var(--yellow-text)' }}>One day gave {pace.best} of {pace.total} followers. A viral spike is not a steady pace, so read the dates below as a rough guide.</span>}
+          <span>{next ? <>Next milestone <b>{fmtNum(next)}</b>: {etaText(next - f, pace.perDay, now)}</> : 'All milestones reached.'}</span>
+          <span>Creator Rewards followers <b>{fmtNum(f)} / 10K</b>: {f >= 10000 ? 'reached' : etaText(10000 - f, pace.perDay, now)}</span>
           <span>Creator Rewards views (30 days): <b>{fmtNum(Math.round(pace30))}</b> at this week's pace, target 100K. {pace30 >= 100000 ? <b style={{ color: 'var(--green)' }}>On track.</b> : <span className="dim">Needs {fmtNum(Math.max(0, Math.round((100000 - k.views30) / 30)))} more views per day.</span>}</span>
-          <span>Creator Rewards followers: <b>{fmtNum(k.followers ?? 0)}</b> / 10K{(k.followers ?? 0) < 10000 && gain7 > 0 ? <> · about <b>{etaDate(Math.ceil(((10000 - (k.followers ?? 0)) / gain7) * 7))}</b></> : null}</span>
-        </div></div>
+        </div>
+        <Help>Simple maths: followers still missing ÷ average daily gain of the last 7 finished days. It is a straight line, not a prediction. Without 4 days of data it says so instead of guessing.</Help></div>
     </section>
 
     <section className="between"><h2 style={{ margin: 0 }}>Audience and traffic</h2>{askFetch}</section>
     <section className="grid g-2">
-      <div className="glass card"><h2>Traffic sources</h2>{aud?.traffic?.length ? <Donut rows={aud.traffic} /> : <Empty>Read from TikTok Studio by the stats refresh. Needs the TikTok login once ("Fetch automatically").</Empty>}</div>
-      <div className="glass card"><h2>Active hours of your followers</h2>
-        {aud?.activeHours ? <><div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 100 }}>{aud.activeHours.map((v, h) => <div key={h} title={`${h}:00 · ${v}%`} style={{ flex: 1, height: Math.max(3, v), background: v >= 90 ? 'var(--yellow)' : 'rgba(170,195,240,.4)', borderRadius: 3 }} />)}</div>
+      <div className="glass card"><h2>Where views come from</h2>{trafficAgg?.length ? <Donut rows={trafficAgg} /> : <Empty>Read from TikTok Studio by the stats refresh. Needs the TikTok login once ("Fetch automatically").</Empty>}
+        <Help>Share of views by source, added up over all videos (a big video counts more). "For You" = TikTok recommended it. "Personal Profile" = people came from your profile.</Help></div>
+      <div className="glass card"><div className="between"><h2>Active hours</h2>
+        <div className="row" style={{ gap: 5 }}><button className={`btn sm ${who === 'viewers' ? 'white' : ''}`} onClick={() => setWho('viewers')}>Viewers</button><button className={`btn sm ${who === 'followers' ? 'white' : ''}`} onClick={() => setWho('followers')}>Followers</button></div></div>
+        {hours ? <><div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 100 }}>{hours.map((v, h) => <div key={h} title={`${h}:00–${h}:59 · ${v}% of the busiest hour`} style={{ flex: 1, height: Math.max(3, v), background: v >= 90 ? 'var(--yellow)' : 'rgba(170,195,240,.4)', borderRadius: 3 }} />)}</div>
           <div className="between small dim"><span>0:00</span><span>12:00</span><span>23:00</span></div>
-          <span className="small muted">Busiest: {[...aud.activeHours.map((v, h) => [v, h] as const)].sort((a, b) => b[0] - a[0]).slice(0, 3).map((x) => `${x[1]}:00`).join(', ')}. Compare with your slots 12:30 · 15:30 · 18:30 · 21:00.</span></> : <Empty>Appears after the stats refresh reads the Followers page.</Empty>}</div>
+          <span className="small muted">Busiest: {[...hours.map((v, h) => [v, h] as const)].sort((a, b) => b[0] - a[0]).slice(0, 3).map((x) => `${x[1]}:00`).join(', ')}. Your slots: 12:30 · 15:30 · 18:30 · 21:00.</span></> : <Empty>Appears after the stats refresh reads the Followers / Viewers page.</Empty>}
+        <Help>When your {who} are on TikTok (your local time). The tallest bar is 100%. Post a little before the busy hours.</Help></div>
     </section>
     <section className="grid g-2">
-      <div className="glass card"><h2>Who watches</h2>{aud && (aud.age?.length || aud.gender?.length || aud.countries?.length) ? <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {aud.age?.length ? <div><div className="small dim" style={{ marginBottom: 6 }}>Age</div><Bars unit="%" rows={aud.age.map((a) => ({ label: a.label, v: a.pct }))} /></div> : null}
-        {aud.gender?.length ? <div><div className="small dim" style={{ marginBottom: 6 }}>Gender</div><Bars unit="%" rows={aud.gender.map((a) => ({ label: a.label, v: a.pct, color: '#FFC63A' }))} /></div> : null}
-        {aud.countries?.length ? <div><div className="small dim" style={{ marginBottom: 6 }}>Top countries</div><Bars unit="%" rows={aud.countries.slice(0, 6).map((a) => ({ label: a.label, v: a.pct, color: '#7FD9A8' }))} /></div> : null}
-      </div> : <Empty>Appears after the stats refresh reads the Viewers page.</Empty>}</div>
-      <div className="glass card"><div className="between"><h2>Followers won per video</h2><span className="small dim">new followers</span></div>
-        {byFol.length ? <Bars rows={byFol.map((m) => ({ label: label(m), v: m.post.newFollowers || 0, color: kColor(m.konzept), sub: `+${m.post.newFollowers}` }))} /> : <Empty>Needs the per-video numbers from TikTok Studio (new followers per video).</Empty>}</div>
+      <div className="glass card"><div className="between"><h2>Who {who === 'viewers' ? 'watches' : 'follows'}</h2>
+        <div className="row" style={{ gap: 5 }}><button className={`btn sm ${who === 'viewers' ? 'white' : ''}`} onClick={() => setWho('viewers')}>Viewers</button><button className={`btn sm ${who === 'followers' ? 'white' : ''}`} onClick={() => setWho('followers')}>Followers</button></div></div>
+        {ageR?.length || genR?.length || couR?.length ? <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {ageR?.length ? <div><div className="small dim" style={{ marginBottom: 6 }}>Age</div><Bars unit="%" rows={[...ageR].sort((a, b) => a.label.localeCompare(b.label)).map((a) => ({ label: a.label, v: a.pct }))} /></div> : null}
+          {genR?.length ? <div><div className="small dim" style={{ marginBottom: 6 }}>Gender</div><Bars unit="%" rows={genR.map((a) => ({ label: a.label, v: a.pct, color: '#FFC63A' }))} /></div> : null}
+          {couR?.length ? <div><div className="small dim" style={{ marginBottom: 6 }}>Top countries</div><Bars unit="%" rows={couR.slice(0, 8).map((a) => ({ label: country(a.label), v: a.pct, color: '#7FD9A8' }))} /></div> : null}
+        </div> : <Empty>Appears after the stats refresh reads the Viewers / Followers page.</Empty>}
+        <Help>Percent of {who} (last 7 days for viewers). With only about {fmtNum(k.followers ?? 0)} followers the follower numbers are small, so they jump around.</Help></div>
+      <div className="glass card"><div className="between"><h2>New vs. returning viewers</h2><span className="small dim">per day</span></div>
+        {aud?.viewers?.length ? <><Bars rows={[...aud.viewers].sort((a, b) => b.ago - a.ago).map((x) => ({ label: fd(addDays(now, -x.ago)), v: x.total, color: '#AAC3F0', sub: `${fmtNum(x.total)} · ${x.total ? Math.round((x.fresh / x.total) * 100) : 0}% new` }))} /></> : <Empty>Appears after the stats refresh reads the Viewers page.</Empty>}
+        <Help>Different people who watched on each day. "% new" = never watched you before. Yesterday is missing while TikTok is still counting.{aud?.uniqueViewers != null ? ` Last 7 days together: ${fmtNum(aud.uniqueViewers)} people.` : ''}</Help></div>
     </section>
+    <section className="glass card"><div className="between"><h2>Followers won per video</h2><span className="small dim">new followers</span></div>
+      {byFol.length ? <Bars rows={byFol.map((m) => ({ label: label(m), v: m.post.newFollowers || 0, color: kColor(m.konzept), sub: `+${m.post.newFollowers}` }))} /> : <Empty>No video has won followers in the window TikTok reports (hours to days after posting), or the per-video numbers are not read yet.</Empty>}
+      <Help>Followers gained from each video in TikTok's report window. Compare with the account total: followers can also come from older videos or the profile.</Help></section>
   </>;
 }
