@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('bb', {
   getSnapshot: () => ipcRenderer.invoke('snapshot'),
   saveState: (s) => ipcRenderer.invoke('save', s),
   onChange: (cb) => on('changed', cb),
+  scheduleOpen: (i) => ipcRenderer.invoke('scheduleOpen', i),
+  onScheduleDone: (cb) => on('scheduleDone', cb),
   uploadPack: (n) => ipcRenderer.invoke('uploadPack', n),
   copyText: (t) => ipcRenderer.invoke('copy', t),
   openUrl: (u) => ipcRenderer.invoke('openUrl', u),

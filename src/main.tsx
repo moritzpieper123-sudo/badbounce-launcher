@@ -11,7 +11,8 @@ import { Gate, ShareSheet } from './cloud/Gate';
 import { cloudConfigured } from './cloud/client';
 import { listenPhone, syncTick } from './cloud/pcSync';
 import { useRef } from 'react';
-import { csvDue, bufferInfo, allTasks, ymd, applyFetch } from './logic';
+import { csvDue, bufferInfo, allTasks, ymd, applyFetch, vn } from './logic';
+import { markUploaded } from './actions';
 import type { AppState, Snapshot } from './types';
 import type { CsvStatus } from './bridge';
 import { importCsvTexts } from './csvImport';
@@ -66,8 +67,11 @@ function App() {
   const toast = useCallback((m: string) => setMsg(m), []);
   // background CSV fetch: status + the files it brings back
   const updRef = useRef(update); updRef.current = update;
+  const snapRef0 = useRef(snap); snapRef0.current = snap;
   useEffect(() => bb.onCsvStatus?.((st) => { setCsv(st); if (st.state === 'error' || st.state === 'login' || st.state === 'needs-you') setMsg(st.msg); }), []);
   useEffect(() => bb.onCsvFiles?.(async (files) => { await importCsvTexts(files, updRef.current, setMsg); }), []);
+  // assisted scheduling: Studio showed the content list = the video is scheduled; it fills its slot
+  useEffect(() => bb.onScheduleDone?.(async (num) => { const s0 = snapRef0.current; if (s0 && !s0.state.uploads[String(num)]) { await updRef.current(markUploaded(s0, num)); setMsg(`#${vn(num)} marked as scheduled`); } }), []);
   // live stats fetch (no CSV): per-video numbers + follower count, merged like a CSV
   useEffect(() => bb.onStatsPosts?.(async (r) => { await updRef.current((st) => ({ ...st, stats: applyFetch(st.stats, r) })); }), []);
   useEffect(() => bb.onStatsStatus?.((st) => { if (st.state === 'error') setMsg(st.msg); }), []);
