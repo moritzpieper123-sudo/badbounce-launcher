@@ -374,10 +374,21 @@ export function mergeStats(old: Stats, res: CsvResult[]): Stats {
   return { ...old, importedAt: new Date().toISOString(), days: [...days.values()].sort((a, b) => a.date.localeCompare(b.date)), posts: [...posts.values()] };
 }
 
-/** Live stats fetch result -> stats: posts, today's follower count, a snapshot for the growth curves, audience data. */
+/** Live stats fetch result -> stats: posts, today's follower count, a snapshot for the growth curves, audience data.
+ *  TikTok's net-follower history (16 days) fills the new-followers per day and rebuilds the follower curve backwards from today's count. */
 export function applyFetch(old: Stats, r: { posts: PostStat[]; followers?: number; at: string; audience?: import('./types').Audience }): Stats {
-  const today = r.at.slice(0, 10);
-  const res: CsvResult = { kind: 'posts', days: r.followers != null ? [{ date: today, followers: r.followers }] : [], posts: r.posts, found: [], rows: r.posts.length };
+  const at = new Date(r.at), today = ymd(at);
+  const have = new Map(old.days.map((d) => [d.date, d] as const));
+  const extra = new Map<string, DayStat>();
+  const put = (date: string, f: Partial<DayStat>) => { const o = have.get(date), e = extra.get(date) || { date }; for (const [k, v] of Object.entries(f)) if (v !== undefined && (o as any)?.[k] === undefined) (e as any)[k] = v; extra.set(date, e); };
+  const nf = r.audience?.netFollowers, now = r.followers ?? r.audience?.followerNum;
+  if (nf?.length) for (const x of nf) {
+    if (x.ago < 1) continue; // today is still running
+    const date = ymd(addDays(at, -x.ago));
+    const after = nf.filter((y) => y.ago < x.ago).reduce((sum, y) => sum + y.n, 0); // gains after the end of that day
+    put(date, { newFollowers: x.n, followers: now != null ? now - after : undefined });
+  }
+  const res: CsvResult = { kind: 'posts', days: [...(r.followers != null ? [{ date: today, followers: r.followers }] : []), ...extra.values()], posts: r.posts, found: [], rows: r.posts.length };
   const st = mergeStats(old, [res]);
   const v: Record<string, number[]> = {};
   for (const p of r.posts) if (p.link) v[normLink(p.link)] = [p.views ?? 0, p.likes ?? 0, p.comments ?? 0, p.shares ?? 0, p.saves ?? 0];
@@ -411,12 +422,37 @@ export const normLink = (s: string) => { const m = s.match(/video\/(\d+)/); retu
 
 /** CSVs give watch rates as 35.2 or 0.352: always return percent */
 export const pctNorm = (v: number) => (v <= 1 ? v * 100 : v);
+/** TikTok's CSV sometimes repeats yesterday's row for a day it has no numbers for yet: such a row is treated as "no data". */
+export function cleanDays(days: DayStat[]): DayStat[] {
+  return days.map((d, i) => {
+    const p = days[i - 1];
+    const same = p && (d.views || 0) > 0 && d.views === p.views && d.likes === p.likes && d.comments === p.comments && d.shares === p.shares && parseYmd(d.date).getTime() - parseYmd(p.date).getTime() === 86400000;
+    return same ? { date: d.date, followers: d.followers, newFollowers: d.newFollowers } : d;
+  });
+}
+/** Follower pace per day = average net gain of the last 7 finished days (needs 4+ days with a number). Spiky = one day made over 60 %. */
+export function followerPace(snap: Snapshot) {
+  const now = new Date(snap.now), days = snap.state.stats.days;
+  const w = days.filter((d) => d.newFollowers != null && d.date >= ymd(addDays(now, -7)) && d.date < ymd(now));
+  if (w.length < 4) return { perDay: null as number | null, days: w.length, total: 0, spiky: false, best: 0 };
+  const total = w.reduce((s, d) => s + d.newFollowers!, 0), best = Math.max(...w.map((d) => d.newFollowers!));
+  return { perDay: total / w.length, days: w.length, total, spiky: total > 10 && best / total > 0.6, best };
+}
+/** "in 3 weeks" style estimate; honest about long / impossible ETAs */
+export function etaText(remaining: number, perDay: number | null, now: Date) {
+  if (remaining <= 0) return 'reached';
+  if (perDay == null) return 'needs 4+ days of follower numbers';
+  if (perDay <= 0) return 'no growth in the last 7 days';
+  const d = Math.ceil(remaining / perDay);
+  if (d > 730) return 'more than 2 years at this pace';
+  return `about ${addDays(now, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: d > 300 ? 'numeric' : undefined })} (${d < 14 ? `${d} days` : d < 120 ? `${Math.round(d / 7)} weeks` : `${Math.round(d / 30)} months`})`;
+}
 export function kpis(snap: Snapshot) {
   const now = new Date(snap.now);
-  const days = snap.state.stats.days;
+  const days = cleanDays(snap.state.stats.days);
   const withF = days.filter((d) => d.followers != null);
   const followers = withF.length ? withF[withF.length - 1].followers! : null;
-  const f7 = withF.length ? withF.filter((d) => d.date <= ymd(addDays(now, -7))).pop()?.followers ?? withF[0].followers! : null;
+  const old7 = withF.filter((d) => d.date <= ymd(addDays(now, -7))).pop()?.followers; // only a real value from 7+ days ago counts
   const sumViews = (from: Date, to: Date) => days.filter((d) => d.date >= ymd(from) && d.date <= ymd(to)).reduce((s, d) => s + (d.views || 0), 0);
   const views30 = sumViews(addDays(now, -29), now);
   const views7 = sumViews(addDays(now, -6), now), viewsPrev7 = sumViews(addDays(now, -13), addDays(now, -7));
@@ -425,12 +461,18 @@ export function kpis(snap: Snapshot) {
   const per1k = (k: keyof PostStat) => (pv ? (posts.reduce((s, p) => s + ((p[k] as number) || 0), 0) / pv) * 1000 : null);
   const fullW = posts.filter((p) => p.fullWatch != null);
   const avgW = posts.filter((p) => p.avgWatch != null);
-  const newF = days.filter((d) => d.date >= ymd(addDays(now, -29))).reduce((s, d) => s + (d.newFollowers || 0), 0);
+  const both = days.filter((d) => d.date >= ymd(addDays(now, -29)) && d.date < ymd(now) && (d.views || 0) > 0 && d.newFollowers != null);
+  const pf = posts.filter((p) => p.newFollowers != null && (p.views || 0) > 0);
+  const bothViews = both.reduce((s, d) => s + d.views!, 0), pfViews = pf.reduce((s, p) => s + p.views!, 0);
+  let followersPer1k: number | null = null, per1kBasis = '';
+  if (both.length >= 3 && bothViews > 0) { followersPer1k = (both.reduce((s, d) => s + d.newFollowers!, 0) / bothViews) * 1000; per1kBasis = `${both.length} days with both numbers`; }
+  else if (pf.length >= 3 && pfViews > 0) { followersPer1k = (pf.reduce((s, p) => s + p.newFollowers!, 0) / pfViews) * 1000; per1kBasis = `${pf.length} videos`; }
+  const pace = followerPace(snap);
   return {
-    followers, followers7: followers != null && f7 != null ? followers - f7 : null,
+    followers, followers7: followers != null && old7 != null ? followers - old7 : pace.perDay != null ? Math.round(pace.perDay * 7) : null, pace,
     views30, views7, viewsPrev7,
     sharesPer1k: per1k('shares'), savesPer1k: per1k('saves'),
-    followersPer1k: views30 ? (newF / views30) * 1000 : null,
+    followersPer1k, per1kBasis,
     fullWatch: fullW.length ? fullW.reduce((s, p) => s + pctNorm(p.fullWatch!), 0) / fullW.length : null,
     avgWatch: avgW.length ? avgW.reduce((s, p) => s + p.avgWatch!, 0) / avgW.length : null,
     hasData: days.length > 0 || posts.length > 0,

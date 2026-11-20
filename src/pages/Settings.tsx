@@ -4,12 +4,13 @@ import { Header } from './parts';
 import { bb, isDesktop, type ProgressInfo } from '../bridge';
 import { SyncCard } from '../cloud/SyncCard';
 import type { Settings as S } from '../types';
-import { sfxOn, setSfx } from '../sfx';
+import { sfxOn, setSfx, sfxTheme, setSfxTheme, SFX_THEMES, type SfxTheme } from '../sfx';
 import { MODES, setMode, sunTimes, useTheme, type Mode } from '../theme';
 
 function Appearance() {
   const { mode, theme } = useTheme();
   const [snd, setSnd] = React.useState(sfxOn());
+  const [sth, setSth] = React.useState<SfxTheme>(sfxTheme());
   const t = sunTimes(new Date()), f = (d: Date) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const shift = (d: Date, m: number) => new Date(d.getTime() + m * 60e3);
   const label: Record<Mode, string> = { auto: 'Auto', dark: 'Dark', medium: 'Medium', light: 'Light' };
@@ -17,6 +18,7 @@ function Appearance() {
     <div className="between"><h2>Appearance</h2><span className="small dim">Now: {theme === 'dark' ? 'night' : theme === 'medium' ? 'dusk' : 'day'}</span></div>
     <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>{MODES.map((m) => <button key={m} className={`btn sm ${mode === m ? 'white' : ''}`} onClick={() => setMode(m)}>{label[m]}</button>)}</div>
     <label className="row" style={{ justifyContent: 'space-between', cursor: 'pointer' }}><span><b>UI sounds</b><div className="small dim">Soft ticks on buttons and moving tasks, a bell for finished uploads</div></span><input type="checkbox" checked={snd} onChange={(e) => { setSnd(e.target.checked); setSfx(e.target.checked); }} style={{ width: 20, height: 20, accentColor: '#FFC63A' }} /></label>
+    <label className="f">Sound theme<select className="in" value={sth} onChange={(e) => { const t = e.target.value as SfxTheme; setSth(t); setSfxTheme(t); }}>{SFX_THEMES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}</select><span className="small dim">Plays a click, a drop and a done sound when you pick one. Library: UI SFX, CC0.</span></label>
     <div className="small muted" style={{ lineHeight: 1.6 }}>Auto follows the sun in Hamm (NRW). Today: sunrise {f(t.rise)}, sunset {f(t.set)}.<br />Dark until {f(shift(t.rise, -45))} · medium until {f(shift(t.rise, 45))} · light until {f(shift(t.set, -45))} · medium until {f(shift(t.set, 45))} · then dark.</div>
   </div>;
 }

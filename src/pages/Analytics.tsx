@@ -1,7 +1,7 @@
 import gsap from 'gsap';
 import React, { useRef, useEffect, useState } from 'react';
 import { useApp } from '../ctx';
-import { addDays, consistency, fmtNum, konzeptTable, kpis, MILESTONES, slotTable, weeklyReview, ymd, KONZEPTE, kColor, type CsvResult } from '../logic';
+import { addDays, cleanDays, consistency, etaText, fmtNum, konzeptTable, kpis, MILESTONES, slotTable, weeklyReview, ymd, KONZEPTE, kColor, type CsvResult } from '../logic';
 import { Header } from './parts';
 import { Icon, Rings, Count } from '../ui';
 import { bb, isDesktop } from '../bridge';
@@ -16,7 +16,7 @@ export default function Analytics() {
   const [last, setLast] = useState<CsvResult[] | null>(null);
   const now = new Date(snap.now);
   const k = kpis(snap), kt = konzeptTable(snap), sl = slotTable(snap), cons = consistency(snap, 35), rev = weeklyReview(snap);
-  const days = snap.state.stats.days;
+  const days = cleanDays(snap.state.stats.days);
   const series = Array.from({ length: range }, (_, i) => { const d = addDays(now, i - range + 1); return { d, v: days.find((x) => x.date === ymd(d))?.views ?? 0 }; });
   const maxV = Math.max(1, ...series.map((s) => s.v));
   const maxSlot = Math.max(1, ...sl.map((s) => s.avg));
@@ -58,7 +58,7 @@ export default function Analytics() {
         <span className="small dim">Views in 30 days · only videos over 1 min pay</span>
       </div>
       <div className="glass card kpi"><span className="l">Views · last 7 days</span><span className="v"><Count value={k.hasData ? k.views7 : null} format={fmtNum} /></span><span className="small" style={{ color: k.views7 >= k.viewsPrev7 ? 'var(--green)' : 'var(--red)' }}>{k.viewsPrev7 >= 100 ? `${k.views7 >= k.viewsPrev7 ? '+' : ''}${(((k.views7 - k.viewsPrev7) / k.viewsPrev7) * 100).toFixed(0)}% vs previous week` : <span className="dim">No previous week to compare yet</span>}</span></div>
-      <div className="glass card kpi"><span className="l">New followers per 1K views</span><span className="v">{k.followersPer1k != null ? k.followersPer1k.toFixed(1) : '–'}</span><span className="small dim">How well views turn into followers</span></div>
+      <div className="glass card kpi" title="Every 1,000 views bring this many new followers. Higher = the videos make people follow."><span className="l">New followers per 1K views</span><span className="v">{k.followersPer1k != null ? k.followersPer1k.toFixed(1) : '–'}</span><span className="small dim" title="New followers ÷ views × 1000. Example: 2.0 = 2 new followers per 1,000 views.">{k.followersPer1k != null ? `Based on ${k.per1kBasis}` : 'Needs 3+ days (or videos) with follower numbers'}</span></div>
       <div className="glass card kpi"><span className="l">Shares · saves per 1K views</span><span className="v">{k.sharesPer1k != null ? k.sharesPer1k.toFixed(1) : '–'}<span className="dim" style={{ fontWeight: 500 }}> · </span>{k.savesPer1k != null ? k.savesPer1k.toFixed(1) : '–'}</span><span className="small dim">Stronger reach signal than likes</span></div>
       <div className="glass card kpi"><span className="l">Watched to the end</span><span className="v">{k.fullWatch != null ? `${k.fullWatch.toFixed(0)}%` : '–'}</span><span className="small dim">{k.avgWatch != null ? `Avg watch time ${k.avgWatch.toFixed(1)} s` : 'Needs the content CSV'}</span></div>
     </section>
@@ -88,7 +88,7 @@ export default function Analytics() {
       </div>
     </section>
 
-    <Milestones followers={k.followers} gain7={k.followers7} />
+    <Milestones followers={k.followers} perDay={k.pace.perDay} now={now} />
 
     <section className="grid g-2">
       <div className="glass card">
@@ -108,14 +108,13 @@ export default function Analytics() {
   </>;
 }
 
-function Milestones({ followers, gain7 }: { followers: number | null; gain7: number | null }) {
+function Milestones({ followers, perDay, now }: { followers: number | null; perDay: number | null; now: Date }) {
   const f = followers ?? 0;
   const ni = MILESTONES.findIndex((m) => f < m);
   const next = ni < 0 ? null : MILESTONES[ni];
   const prev = ni <= 0 ? 0 : MILESTONES[ni - 1];
   const part = next ? (f - prev) / (next - prev) : 1;
   const lineW = Math.max(0, Math.min(100, ni < 0 ? 100 : ni === 0 ? 0 : ((ni - 1 + part) / (MILESTONES.length - 1)) * 100));
-  const weeks = next && gain7 && gain7 > 0 ? Math.ceil((next - f) / gain7) : null;
   return <div className="glass card">
     <div className="between">
       <h2>Milestones</h2>
@@ -126,7 +125,7 @@ function Milestones({ followers, gain7 }: { followers: number | null; gain7: num
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="small dim">{next ? 'Next milestone' : 'All milestones reached'}</div>
         <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-.02em' }}>{next ? `${fmtNum(next)} followers` : '100K ★'}</div>
-        <div className="small muted">{next ? `${fmtNum(next - f)} to go${weeks ? ` · about ${weeks} week${weeks === 1 ? '' : 's'} at this week's pace` : ''}` : 'Time for new goals, Sir.'}</div>
+        <div className="small muted">{next ? `${fmtNum(next - f)} to go · ${etaText(next - f, perDay, now)}` : 'Time for new goals, Sir.'}</div>
       </div>
     </div>
     <RouteTracker stops={MILESTONES.map((m) => ({ label: fmtNum(m), hit: f >= m }))} progress={ni < 0 ? 1 : ni === 0 ? 0 : (ni - 1 + part) / (MILESTONES.length - 1)} />
