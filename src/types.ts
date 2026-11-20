@@ -21,6 +21,7 @@ export interface UploadRec {
   realAt?: string;   // ISO time it was actually marked uploaded
   slot?: string;     // ISO slot it filled
   link?: string;     // TikTok post link
+  scheduled?: boolean; // scheduled in TikTok Studio by the Auto button
 }
 
 export interface Task {
