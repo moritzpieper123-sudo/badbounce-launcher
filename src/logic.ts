@@ -56,12 +56,12 @@ export const fmtIn = (mins: number) => {
 export const SLOT_SETS: Record<number, string[]> = {
   0: [], 1: ['18:30'], 2: ['12:30', '18:30'], 3: ['12:30', '18:30', '21:00'], 4: ['12:30', '15:30', '18:30', '21:00'],
 };
-/** From 20 Nov 2026 (Mo): slots for the Berlin / UK / US East / US West audiences, 5 a day on the full plan, about 3.5 h apart.
+/** From 20 Nov 2026 (Mo): slots for the Berlin / UK / US East / US West audiences, 5 a day on the full plan, equally spaced (every 4.8 h).
  *  The times of a day are listed in clock order (02:00 and 05:00 are the early hours of that same date). Days before keep the old slots,
  *  so already posted videos keep their slot. */
 export const SLOTS_FROM = '2026-11-20';
 export const SLOT_SETS_V2: Record<number, string[]> = {
-  0: [], 1: ['19:00'], 2: ['19:00', '22:30'], 3: ['15:30', '19:00', '22:30'], 4: ['02:00', '15:30', '19:00', '22:30'], 5: ['02:00', '05:00', '15:30', '19:00', '22:30'],
+  0: [], 1: ['20:20'], 2: ['15:30', '20:20'], 3: ['10:40', '15:30', '20:20'], 4: ['01:05', '10:40', '15:30', '20:20'], 5: ['01:05', '05:55', '10:40', '15:30', '20:20'],
 };
 export function dayNumber(day: Date, day1: string) { return dayDiff(day, parseYmd(day1)) + 1; }
 export function postsForDay(dayNo: number, day?: Date) {

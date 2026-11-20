@@ -253,7 +253,7 @@ export default function AnalyticsExtra() {
         <div className="row" style={{ gap: 5 }}><button className={`btn sm ${who === 'viewers' ? 'white' : ''}`} onClick={() => setWho('viewers')}>Viewers</button><button className={`btn sm ${who === 'followers' ? 'white' : ''}`} onClick={() => setWho('followers')}>Followers</button></div></div>
         {hours ? <><div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 100 }}>{hours.map((v, h) => <div key={h} title={`${h}:00–${h}:59 · ${v}% of the busiest hour`} style={{ flex: 1, height: Math.max(3, v), background: v >= 90 ? 'var(--yellow)' : 'rgba(170,195,240,.4)', borderRadius: 3 }} />)}</div>
           <div className="between small dim"><span>0:00</span><span>12:00</span><span>23:00</span></div>
-          <span className="small muted">Busiest: {[...hours.map((v, h) => [v, h] as const)].sort((a, b) => b[0] - a[0]).slice(0, 3).map((x) => `${x[1]}:00`).join(', ')}. Your slots (Berlin): 02:00 · 05:00 · 15:30 · 19:00 · 22:30.</span></> : <Empty>Appears after the stats refresh reads the Followers / Viewers page.</Empty>}
+          <span className="small muted">Busiest: {[...hours.map((v, h) => [v, h] as const)].sort((a, b) => b[0] - a[0]).slice(0, 3).map((x) => `${x[1]}:00`).join(', ')}. Your slots (Berlin): 10:40 · 15:30 · 20:20 · 01:05 · 05:55.</span></> : <Empty>Appears after the stats refresh reads the Followers / Viewers page.</Empty>}
         <Help>When your {who} are on TikTok (your local time). The tallest bar is 100%. Post a little before the busy hours.</Help></div>
     </section>
     <section className="grid g-2">
