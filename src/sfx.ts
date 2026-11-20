@@ -1,8 +1,8 @@
 /* UI sounds. Mo 2026-11-20: real sounds from a library instead of my synth.
    Source: UI SFX by romainsimon (github.com/romainsimon/uisfx), CC0, via the npm package @wubbleai/community-sfx.
-   12 sound themes are bundled (src/assets/sfx/<theme>/); Settings > Appearance picks the theme. On by default. */
+   14 sound themes are bundled (silk = soft low tock, tock = clean clicky; both picked from the same CC0 catalog and loudness-matched) (src/assets/sfx/<theme>/); Settings > Appearance picks the theme. On by default. */
 const FILES = import.meta.glob('./assets/sfx/*/*.mp3', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
-export const SFX_THEMES = ['organic', 'rubber', 'soft', 'minimal', 'glass', 'dreamy', 'zen', 'studio', 'mechanical', 'arcade', 'scifi', 'cinematic'] as const;
+export const SFX_THEMES = ['silk', 'tock', 'organic', 'rubber', 'soft', 'minimal', 'glass', 'dreamy', 'zen', 'studio', 'mechanical', 'arcade', 'scifi', 'cinematic'] as const;
 export type SfxTheme = (typeof SFX_THEMES)[number];
 export type SfxName = 'tap' | 'drop' | 'done' | 'pick' | 'bell';
 const FILE_OF: Record<SfxName, string> = { tap: 'press', pick: 'drag-start', drop: 'drop', done: 'complete', bell: 'success' };
@@ -12,7 +12,7 @@ const read = (k: string) => { try { return localStorage.getItem(k); } catch { re
 const write = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };
 export const sfxOn = () => read('bb-sfx') !== '0';
 export const setSfx = (on: boolean) => { write('bb-sfx', on ? '1' : '0'); if (on) sfx('tap'); };
-export const sfxTheme = (): SfxTheme => { const t = read('bb-sfx-theme') as SfxTheme | null; return t && (SFX_THEMES as readonly string[]).includes(t) ? t : 'organic'; };
+export const sfxTheme = (): SfxTheme => { const t = read('bb-sfx-theme') as SfxTheme | null; return t && (SFX_THEMES as readonly string[]).includes(t) ? t : 'silk'; };
 export const setSfxTheme = (t: SfxTheme) => { write('bb-sfx-theme', t); sfx('tap'); setTimeout(() => sfx('drop'), 450); setTimeout(() => sfx('done'), 950); };
 
 const cache = new Map<string, HTMLAudioElement>();
