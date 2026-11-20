@@ -2,7 +2,7 @@
    snapshots), 10-14 use the audience / traffic / retention numbers the stats fetch reads from TikTok Studio. */
 import React, { useState } from 'react';
 import { useApp } from '../ctx';
-import { addDays, cleanDays, etaText, fmtNum, kColor, kpis, matchPosts, MILESTONES, normLink, parseYmd, pctNorm, vn, ymd } from '../logic';
+import { addDays, cleanDays, etaText, rewardsEstimate, fmtNum, kColor, kpis, matchPosts, MILESTONES, normLink, parseYmd, pctNorm, vn, ymd } from '../logic';
 import { bb, isDesktop } from '../bridge';
 import { Icon } from '../ui';
 import type { Breakdown, Snapshot } from '../types';
@@ -147,6 +147,9 @@ export default function AnalyticsExtra() {
   const ni = MILESTONES.findIndex((m) => (k.followers ?? 0) < m), next = ni < 0 ? null : MILESTONES[ni];
   const pace = k.pace, f = k.followers ?? 0;
   const pace30 = k.views7 * (30 / 7);
+  const rw = rewardsEstimate(snap);
+  const eur = (x: number) => (x >= 100 ? `€${Math.round(x / 10) * 10}` : `€${x.toFixed(x < 10 ? 2 : 0)}`);
+  const pc = (a: [number, number]) => (a[0] === a[1] ? `${Math.round(a[0] * 100)}%` : `${Math.round(a[0] * 100)}–${Math.round(a[1] * 100)}%`);
   /* traffic: per video shares, weighted by that video's views */
   const trafficPosts = st.posts.filter((p) => p.traffic?.length && (p.views || 0) > 0);
   const trafficAgg = (() => { if (!trafficPosts.length) return aud?.traffic || null; const t = new Map<string, number>(); let tot = 0; for (const p of trafficPosts) { for (const x of p.traffic!) t.set(x.label, (t.get(x.label) || 0) + x.pct * p.views!); tot += 100 * p.views!; } return [...t.entries()].map(([label, v]) => ({ label, pct: Math.round((v / tot) * 1000) / 10 })).filter((x) => x.pct >= 0.1).sort((a, b) => b.pct - a.pct); })();
@@ -226,6 +229,22 @@ export default function AnalyticsExtra() {
         <Help>Simple maths: followers still missing ÷ average daily gain of the last 7 finished days. It is a straight line, not a prediction. Without 4 days of data it says so instead of guessing.</Help></div>
     </section>
 
+    <section className="glass card"><div className="between"><h2>Creator Rewards income estimate</h2><span className="small dim">if you were in the program · last 30 days</span></div>
+      {rw ? <>
+        <div className="row" style={{ gap: 18, alignItems: 'baseline', flexWrap: 'wrap' }}>
+          <span title={`Low case ${eur(rw.revenue[0])}, high case ${eur(rw.revenue[1])}`} style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-.02em', color: 'var(--yellow-text)' }}>{eur(rw.revenue[0])} – {eur(rw.revenue[1])}</span>
+          <span className="small dim">per 30 days at your current views ({fmtNum(rw.views30)} views)</span></div>
+        <table className="t"><thead><tr><th>Step</th><th>Low</th><th>High</th><th></th></tr></thead><tbody>
+          <tr title="Only videos over 1 minute can earn. Videos whose length is unknown count half in the low case and fully in the high case."><td>Videos over 1 min</td><td>{Math.round(rw.len[0] * 100)}%</td><td>{Math.round(rw.len[1] * 100)}%</td><td className="small dim">of your views</td></tr>
+          <tr title="Only views from the For You feed qualify. Share read from TikTok Studio (traffic sources). High case adds half of the profile views."><td>From For You</td><td>{Math.round(rw.fyp[0] * 100)}%</td><td>{Math.round(rw.fyp[1] * 100)}%</td><td className="small dim">of those</td></tr>
+          <tr title="Assumption, not measured: repeat views, views under 5 seconds, invalid traffic and TikTok's validation remove 5 to 40 percent."><td>Valid after checks</td><td>{Math.round(rw.qual[0] * 100)}%</td><td>{Math.round(rw.qual[1] * 100)}%</td><td className="small dim">guess</td></tr>
+          <tr title="Viewers in countries where the program clearly runs (DE, FR, ES, IT, UK, US). The high case adds PL, RO, NL, PT, HR and others at a low rate."><td>In program countries</td><td>{Math.round(rw.elig[0] * 100)}%</td><td>{Math.round(rw.elig[1] * 100)}%</td><td className="small dim">your viewers</td></tr>
+          <tr><td><b>Qualified views</b></td><td><b>{fmtNum(Math.round(rw.qualified[0]))}</b></td><td><b>{fmtNum(Math.round(rw.qualified[1]))}</b></td><td className="small dim">= {pc([rw.qualified[0] / rw.views30, rw.qualified[1] / rw.views30])} of all</td></tr>
+          <tr title="Weighted by where your viewers live. Public estimates: Germany 0.60-0.95, France 0.50-0.85, Spain 0.35-0.65, Italy 0.40-0.70, UK 0.95-1.55 euro per 1,000 qualified views."><td><b>RPM</b> per 1K qualified</td><td><b>{eur(rw.rpm[0])}</b></td><td><b>{eur(rw.rpm[1])}</b></td><td className="small dim">euro</td></tr>
+        </tbody></table>
+        <Help>Qualified views × RPM ÷ 1,000. An estimate from public, unofficial numbers: TikTok publishes no RPM, and the program is not open to you yet (it needs 10K followers and 100K views in 30 days; you have {fmtNum(k.followers ?? 0)} followers). It also pays only after TikTok's checks, so treat it as a rough range, not a forecast. In the end it is about {eur(rw.per1kViews[0])}–{eur(rw.per1kViews[1])} per 1,000 views you get.</Help>
+      </> : <Empty>Needs the last 30 days of views and the audience countries (stats refresh with the TikTok login).</Empty>}</section>
+
     <section className="between"><h2 style={{ margin: 0 }}>Audience and traffic</h2>{askFetch}</section>
     <section className="grid g-2">
       <div className="glass card"><h2>Where views come from</h2>{trafficAgg?.length ? <Donut rows={trafficAgg} /> : <Empty>Read from TikTok Studio by the stats refresh. Needs the TikTok login once ("Fetch automatically").</Empty>}
@@ -234,7 +253,7 @@ export default function AnalyticsExtra() {
         <div className="row" style={{ gap: 5 }}><button className={`btn sm ${who === 'viewers' ? 'white' : ''}`} onClick={() => setWho('viewers')}>Viewers</button><button className={`btn sm ${who === 'followers' ? 'white' : ''}`} onClick={() => setWho('followers')}>Followers</button></div></div>
         {hours ? <><div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 100 }}>{hours.map((v, h) => <div key={h} title={`${h}:00–${h}:59 · ${v}% of the busiest hour`} style={{ flex: 1, height: Math.max(3, v), background: v >= 90 ? 'var(--yellow)' : 'rgba(170,195,240,.4)', borderRadius: 3 }} />)}</div>
           <div className="between small dim"><span>0:00</span><span>12:00</span><span>23:00</span></div>
-          <span className="small muted">Busiest: {[...hours.map((v, h) => [v, h] as const)].sort((a, b) => b[0] - a[0]).slice(0, 3).map((x) => `${x[1]}:00`).join(', ')}. Your slots: 12:30 · 15:30 · 18:30 · 21:00.</span></> : <Empty>Appears after the stats refresh reads the Followers / Viewers page.</Empty>}
+          <span className="small muted">Busiest: {[...hours.map((v, h) => [v, h] as const)].sort((a, b) => b[0] - a[0]).slice(0, 3).map((x) => `${x[1]}:00`).join(', ')}. Your slots (Berlin): 10:40 · 15:30 · 20:20 · 01:05 · 05:55.</span></> : <Empty>Appears after the stats refresh reads the Followers / Viewers page.</Empty>}
         <Help>When your {who} are on TikTok (your local time). The tallest bar is 100%. Post a little before the busy hours.</Help></div>
     </section>
     <section className="grid g-2">
