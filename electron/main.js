@@ -11,7 +11,6 @@ const updater = require('./updater');
 const graph = require('./graph');
 const csvfetch = require('./csvfetch');
 const statsfetch = require('./statsfetch');
-const scheduler = require('./scheduler');
 const media = require('./media');
 const progress = require('./progress');
 
@@ -91,14 +90,7 @@ function loadState() {
     if (!(st.migrations || {}).skip1119) {
       const skip = [new Date(2026, 10, 19, 18, 30, 0, 0).toISOString(), new Date(2026, 10, 19, 21, 0, 0, 0).toISOString()];
       st.settings.skipSlots = Array.from(new Set([...(st.settings.skipSlots || []), ...skip]));
-      st.migrations = { ...(st.migrations || {}), skip1119: true, skip1120: true };
-      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
-    }
-    // Mo 2026-11-20: the 01:05 slot of 20 Nov is skipped (already past when the new slots started). One time only.
-    if (!(st.migrations || {}).skip1120) {
-      const skip = [new Date(2026, 10, 20, 1, 5, 0, 0).toISOString()];
-      st.settings.skipSlots = Array.from(new Set([...(st.settings.skipSlots || []), ...skip]));
-      st.migrations = { ...(st.migrations || {}), skip1120: true };
+      st.migrations = { ...(st.migrations || {}), skip1119: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
     return st;
@@ -383,13 +375,6 @@ ipcMain.handle('uploadPack', (_e, num) => {
     if (v.description) clipboard.writeText(v.description.trim());
     shell.openPath(dest);
     return { ok: true, folder: 'Downloads\\Badbounce upload' };
-  } catch (e) { return { ok: false, error: String(e.message || e) }; }
-});
-ipcMain.handle('scheduleOpen', (_e, info) => {
-  try {
-    const v = scanVideos().find((x) => x.num === info.num);
-    if (!v || !v.videoFile) return { ok: false, error: 'video file not found' };
-    return scheduler.open({ ...info, video: v.videoFile, thumb: v.thumbFile, description: v.description }, (num) => sendAll('scheduleDone', num));
   } catch (e) { return { ok: false, error: String(e.message || e) }; }
 });
 ipcMain.handle('saveIdeaFile', (_e, name, data) => {

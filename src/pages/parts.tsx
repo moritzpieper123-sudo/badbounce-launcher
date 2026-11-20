@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useApp } from '../ctx';
-import { bb, isDesktop } from '../bridge';
+import { bb } from '../bridge';
 import { Icon, KChip, Tick } from '../ui';
 import { buildPlan, fmtIn, fmtLate, KONZEPTE, minsUntil, setTaskCol, kColor, ymd, bufferInfo, dayDiff, parseYmd, vn } from '../logic';
 import { TikTokLogo } from '../logos';
 import { sfx } from '../sfx';
-import { doUploadPack, doSchedule, markUploaded, setLink, unmarkUploaded } from '../actions';
+import { doUploadPack, markUploaded, setLink, unmarkUploaded } from '../actions';
 import type { Task, Video } from '../types';
 
 export function Header({ title, sub, right, center }: { title: string; sub?: React.ReactNode; right?: React.ReactNode; center?: React.ReactNode }) {
@@ -51,7 +51,6 @@ export function NextUpload({ compact = false }: { compact?: boolean }) {
         <span className="row small" style={{ color: 'var(--muted)', gap: 6 }}><span className="dot" style={{ background: kColor(v.konzept) }} />Konzept {v.konzept ?? '?'} · {KONZEPTE[v.konzept ?? 0]?.name ?? v.title}</span>
         <div className="row" style={{ marginTop: 6, gap: 8 }}>
           <button className="btn primary sm" onClick={() => doUploadPack(v.num, toast)}><Icon name="upload" size={15} /> Upload pack</button>
-          {isDesktop && bb.scheduleOpen && <button className="btn sm accent" onClick={() => doSchedule(snap, v.num, toast)} title="Opens TikTok Studio with the next free slot, files and description ready"><Icon name="calendar" size={15} /> Schedule</button>}
           <button className="btn sm" onClick={async () => { await update(markUploaded(snap, v.num)); setLinkFor(v.num); }} title="Mark uploaded"><Tick size={12} color="currentColor" /> Done</button>
           <button className="btn sm icon" onClick={() => bb.openUrl('https://www.tiktok.com/tiktokstudio/upload')} title="Open TikTok Studio upload" aria-label="Open TikTok Studio upload"><TikTokLogo size={16} /></button>
         </div>

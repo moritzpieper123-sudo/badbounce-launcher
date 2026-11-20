@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { doUploadPack, doSchedule, markUploaded } from '../actions';
-import { bb, isDesktop } from '../bridge';
+import { doUploadPack, markUploaded } from '../actions';
+import { bb } from '../bridge';
 import { Icon, Tick } from '../ui';
 import { useApp } from '../ctx';
 import { addDays, dayDiff, buildPlan, dayNumber, parseYmd, phaseLabel, ymd, kColor, KONZEPTE, postsForDay, ROTATION, vn } from '../logic';
@@ -50,7 +50,6 @@ export default function Schedule() {
             {!x.uploaded && x.state !== 'missed' && <div className="row" style={{ gap: 8 }}>
               {x.video ? <>
                 <button className="btn sm primary" onClick={() => doUploadPack(x.video!.num, toast)}><Icon name="upload" size={13} /> Upload pack</button>
-                {isDesktop && bb.scheduleOpen && <button className="btn sm accent" onClick={() => doSchedule(snap, x.video!.num, toast)}><Icon name="calendar" size={13} /> Schedule</button>}
                 <button className="btn sm" onClick={async () => { await update(markUploaded(snap, x.video!.num)); toast(`#${vn(x.video!.num)} marked uploaded`); }}><Tick size={11} color="currentColor" /> Done</button>
               </> : <button className="btn sm" onClick={() => { bb.runGen(1); toast('"Gen" copied'); }}><Icon name="play" size={12} /> Gen</button>}
             </div>}

@@ -8,8 +8,6 @@ export interface BB {
   saveState(state: AppState): Promise<void>;
   onChange(cb: () => void): () => void;
   uploadPack(num: number): Promise<{ ok: boolean; folder?: string; error?: string }>;
-  scheduleOpen?(info: { num: number; slotISO: string; slotLabel: string; uk: string; et: string; pt: string; tooSoon: boolean }): Promise<{ ok: boolean; folder?: string; error?: string }>;
-  onScheduleDone?(cb: (num: number) => void): () => void;
   copyText(text: string): Promise<void>;
   openUrl(url: string): Promise<void>;
   openPath(p: string): Promise<void>;
