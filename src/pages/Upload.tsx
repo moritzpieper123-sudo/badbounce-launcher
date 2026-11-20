@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../ctx';
 import { buildPlan, kColor, KONZEPTE, ymd, vn } from '../logic';
-import { doUploadPack, markUploaded, setLink, unmarkUploaded } from '../actions';
-import { Header, NextUpload, Thumb } from './parts';
+import { doAutoAll, doUploadPack, markUploaded, setLink, unmarkUploaded } from '../actions';
+import { AutoUpload, Header, NextUpload, Thumb } from './parts';
 import { Icon } from '../ui';
 import { bb } from '../bridge';
 
@@ -15,7 +15,7 @@ export default function Upload() {
   const recent = Object.entries(snap.state.uploads).sort((a, b) => b[1].at.localeCompare(a[1].at)).slice(0, 8);
   const [edit, setEdit] = useState<Record<string, string>>({});
   return <>
-    <Header title="Next upload" sub="One click prepares everything; you only upload, paste and tick." right={<button className="btn" onClick={() => bb.openUrl('https://www.tiktok.com/tiktokstudio/upload')}><Icon name="upload" size={15} /> Open TikTok Studio</button>} />
+    <Header title="Next upload" sub="One click prepares everything; you only upload, paste and tick." right={<><button className="btn primary" onClick={() => doAutoAll(snap, 'schedule', toast)} title="Puts every ready video into the next free slots, one after another"><Icon name="upload" size={15} /> Schedule all ready</button><button className="btn" onClick={() => doAutoAll(snap, 'test', toast)}>Test all</button><button className="btn" onClick={() => bb.openUrl('https://www.tiktok.com/tiktokstudio/upload')}><Icon name="upload" size={15} /> Open TikTok Studio</button></>} />
     <section className="grid g-auto">
       <div className="glass card"><h2>Up next</h2><NextUpload /></div>
       <div className="glass card"><h2>Steps</h2><ol style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 8 }} className="muted">{STEPS.map((s) => <li key={s}>{s}</li>)}</ol></div>
@@ -28,6 +28,7 @@ export default function Upload() {
           <td>#{vn(s.video!.num)}</td>
           <td><span className="row" style={{ gap: 6 }}><span className="dot" style={{ background: kColor(s.video!.konzept) }} />K{s.video!.konzept ?? '?'} {KONZEPTE[s.video!.konzept ?? 0]?.name}</span></td>
           <td style={{ textAlign: 'right' }}><div className="row" style={{ justifyContent: 'flex-end' }}>
+            <AutoUpload num={s.video!.num} />
             <button className="btn sm" onClick={() => doUploadPack(s.video!.num, toast)}>Upload pack</button>
             <button className="btn sm" onClick={async () => { await update(markUploaded(snap, s.video!.num)); toast(`#${vn(s.video!.num)} marked uploaded`); }}>Mark uploaded</button>
           </div></td>

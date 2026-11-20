@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../ctx';
 import { bb } from '../bridge';
+import type { UploadStatus } from '../bridge';
 import { Icon, KChip, Tick } from '../ui';
 import { buildPlan, fmtIn, fmtLate, KONZEPTE, minsUntil, setTaskCol, kColor, ymd, bufferInfo, dayDiff, parseYmd, vn } from '../logic';
 import { TikTokLogo } from '../logos';
 import { sfx } from '../sfx';
-import { doUploadPack, markUploaded, setLink, unmarkUploaded } from '../actions';
+import { doAutoUpload, doUploadPack, markUploaded, setLink, unmarkUploaded } from '../actions';
 import type { Task, Video } from '../types';
 
 export function Header({ title, sub, right, center }: { title: string; sub?: React.ReactNode; right?: React.ReactNode; center?: React.ReactNode }) {
@@ -15,6 +16,25 @@ export function Header({ title, sub, right, center }: { title: string; sub?: Rea
 export function Thumb({ v, w = 64, h = 112 }: { v: Video | null | undefined; w?: number; h?: number }) {
   const url = v?.thumbFile ? bb.fileUrl(v.thumbFile) : '';
   return <div className="thumb" style={{ width: w, height: h, backgroundImage: url ? `url("${url}")` : undefined }} aria-hidden="true">{!url && <div className="ball" />}</div>;
+}
+
+/** Auto / Test buttons for Mo's bb_upload.py (desktop app only). Shows live status of the single running upload. */
+export function AutoUpload({ num }: { num: number }) {
+  const { snap, toast } = useApp();
+  const [st, setSt] = useState<UploadStatus>({ state: 'idle' });
+  useEffect(() => {
+    if (!bb.onUploadStatus) return;
+    bb.uploadStatus?.().then(setSt);
+    return bb.onUploadStatus(setSt);
+  }, []);
+  if (!bb.autoUpload) return null;
+  const busy = st.state === 'running';
+  const mine = st.key === vn(num);
+  return <>
+    <button className="btn sm primary" disabled={busy} onClick={() => doAutoUpload(snap, num, 'schedule', toast)} title="Schedules this video in TikTok Studio at the next free slot (script: Engine\\Upload\\bb_upload.py)"><Icon name="upload" size={14} /> Auto</button>
+    <button className="btn sm" disabled={busy} onClick={() => doAutoUpload(snap, num, 'test', toast)} title="Everything except the final Schedule click">Test</button>
+    {mine && st.state !== 'idle' && <span className="small" style={{ color: st.state === 'error' ? 'var(--red)' : st.state === 'ok' ? 'var(--green)' : 'var(--muted)' }}>{st.state === 'running' ? '… ' : ''}{st.msg}</span>}
+  </>;
 }
 
 /** The "Up next" card with the one-click upload button. */
@@ -51,6 +71,7 @@ export function NextUpload({ compact = false }: { compact?: boolean }) {
         <span className="row small" style={{ color: 'var(--muted)', gap: 6 }}><span className="dot" style={{ background: kColor(v.konzept) }} />Konzept {v.konzept ?? '?'} · {KONZEPTE[v.konzept ?? 0]?.name ?? v.title}</span>
         <div className="row" style={{ marginTop: 6, gap: 8 }}>
           <button className="btn primary sm" onClick={() => doUploadPack(v.num, toast)}><Icon name="upload" size={15} /> Upload pack</button>
+          <AutoUpload num={v.num} />
           <button className="btn sm" onClick={async () => { await update(markUploaded(snap, v.num)); setLinkFor(v.num); }} title="Mark uploaded"><Tick size={12} color="currentColor" /> Done</button>
           <button className="btn sm icon" onClick={() => bb.openUrl('https://www.tiktok.com/tiktokstudio/upload')} title="Open TikTok Studio upload" aria-label="Open TikTok Studio upload"><TikTokLogo size={16} /></button>
         </div>

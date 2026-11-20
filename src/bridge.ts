@@ -8,6 +8,10 @@ export interface BB {
   saveState(state: AppState): Promise<void>;
   onChange(cb: () => void): () => void;
   uploadPack(num: number): Promise<{ ok: boolean; folder?: string; error?: string }>;
+  autoUpload?(num: number, slotIso: string, mode: 'schedule' | 'test'): Promise<{ ok: boolean; error?: string }>;
+  autoUploadBatch?(items: { num: number; slotIso: string }[], mode: 'schedule' | 'test'): Promise<{ ok: boolean; error?: string }>;
+  uploadStatus?(): Promise<UploadStatus>;
+  onUploadStatus?(cb: (s: UploadStatus) => void): () => void;
   copyText(text: string): Promise<void>;
   openUrl(url: string): Promise<void>;
   openPath(p: string): Promise<void>;
@@ -57,6 +61,7 @@ export interface BB {
 }
 export interface ProgressInfo { displays: { id: number; label: string; chosen: boolean }[]; autostart: boolean; hideBar: boolean; visible: boolean; full: boolean; signedIn: boolean }
 export interface FinalVideo { id: string; folder: string; video: string; thumb: string | null; description: string; size: number; mtime: number }
+export interface UploadStatus { state: 'idle' | 'running' | 'ok' | 'error'; key?: string; mode?: string; msg?: string }
 export interface CsvStatus { state: 'idle' | 'running' | 'login' | 'needs-you' | 'done' | 'error'; msg: string }
 export interface GraphNode { id: string; name: string; folder: string; tags: string[]; unresolved?: boolean; mtime?: number }
 export interface VaultGraph { ok: boolean; vaultName: string; nodes: GraphNode[]; links: { s: string; t: string }[]; error?: string }

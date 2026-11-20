@@ -13,6 +13,7 @@ const csvfetch = require('./csvfetch');
 const statsfetch = require('./statsfetch');
 const media = require('./media');
 const progress = require('./progress');
+const uploader = require('./uploader');
 
 const DEFAULT_SETTINGS = { day1: '2026-11-11', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
 const HIDDEN = process.argv.includes('--hidden');
@@ -363,6 +364,45 @@ function openLink(u) {
 ipcMain.handle('openUrl', (_e, u) => openLink(u));
 ipcMain.handle('openPath', (_e, p) => shell.openPath(p));
 ipcMain.handle('openVault', (_e, sub) => { const p = path.join(vault(), sub || ''); if (fs.existsSync(p)) return shell.openPath(p); fs.mkdirSync(p, { recursive: true }); return shell.openPath(p); });
+/* Mo's own upload script (Engine\Upload\bb_upload.py): schedules ONE video per run in TikTok Studio */
+const vkey = (num) => String(num).replace(/^(\d+)\.(\d+)$/, (_m, a, b) => a + String.fromCharCode(96 + +b));
+let batchBusy = false;
+function markScheduled(num, slotIso) {
+  const st = loadState(); st.uploads = st.uploads || {};
+  st.uploads[String(num)] = { at: slotIso, realAt: new Date().toISOString(), slot: slotIso, scheduled: true };
+  saveState(st); broadcast();
+}
+const runOne = (num, slotIso, mode, extra) => new Promise((resolve) => {
+  const r = uploader.start({ vault: vault(), key: vkey(num), mode, slotIso,
+    onStatus: (st) => sendAll('uploadStatus', { ...st, msg: (extra || '') + (st.msg || '') }),
+    onDone: (d) => { if (d.ok && mode === 'schedule') markScheduled(num, slotIso); resolve(d); } });
+  if (!r.ok) resolve({ ok: false, msg: r.error });
+});
+ipcMain.handle('autoUpload', (_e, num, slotIso, mode) => {
+  if (batchBusy) return { ok: false, error: 'a batch run is active' };
+  return uploader.start({ vault: vault(), key: vkey(num), mode, slotIso,
+    onStatus: (st) => sendAll('uploadStatus', st),
+    onDone: (r) => { if (r.ok && r.mode === 'schedule') markScheduled(num, r.slotIso); } });
+});
+/* all ready videos in one run: items = [{ num, slotIso }] in slot order; stops at the first failure */
+ipcMain.handle('autoUploadBatch', (_e, items, mode) => {
+  if (batchBusy || uploader.status().state === 'running') return { ok: false, error: 'an upload is already running' };
+  if (!Array.isArray(items) || !items.length) return { ok: false, error: 'nothing to schedule' };
+  batchBusy = true;
+  (async () => {
+    let done = 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const d = await runOne(it.num, it.slotIso, mode, `(${i + 1}/${items.length}) `);
+      if (!d.ok) { sendAll('uploadStatus', { state: 'error', key: vkey(it.num), mode, msg: `stopped at ${i + 1}/${items.length}: ${d.msg}` }); batchBusy = false; return; }
+      done++;
+    }
+    sendAll('uploadStatus', { state: 'ok', key: 'all', mode, msg: `${done} of ${items.length} ${mode === 'test' ? 'tested' : 'scheduled'}` });
+    batchBusy = false;
+  })();
+  return { ok: true };
+});
+ipcMain.handle('uploadStatus', () => uploader.status());
 ipcMain.handle('uploadPack', (_e, num) => {
   try {
     const v = scanVideos().find((x) => x.num === num);
