@@ -56,22 +56,30 @@ export const fmtIn = (mins: number) => {
 export const SLOT_SETS: Record<number, string[]> = {
   0: [], 1: ['18:30'], 2: ['12:30', '18:30'], 3: ['12:30', '18:30', '21:00'], 4: ['12:30', '15:30', '18:30', '21:00'],
 };
+/** From 20 Nov 2026 (Mo): slots for the Berlin / UK / US East / US West audiences, 5 a day on the full plan, about 3.5 h apart.
+ *  The times of a day are listed in clock order (02:00 and 05:00 are the early hours of that same date). Days before keep the old slots,
+ *  so already posted videos keep their slot. */
+export const SLOTS_FROM = '2026-11-20';
+export const SLOT_SETS_V2: Record<number, string[]> = {
+  0: [], 1: ['19:00'], 2: ['19:00', '22:30'], 3: ['15:30', '19:00', '22:30'], 4: ['02:00', '15:30', '19:00', '22:30'], 5: ['02:00', '05:00', '15:30', '19:00', '22:30'],
+};
 export function dayNumber(day: Date, day1: string) { return dayDiff(day, parseYmd(day1)) + 1; }
-export function postsForDay(dayNo: number) {
+export function postsForDay(dayNo: number, day?: Date) {
   if (dayNo < 3) return 0;
   if (dayNo === 3) return 1;
   if (dayNo <= 5) return 2;
   if (dayNo <= 7) return 3;
-  return 4;
+  return day && ymd(day) >= SLOTS_FROM ? 5 : 4;
 }
-export function phaseLabel(dayNo: number) {
+export function phaseLabel(dayNo: number, day?: Date) {
   if (dayNo < 1) return 'Before start';
   if (dayNo <= 2) return 'Warm-up · no posts';
-  const p = postsForDay(dayNo);
-  return p >= 4 ? 'Full plan · 4 a day' : `Ramp-up · ${p} a day`;
+  const p = postsForDay(dayNo, day);
+  return p >= 4 ? `Full plan · ${p} a day` : `Ramp-up · ${p} a day`;
 }
 export function slotsForDay(day: Date, day1: string, skip?: string[]) {
-  const all = SLOT_SETS[postsForDay(dayNumber(day, day1))] || [];
+  const n = postsForDay(dayNumber(day, day1), day);
+  const all = (ymd(day) >= SLOTS_FROM ? SLOT_SETS_V2 : SLOT_SETS)[n] || [];
   return skip && skip.length ? all.filter((t) => !skip.includes(at(day, t).toISOString())) : all;
 }
 
@@ -532,4 +540,31 @@ export function setTaskCol(st: AppState, t: Task, col: Col): AppState {
   const stamp = new Date().toISOString();
   if (t.auto) return { ...st, autoCols: { ...st.autoCols, [t.auto]: col }, autoDoneAt: { ...(st.autoDoneAt || {}), [t.auto]: col === 'done' ? stamp : '' } };
   return { ...st, tasks: st.tasks.map((x) => (x.id === t.id ? { ...x, col, doneAt: col === 'done' ? stamp : undefined } : x)) };
+}
+
+/* ---------- Creator Rewards income estimate (Mo 2026-11-20): a RANGE from public, unofficial numbers, never a promise ---------- */
+/** RPM in EUR per 1,000 QUALIFIED views, low / high. Sources: blog + calculator sites, 2026 (UK £ converted at 1.15). TikTok publishes no official RPM.
+ *  0 low = country not (clearly) in the program, so it is only counted in the high case. */
+export const RPM_EUR: Record<string, [number, number]> = { DE: [0.6, 0.95], FR: [0.5, 0.85], ES: [0.35, 0.65], IT: [0.4, 0.7], GB: [0.95, 1.55], US: [0.45, 1.7], PL: [0, 0.35], RO: [0, 0.3], NL: [0, 0.4], PT: [0, 0.35], HR: [0, 0.3], Others: [0, 0.2] };
+export function rewardsEstimate(snap: Snapshot) {
+  const k = kpis(snap), st = snap.state.stats, aud = st.audience;
+  if (!k.views30 || !aud?.countries?.length) return null;
+  const matched = matchPosts(snap).filter((m) => (m.post.views || 0) > 0);
+  const lenOf = (m: (typeof matched)[number]) => snap.videos.find((v) => v.num === m.num)?.durationSec ?? m.post.retentionSecs ?? null;
+  const tot = matched.reduce((s, m) => s + m.post.views!, 0) || 1;
+  const longV = matched.filter((m) => (lenOf(m) ?? 0) >= 60).reduce((s, m) => s + m.post.views!, 0);
+  const unknownV = matched.filter((m) => lenOf(m) == null).reduce((s, m) => s + m.post.views!, 0);
+  const len: [number, number] = [(longV + 0.5 * unknownV) / tot, Math.min(1, (longV + unknownV) / tot)]; // only videos over 1 min pay
+  const tp = st.posts.filter((p) => p.traffic?.length && (p.views || 0) > 0); let fy = 0, prof = 0, w = 0;
+  for (const p of tp) { w += p.views!; fy += p.views! * ((p.traffic!.find((x) => x.label === 'For You')?.pct || 0) / 100); prof += p.views! * ((p.traffic!.find((x) => x.label === 'Personal Profile')?.pct || 0) / 100); }
+  const fyp: [number, number] = w ? [fy / w, Math.min(1, fy / w + 0.5 * (prof / w))] : [0.7, 0.95]; // only For You views count
+  const qual: [number, number] = [0.6, 0.95]; // assumption: repeat views, views under 5 s, invalid traffic and validation drop 5-40 %
+  const countries = aud.countries.map((c) => ({ code: c.label, share: c.pct / 100, rpm: RPM_EUR[c.label] || RPM_EUR.Others }));
+  const rpmMix = (i: 0 | 1) => countries.reduce((s, c) => s + c.share * c.rpm[i], 0); // EUR per 1K qualified views, whole audience
+  const elig: [number, number] = [countries.filter((c) => c.rpm[0] > 0).reduce((s, c) => s + c.share, 0), countries.filter((c) => c.rpm[1] > 0).reduce((s, c) => s + c.share, 0)];
+  const q = (i: 0 | 1) => k.views30 * len[i] * fyp[i] * qual[i];
+  const revenue: [number, number] = [(q(0) * rpmMix(0)) / 1000, (q(1) * rpmMix(1)) / 1000];
+  const qualified: [number, number] = [q(0) * elig[0], q(1) * elig[1]]; // views that can pay: right length, For You, valid, from a program country
+  const rpm: [number, number] = [qualified[0] ? (revenue[0] / qualified[0]) * 1000 : 0, qualified[1] ? (revenue[1] / qualified[1]) * 1000 : 0];
+  return { views30: k.views30, len, fyp, qual, elig, qualified, rpm, revenue, per1kViews: [(revenue[0] / k.views30) * 1000, (revenue[1] / k.views30) * 1000] as [number, number], countries };
 }

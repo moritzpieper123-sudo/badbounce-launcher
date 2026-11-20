@@ -22,7 +22,7 @@ export default function Today() {
   const k = kpis(snap);
   const kt = konzeptTable(snap);
   const days = snap.state.stats.days;
-  const sub = dn < 1 ? `${fmtDay(now)} · Warm-up starts ${parseYmd(snap.state.settings.day1).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}` : `${fmtDay(now)} · Day ${dn} · ${phaseLabel(dn)} · ${plan.length ? `${uploaded} of ${plan.length} uploads done` : 'no uploads today'}`;
+  const sub = dn < 1 ? `${fmtDay(now)} · Warm-up starts ${parseYmd(snap.state.settings.day1).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}` : `${fmtDay(now)} · Day ${dn} · ${phaseLabel(dn, new Date(snap.now))} · ${plan.length ? `${uploaded} of ${plan.length} uploads done` : 'no uploads today'}`;
   const week = Array.from({ length: 7 }, (_, i) => addDays(now, i - 6));
   const weekVals = week.map((d) => days.find((x) => x.date === ymd(d))?.views ?? null);
   const hasWeek = weekVals.some((v) => v != null);

@@ -19,7 +19,7 @@ export default function Schedule() {
   const label = { uploaded: 'Uploaded', ready: 'Ready', next: 'Next', missing: 'No video', overdue: 'Overdue', missed: 'Missed' } as const;
   const dn = dayNumber(now, snap.state.settings.day1);
   return <>
-    <Header title="Upload schedule" sub={`Fast route · Day 1 = ${snap.state.settings.day1} · today: ${phaseLabel(dn)}`} right={<>
+    <Header title="Upload schedule" sub={`Fast route · Day 1 = ${snap.state.settings.day1} · today: ${phaseLabel(dn, new Date(snap.now))}`} right={<>
       <button className="btn" onClick={() => setOffset(offset - 1)} aria-label="Previous week">‹</button>
       <button className="btn" onClick={() => setOffset(0)}>This week</button>
       <button className="btn" onClick={() => setOffset(offset + 1)} aria-label="Next week">›</button>
@@ -62,7 +62,7 @@ export default function Schedule() {
       {days.map((d) => {
         const ds = ymd(d), slots = plan.filter((s) => s.date === ds), n = dayNumber(d, snap.state.settings.day1), isT = ds === ymd(now), past = ds < ymd(now);
         return <div key={ds} className={`glass card sched-day ${isT ? 'today' : ''} ${past ? 'past' : ''}`}>
-          <div className="sched-day-h"><div className="wd">{isT ? 'Today' : d.toLocaleDateString('en-GB', { weekday: 'long' })}</div><div className="dt num">{d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div><div className="small dim">{n >= 1 ? `Day ${n} · ${postsForDay(n)} post${postsForDay(n) === 1 ? '' : 's'}` : 'Before start'}</div></div>
+          <div className="sched-day-h"><div className="wd">{isT ? 'Today' : d.toLocaleDateString('en-GB', { weekday: 'long' })}</div><div className="dt num">{d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div><div className="small dim">{n >= 1 ? `Day ${n} · ${postsForDay(n, d)} post${postsForDay(n, d) === 1 ? '' : 's'}` : 'Before start'}</div></div>
           <div className="sched-day-b">
           {n >= 1 && n <= 2 && <div className="small muted">Warm-up: profile, 20–30 min For You, no posts.</div>}
           {slots.map((s) => <div key={s.time} style={{ borderRadius: 12, padding: '8px 10px', background: 'rgba(var(--wrgb),.06)', borderLeft: `3px solid ${color[s.state]}` }}>
