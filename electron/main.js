@@ -308,16 +308,23 @@ function snapshot() {
 ipcMain.handle('snapshot', () => snapshot());
 /* Overview page: the final reference video of every Konzept (Konzepte/Konzept N/Drafts/Final/**). Reference only, never uploaded. */
 function scanFinals() {
-  const root = path.join(vault(), 'Konzepte'); const out = [];
-  const walk = (d, depth) => { let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+  // 2026-11-23 standard: Konzepte/Konzept N/Final/<ID> video.mp4 | <ID> thumbnail.png | <ID> description.txt
+  // old layout (fallback): Konzepte/Konzept N/Drafts/Final/**/<ID> Final video.mp4
+  const root = path.join(vault(), 'Konzepte'); const out = []; const seen = new Set();
+  const add = (id, d, f, thumbName, descName) => {
+    const key = id.toLowerCase(); if (seen.has(key)) return; seen.add(key);
+    const sib = (n) => { const x = path.join(d, n); return fs.existsSync(x) ? x : null; };
+    const descFile = sib(descName); let description = ''; try { if (descFile) description = fs.readFileSync(descFile, 'utf8').trim(); } catch { /* ignore */ }
+    let size = 0, mtime = 0; try { const s = fs.statSync(f); size = s.size; mtime = s.mtimeMs; } catch { /* ignore */ }
+    out.push({ id, folder: d, video: f, thumb: sib(thumbName), description, size, mtime }); };
+  const walkOld = (d, depth) => { let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
     for (const e of ents) { const f = path.join(d, e.name);
-      if (e.isDirectory()) { if (depth < 3) walk(f, depth + 1); continue; }
-      const m = e.name.match(/^(.+?) Final video\.mp4$/i); if (!m) continue;
-      const id = m[1]; const sib = (suf) => { const x = path.join(d, `${id} Final ${suf}`); return fs.existsSync(x) ? x : null; };
-      const descFile = sib('description.txt'); let description = ''; try { if (descFile) description = fs.readFileSync(descFile, 'utf8').trim(); } catch { /* ignore */ }
-      let size = 0, mtime = 0; try { const s = fs.statSync(f); size = s.size; mtime = s.mtimeMs; } catch { /* ignore */ }
-      out.push({ id, folder: d, video: f, thumb: sib('thumbnail.png'), description, size, mtime }); } };
-  try { for (const k of fs.readdirSync(root)) { if (/^Konzept \d+$/.test(k)) walk(path.join(root, k, 'Drafts', 'Final'), 0); } } catch { /* no vault */ }
+      if (e.isDirectory()) { if (depth < 3) walkOld(f, depth + 1); continue; }
+      const m = e.name.match(/^(.+?) Final video\.mp4$/i); if (m) add(m[1], d, f, `${m[1]} Final thumbnail.png`, `${m[1]} Final description.txt`); } };
+  let ks = []; try { ks = fs.readdirSync(root).filter((k) => /^Konzept \d+$/.test(k)); } catch { return out; }
+  for (const k of ks) { const d = path.join(root, k, 'Final'); let ents = []; try { ents = fs.readdirSync(d); } catch { /* none */ }
+    for (const n of ents) { const m = n.match(/^(K\d+[a-z]?) video\.mp4$/i); if (m) add(m[1], d, path.join(d, n), `${m[1]} thumbnail.png`, `${m[1]} description.txt`); } }
+  for (const k of ks) walkOld(path.join(root, k, 'Drafts', 'Final'), 0);
   return out;
 }
 ipcMain.handle('finals', () => scanFinals());
