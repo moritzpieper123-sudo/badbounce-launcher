@@ -16,8 +16,7 @@ NAME = {'K1': 'Crush & multiply', 'K2': 'Edge increase', 'K3': 'Meme drop', 'K4'
 class Lib:
     def __init__(self, out, sr):
         self.out, self.sr, self.items = out, sr, []
-        if os.path.isdir(out): shutil.rmtree(out)
-        os.makedirs(out)
+        os.makedirs(out, exist_ok=True)
 
     def add(self, name, x, when, sr=None):
         """name = short title, x = mono float signal, when = when the engine plays it"""
@@ -48,7 +47,7 @@ def at(pairs, sr, dur):
 
 
 def run(ID, E, LIB):
-    os.chdir(os.path.join(E, ID)); sys.path.insert(0, os.getcwd()); out = os.path.join(LIB, 'Sounds', ID + '.new')
+    os.chdir(os.path.join(E, ID)); sys.path.insert(0, os.getcwd()); sys.path.insert(1, os.path.dirname(os.path.abspath(__file__))); from build_libraries import build_dir, swap; out = build_dir('Sounds-' + ID); final = os.path.join(LIB, 'Sounds', ID)
 
     if ID == 'K1':
         import k1_sound as KS; L = Lib(out, KS.SR)
@@ -219,8 +218,7 @@ def run(ID, E, LIB):
         L.add('Arena burst', mix(tone(90, 2.2, 1.6, 1.0, f2=32), noise(1.8, 3.0, 0.7, 0.25), tone(180, 0.6, 5, 0.3, f2=60)), 'the arena bursts at the end')
 
     json.dump(dict(id=ID, name=NAME[ID], items=L.items), open(os.path.join(out, 'index.json'), 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from build_libraries import swap
-    swap(out, out[:-4])   # file by file; the old sounds stay if this ID failed
+    swap(out, final)   # file by file into the vault; the old sounds stay if this ID failed
     print(ID, len([i for i in L.items if i['file']]), 'sounds')
 
 

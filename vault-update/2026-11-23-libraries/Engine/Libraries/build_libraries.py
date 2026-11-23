@@ -43,25 +43,39 @@ def _retry(f, *a):
             time.sleep(0.5*(k + 1))   # OneDrive / a viewer can hold a file for a moment
 
 
+def build_dir(name):
+    """fresh scratch folder OUTSIDE the vault (OneDrive refuses folder deletes/renames while it syncs)"""
+    import tempfile
+    d = os.path.join(tempfile.gettempdir(), 'badbounce-libraries', name)
+    shutil.rmtree(d, ignore_errors=True); os.makedirs(d, exist_ok=True); return d
+
+
 def swap(tmp, final):
-    """put a freshly built folder in place FILE BY FILE (no folder renames: those fail on Windows/OneDrive);
-    the old folder stays untouched if the build failed before this"""
+    """copy a freshly built folder into the vault FILE BY FILE (never deletes or renames folders there);
+    the vault folder stays untouched if the build failed before this"""
     os.makedirs(final, exist_ok=True); new = set(os.listdir(tmp))
     for f in os.listdir(final):
         p = os.path.join(final, f)
-        if f not in new and os.path.isfile(p): _retry(os.remove, p)
+        if f not in new and os.path.isfile(p):
+            try: _retry(os.remove, p)
+            except OSError as e: print('could not remove', p, e)
     for f in sorted(new, key=lambda x: x == 'index.json'):   # index.json last
-        _retry(os.replace, os.path.join(tmp, f), os.path.join(final, f))
+        _retry(shutil.copyfile, os.path.join(tmp, f), os.path.join(final, f))
     shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _force_rm(f, p, _e):
+    try: os.chmod(p, 0o777); f(p)
+    except OSError: pass
+
+
 def clean_leftovers(root):
-    """remove *.new / *.old folders an interrupted or older build left behind"""
+    """remove *.new / *.old folders older builds left in the vault (best effort; the launcher hides them anyway)"""
     if not os.path.isdir(root): return
     for d in os.listdir(root):
         p = os.path.join(root, d)
         if os.path.isdir(p):
-            if d.endswith(('.new', '.old')): shutil.rmtree(p, ignore_errors=True)
+            if d.endswith(('.new', '.old')): shutil.rmtree(p, **({'onexc': _force_rm} if sys.version_info >= (3, 12) else {'onerror': _force_rm}))
             elif d == 'Sounds': clean_leftovers(p)
 
 
@@ -81,9 +95,7 @@ def engine_stamp(E):
 
 class Out:
     def __init__(self, LIB, key):
-        self.final = os.path.join(LIB, META[key][1]); self.dir = self.final + '.new'; self.key = key; self.items = []
-        if os.path.isdir(self.dir): shutil.rmtree(self.dir)
-        os.makedirs(self.dir)
+        self.final = os.path.join(LIB, META[key][1]); self.dir = build_dir(META[key][1]); self.key = key; self.items = []
 
     def add(self, im, name, desc='', tag=None):
         safe = ''.join(c for c in name if c not in '<>:"/\\|?*').strip()
