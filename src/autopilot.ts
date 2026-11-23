@@ -20,6 +20,7 @@ export function cidOf(v: Pick<Video, 'cid' | 'konzept'> | null | undefined): str
 
 /** Concepts the launcher can render without Claude (recipes in electron/generator.js). Others need a Gen round. */
 export const AUTO_GEN = new Set(['K6b', 'K9']);
+export const RENDER_LEAD_MIN = 75;   // a render should be finished this long before its slot (Claude needs time)
 
 /* ---------- tuning ---------- */
 export const STREAK_MAX = 5;          // identical concept back to back, then ONE other, then it may continue
@@ -31,13 +32,14 @@ const CHECK_H = [1, 3, 6, 12, 24];    // age checkpoints for the view velocity
 
 /* ---------- state kept in AppState.auto ---------- */
 export interface AutoAlert { id: string; kind: 'stats' | 'upload' | 'gen' | 'stock' | 'studio' | 'hot' | 'info'; title: string; sub: string; at: string; last: string; count: number; resolved?: boolean; read?: boolean }
-export interface GenJob { id: string; cid: string; num: number; state: 'queued' | 'running' | 'done' | 'error'; at: string; msg?: string; reason: string }
+export interface GenJob { id: string; cid: string; num: number; state: 'queued' | 'running' | 'done' | 'error'; at: string; msg?: string; reason: string; deadline?: string }
 export interface AutoState {
   enabled: boolean;
   approvals: Record<string, 'ok' | 'no'>;   // video number -> Mo's decision in the Control Room
   genJobs: GenJob[];
   alerts: AutoAlert[];
   leadMin?: number;
+  producer?: 'claude' | 'launcher';          // who renders: Claude Code on the PC (default, Mo 2026-11-24) or the launcher's own recipes
   hotSeen?: Record<string, string>;         // post link -> ISO when we announced it
   lastPlan?: { at: string; slots: PlanRow[] };
 }

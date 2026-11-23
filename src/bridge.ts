@@ -10,7 +10,8 @@ export interface BB {
   uploadPack(num: number): Promise<{ ok: boolean; folder?: string; error?: string }>;
   autoUpload?(num: number, slotIso: string, mode: 'schedule' | 'test'): Promise<{ ok: boolean; error?: string }>;
   autoUploadBatch?(items: { num: number; slotIso: string }[], mode: 'schedule' | 'test', quiet?: boolean): Promise<{ ok: boolean; error?: string }>;
-  genStart?(job: { cid: string; num: number }): Promise<{ ok: boolean; error?: string }>;
+  genStart?(job: { cid: string; num: number; via?: 'claude' | 'launcher'; reason?: string; deadline?: string }): Promise<{ ok: boolean; error?: string }>;
+  genQueueWrite?(jobs: unknown[]): Promise<boolean>;
   genStatus?(): Promise<GenStatus>;
   genReady?(): Promise<string[]>;
   onGenStatus?(cb: (s: GenStatus) => void): () => void;

@@ -29,6 +29,7 @@ export default function Control() {
   useEffect(() => { bb.genStatus?.().then(setGen); bb.genReady?.().then((r) => setReady(new Set(r))); return bb.onGenStatus?.(setGen); }, []);
   const set = (f: (a: AutoState) => AutoState) => update((st: AppState) => ({ ...st, auto: f(autoOf(st)) }));
   const d = useMemo(() => decide(snap, now, { uploadBusy: false, canGen: isDesktop, canUpload: isDesktop, genReady: ready }), [snap, now, ready]);
+  const viaClaude = au.producer !== 'launcher';
   const stock = stockOf(snap);
   const byNum = new Map(snap.videos.map((v) => [v.num, v] as const));
   const radar = [...d.scores].filter((s) => s.ageH <= 72).sort((a, b) => b.score - a.score).slice(0, 8);
@@ -46,6 +47,7 @@ export default function Control() {
     <Header title="Control Room" sub="Review what the autopilot made, watch what is going viral, and see what it plans next." right={<>
       <button className={`btn ${au.enabled ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, enabled: !a.enabled }))} title="When on: renders videos 3 h before the day's first slot, schedules approved videos shortly before each slot, reacts to viral videos">
         <Icon name="sparkle" size={15} /> Autopilot {au.enabled ? 'ON' : 'OFF'}</button>
+      <button className="btn" onClick={() => set((a) => ({ ...a, producer: viaClaude ? 'launcher' : 'claude' }))} title="Who renders the videos"><Icon name="film" size={15} /> Rendered by {viaClaude ? 'Claude' : 'launcher (K6b, K9 only)'}</button>
       {isDesktop && <button className="btn" onClick={() => bb.statsFetch?.()}><Icon name="update" size={15} /> Pull data now</button>}
     </>} />
 
@@ -88,7 +90,7 @@ export default function Control() {
     <div className="grid g-auto" style={{ alignItems: 'start' }}>
       <section className="glass card">
         <h2>Concepts <span className="small dim" style={{ fontWeight: 400 }}>· who wins, who fails</span></h2>
-        {[...d.stats].sort((a, b) => b.hotScore - a.hotScore || b.medianViews - a.medianViews).map((s) => <ConceptRow key={s.cid} s={s} max={maxMed} canGen={ready.has(s.cid)} onQueue={() => queueNow(s.cid)} onCopy={() => copyGen(s.cid, 3)} />)}
+        {[...d.stats].sort((a, b) => b.hotScore - a.hotScore || b.medianViews - a.medianViews).map((s) => <ConceptRow key={s.cid} s={s} max={maxMed} canGen={viaClaude || ready.has(s.cid)} onQueue={() => queueNow(s.cid)} onCopy={() => copyGen(s.cid, 3)} />)}
         <p className="small dim">Winner = median views 1.5x the channel; Failing = under 0.5x after {4} judged posts; Hot = a video of it is going viral right now.</p>
       </section>
       <section className="glass card">

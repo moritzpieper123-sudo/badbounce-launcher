@@ -2,7 +2,7 @@
 import type { Snapshot, Video } from './types';
 import { addDays, at, parseYmd, slotsForDay, slotMap, ymd } from './logic';
 import {
-  AUTO_GEN, GEN_LEAD_H, LEAD_MIN, MOMENTUM_MIN_SLOTS, autoOf, cidOf, conceptStats, pickConcept, planSlots, scorePosts, stockOf,
+  AUTO_GEN, CIDS, GEN_LEAD_H, RENDER_LEAD_MIN, LEAD_MIN, MOMENTUM_MIN_SLOTS, autoOf, cidOf, conceptStats, pickConcept, planSlots, scorePosts, stockOf,
   type ConceptStat, type PlanRow, type PostScore,
 } from './autopilot';
 
@@ -10,7 +10,7 @@ export interface Decision {
   scores: PostScore[]; stats: ConceptStat[];
   slots: { iso: string; when: Date; taken: boolean; inWindow: boolean }[];   // next 3 days
   rows: PlanRow[];                                                        // plan for the open slots of the generation window
-  enqueue: { cid: string; reason: string }[];                             // videos to render now
+  enqueue: { cid: string; reason: string; deadline?: string }[];                             // videos to render now
   claude: { cid: string; need: number; why: string }[];                   // concepts that need a Gen round with Claude
   schedule: { num: number; slotIso: string; cid: string; reason: string } | null;   // video to put into TikTok now
   noVideo: { slotIso: string; waiting: number } | null;                   // a slot is due but nothing is approved
@@ -21,7 +21,7 @@ export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canG
   const lead = Math.max(20, au.leadMin ?? LEAD_MIN) * 60e3;
   const scores = scorePosts(snap);
   const stock = stockOf(snap);
-  const gen = o.genReady ?? AUTO_GEN;
+  const gen: Set<string> = au.producer === 'launcher' ? (o.genReady ?? AUTO_GEN) : new Set<string>(CIDS);   // Claude can render every Konzept
   const stockBy: Record<string, number> = {};
   for (const v of [...stock.approved, ...stock.pending]) { const c = cidOf(v); if (c) stockBy[c] = (stockBy[c] || 0) + 1; }
   for (const j of au.genJobs) if (j.state === 'queued' || j.state === 'running') stockBy[j.cid] = (stockBy[j.cid] || 0) + 1;
@@ -56,7 +56,11 @@ export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canG
     const want = Math.max(need[s.cid] || 0, hot ? MOMENTUM_MIN_SLOTS : 0) - have;
     if (want <= 0) continue;
     if (o.canGen && gen.has(s.cid)) {
-      for (let i = 0; i < want && slotsLeft > 0; i++, slotsLeft--) enqueue.push({ cid: s.cid, reason: hot ? 'follow-up for a hot video' : 'plan for today' });
+      const mine = rows.filter((r) => r.cid === s.cid);   // job i is for the i-th planned slot of this concept (earliest deadline first)
+      for (let i = 0; i < want && slotsLeft > 0; i++, slotsLeft--) {
+        const slot = mine[Math.max(0, have) + i]?.slotIso;
+        enqueue.push({ cid: s.cid, reason: hot ? 'follow-up for a hot video' : 'plan for today', deadline: slot ? new Date(new Date(slot).getTime() - RENDER_LEAD_MIN * 60e3).toISOString() : undefined });
+      }
     } else if (hot || s.status === 'winner') {
       claude.push({ cid: s.cid, need: want, why: hot ? 'hot right now, follow-ups wanted' : 'a winner, stock is low' });
     }

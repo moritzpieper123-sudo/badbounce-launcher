@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('bb', {
   genStart: (job) => ipcRenderer.invoke('genStart', job),
   genStatus: () => ipcRenderer.invoke('genStatus'),
   genReady: () => ipcRenderer.invoke('genReady'),
+  genQueueWrite: (j) => ipcRenderer.invoke('genQueueWrite', j),
   onGenStatus: (cb) => on('genStatus', cb),
   uploadStatus: () => ipcRenderer.invoke('uploadStatus'),
   onUploadStatus: (cb) => on('uploadStatus', cb),

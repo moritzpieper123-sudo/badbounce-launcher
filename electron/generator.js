@@ -86,10 +86,51 @@ function run(py, args, env, cwd, onLine) {
   });
 }
 
-function start({ vault, cid, num, onStatus, onDone }) {
+/* ---------- Claude as the producer (Mo 2026-11-24: every video is rendered with Claude) ----------
+   The launcher starts Claude Code headless (`claude -p`) in the vault, with the ranked job as the prompt. Claude follows the Konzept sheet + engine README
+   and writes Results\#N like a normal Gen. Needs the `claude` command on the PC, signed in (Control Room > Autopilot checks it). */
+const CONCEPT_NUM = (cid) => parseInt(String(cid).slice(1), 10);
+function claudePrompt(cid, num, reason, deadline) {
+  const k = CONCEPT_NUM(cid);
+  return [
+    `You are the Badbounce video producer. Make ONE new video now: concept ${cid} (Konzept ${k}), video number #${num}. Reason: ${reason}.${deadline ? ` It must be finished before ${deadline}.` : ''}`,
+    `Do the normal Gen process without asking questions (nobody is watching; decide yourself):`,
+    `- Read Konzepte\\Konzept ${k}\\*.md (the section "Standard rules" / "Final rules") and Engine\\${cid}\\README.md + report.md. Use only that Konzept's own engine in Engine\\${cid} (run commands from inside that folder) and its original sounds.`,
+    `- Make a NEW variant: new seed, and the Konzept's variable (boss, shape, machine, flags, heads, song only if the sheet says a song is allowed without asking) that has not been used in an earlier Results folder. Never repeat an earlier video.`,
+    `- Render at scale 1.0 (upload quality), 60-70 s, counts rounded to the nearest thousand, standard watermark, ALL CAPS titles, no slow motion. Check the file with ffprobe (duration) before you finish.`,
+    `- Write exactly these files into Results\\#${num}\\ : "Badbounce #${num}.mp4", "Thumbnail #${num}.png" (the standard thumbnail of this Konzept), "Description #${num}.txt" (caption formula Opt #16 from Konzepte\\Konzepte Overview.md: searchable question, max 5 hashtags, no #badbounce, TikTok-flag safe, see the sheets), and "Notes #${num}.md" whose first line is "# <short title>" followed by the line "Konzept ${k} (${cid})" and the seed / variant numbers you used.`,
+    `- Do NOT upload or post anything and do not change other Results folders, Final folders or engines. If something is impossible, write nothing into Results and say why in one sentence.`,
+    `Finish with one line: DONE #${num} or FAILED #${num}: <reason>.`,
+  ].join('\n');
+}
+function startClaude({ vault, cid, num, reason, deadline, onStatus, onDone }) {
+  const dir = path.join(vault, 'Results', `#${num}`);
+  if (fs.existsSync(dir) && safeLs(dir).length) return { ok: false, error: `Results\\#${num} already exists` };
+  running = { num, cid, msg: 'Claude is starting…' };
+  const emit = (state, msg) => { if (running) running.msg = msg; onStatus && onStatus({ state, num, cid, msg }); };
+  emit('running', `${cid}: Claude is working`);
+  const args = ['-p', claudePrompt(cid, num, reason || 'planned', deadline), '--allowedTools', 'Bash Read Write Edit Glob Grep', '--permission-mode', 'acceptEdits', '--add-dir', vault, '--output-format', 'text'];
+  const p = spawn('claude', args, { cwd: vault, shell: process.platform === 'win32', windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+  try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* */ }
+  let out = '', killed = false;
+  const timer = setTimeout(() => { killed = true; try { p.kill(); } catch { /* */ } }, 100 * 60e3);
+  const cut = (b) => { out += String(b); const ln = out.split(/\r?\n/).map((x) => x.trim()).filter(Boolean).pop(); if (ln) emit('running', `${cid}: ${ln}`.slice(0, 160)); };
+  p.stdout.on('data', cut); p.stderr.on('data', cut);
+  const finish = (ok, msg) => { clearTimeout(timer); const st = { state: ok ? 'done' : 'error', num, cid, msg }; running = null; onStatus && onStatus(st); onDone && onDone({ ...st, ok }); };
+  p.on('error', (e) => finish(false, `could not start Claude (${e.code || e.message}). Is the claude command installed?`));
+  p.on('close', (code) => {
+    const have = ['Badbounce', 'Thumbnail', 'Description', 'Notes'].every((n) => safeLs(dir).some((f) => f.startsWith(n + ' #' + num)));
+    if (!killed && have) finish(true, `${cid} #${num} is ready for review`);
+    else if (/not logged in/i.test(out)) finish(false, 'Not logged in: run claude once and /login');
+    else finish(false, killed ? 'Claude took longer than 100 min' : `Claude stopped (exit ${code}) without all four files: ${out.trim().split(/\r?\n/).pop() || 'no answer'}`.slice(0, 300));
+  });
+  return { ok: true };
+}
+
+function start({ vault, cid, num, via, reason, deadline, onStatus, onDone }) {
   if (running) return { ok: false, error: `already rendering #${running.num}` };
   const R = recipes(vault)[cid];
-  if (!R) return { ok: false, error: `${cid} cannot be rendered by the launcher (needs a Gen round with Claude)` };
+  if (via === 'claude' || !R) return startClaude({ vault, cid, num, reason, deadline, onStatus, onDone });
   const engine = path.join(vault, 'Engine', cid);
   if (!fs.existsSync(engine)) return { ok: false, error: `Engine\\${cid} not found` };
   const dir = path.join(vault, 'Results', `#${num}`);

@@ -46,8 +46,9 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
     genRunning.current = false;
     if (st.state !== 'done' && st.state !== 'error') return;
     upd.current((s0) => patch(s0, (au) => ({ ...au, genJobs: au.genJobs.map((j) => (j.num === st.num && j.state === 'running' ? { ...j, state: st.state === 'done' ? 'done' : 'error', msg: st.msg } : j)) })));
-    if (st.state === 'error') alert({ id: `gen-${st.cid}`, kind: 'gen', title: `Rendering ${st.cid} failed`, sub: st.msg ?? '' });
-    else clear(`gen-${st.cid}`);
+    if (st.state === 'error' && /not logged in|\/login/i.test(st.msg ?? '')) alert({ id: 'claude-login', kind: 'gen', title: 'Claude is not signed in on this PC', sub: 'Open cmd, type  claude  , press Enter, then type  /login  and sign in once. After that the autopilot renders by itself.' });
+    else if (st.state === 'error') alert({ id: `gen-${st.cid}`, kind: 'gen', title: `Rendering ${st.cid} failed`, sub: st.msg ?? '' });
+    else { clear(`gen-${st.cid}`); clear('claude-login'); }
   }), []);
 
   // ---- the minute tick
@@ -59,6 +60,7 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
         const s = ref.current, au = autoOf(s.state); if (!au.enabled) return;
         const now = new Date();
         const up = await bb.uploadStatus?.(); const gs = await bb.genStatus?.(); const ready = new Set(await (bb.genReady?.() ?? Promise.resolve([] as string[])));
+        const via = au.producer === 'launcher' ? undefined : 'claude' as const;
         genRunning.current = gs?.state === 'running';
         const d = decide(s, now, { uploadBusy: up?.state === 'running', canGen: !!bb.genStart, canUpload: !!bb.autoUploadBatch, genReady: ready });
 
@@ -73,13 +75,14 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
         // 3. queue renders the plan needs
         if (d.enqueue.length) {
           const maxNum = Math.max(0, ...s.videos.map((v) => Math.floor(v.num)), ...au.genJobs.map((j) => j.num));
-          const jobs: GenJob[] = d.enqueue.map((e, i) => ({ id: `${Date.now()}-${i}`, cid: e.cid, num: maxNum + 1 + i, state: 'queued', at: new Date().toISOString(), reason: e.reason }));
+          const jobs: GenJob[] = d.enqueue.map((e, i) => ({ id: `${Date.now()}-${i}`, cid: e.cid, num: maxNum + 1 + i, state: 'queued', at: new Date().toISOString(), reason: e.reason, deadline: e.deadline }));
           await upd.current((st) => patch(st, (a) => ({ ...a, genJobs: [...a.genJobs, ...jobs].slice(-40) })));
         }
         // 4. start the next queued render (one at a time)
-        const next = au.genJobs.find((j) => j.state === 'queued');
+        const next = [...au.genJobs].filter((j) => j.state === 'queued').sort((a, b) => (a.deadline ?? '9').localeCompare(b.deadline ?? '9') || a.num - b.num)[0];
+        bb.genQueueWrite?.(au.genJobs.filter((j) => j.state === 'queued' || j.state === 'running'));
         if (next && gs?.state !== 'running' && !genRunning.current) {
-          const r = await bb.genStart!({ cid: next.cid, num: next.num });
+          const r = await bb.genStart!({ cid: next.cid, num: next.num, via, reason: next.reason, deadline: next.deadline && new Date(new Date(next.deadline).getTime() + 75 * 60e3).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) });
           if (r.ok) await upd.current((st) => patch(st, (a) => ({ ...a, genJobs: a.genJobs.map((j) => (j.id === next.id ? { ...j, state: 'running' as const } : j)) })));
           else { await upd.current((st) => patch(st, (a) => ({ ...a, genJobs: a.genJobs.map((j) => (j.id === next.id ? { ...j, state: 'error' as const, msg: r.error } : j)) }))); await alert({ id: `gen-${next.cid}`, kind: 'gen', title: `Cannot render ${next.cid}`, sub: r.error ?? '' }); }
         }
