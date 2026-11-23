@@ -48,6 +48,7 @@ export interface BB {
   onCsvFiles?(cb: (files: { name: string; text: string }[]) => void): () => void;
   vaultGraph?(): Promise<VaultGraph>;
   finals?(): Promise<FinalVideo[]>;
+  libraries?(): Promise<LibrariesScan>;
   onGraphChanged?(cb: () => void): () => void;
   noteText?(id: string): Promise<string>;
   openNote?(id: string): Promise<void>;
@@ -108,3 +109,9 @@ export const isDesktop = !!window.bb;
 export const bb: BB = window.bb ?? (cloudConfigured ? webBridge : fallback);
 
 export interface MediaNow { app: string; title: string; artist: string; album?: string; playing: boolean; pos: number; dur: number; at: number; cover: string | null }
+
+/* Libraries page (vault Libraries/, built by Engine/Libraries/build_libraries.py) */
+export interface LibItem { file: string | null; name: string; desc?: string; tag?: string | null; when?: string; seconds?: number; path: string | null }
+export interface LibConcept { id: string; name: string; items: LibItem[] }
+export interface Lib { folder: string; kind: 'images' | 'sounds'; title: string; concept: string | null; desc: string; items: LibItem[]; concepts: LibConcept[] }
+export interface LibrariesScan { root: string; built: number; libraries: Lib[] }

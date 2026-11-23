@@ -25,6 +25,7 @@ import Upload from './pages/Upload';
 import Analytics from './pages/Analytics';
 import Library from './pages/Library';
 import Overview from './pages/Overview';
+import Libraries from './pages/Libraries';
 import Ideas from './pages/Ideas';
 import Tools from './pages/Tools';
 import Settings from './pages/Settings';
@@ -39,6 +40,7 @@ const PAGES = [
   { id: 'analytics', label: 'Analytics', short: 'Analytics', icon: 'chart' },
   { id: 'library', label: 'Library', short: 'Library', icon: 'grid' },
   { id: 'overview', label: 'Overview (final Konzepte)', short: 'Overview', icon: 'film' },
+  { id: 'libraries', label: 'Libraries (Konzept assets + sounds)', short: 'Libraries', icon: 'music' },
   { id: 'ideas', label: 'Idea inbox', short: 'Ideas', icon: 'bulb' },
   { id: 'mail', label: 'Inbox', short: 'Inbox', icon: 'mail' },
   { id: 'vault', label: 'Vault graph', short: 'Vault', icon: 'graph', desktop: true },
@@ -94,7 +96,7 @@ function App() {
     toast(r.error ? `Update check failed: ${r.error}` : r.ready ? `Update ${r.ready} is ready · click the button again to install` : `You are up to date (v${r.current})`);
   };
   const fetchCsv = () => { if (!bb.csvFetch) { go('analytics'); return; } setCsv({ state: 'running', msg: 'Starting…' }); bb.csvFetch(); };
-  const Page = { today: Today, schedule: Schedule, board: Board, upload: Upload, analytics: Analytics, library: Library, overview: Overview, ideas: Ideas, mail: Mail, tools: Tools, settings: Settings, vault: VaultGraphPage }[page] || Today;
+  const Page = { today: Today, schedule: Schedule, board: Board, upload: Upload, analytics: Analytics, library: Library, overview: Overview, libraries: Libraries, ideas: Ideas, mail: Mail, tools: Tools, settings: Settings, vault: VaultGraphPage }[page] || Today;
   const notes = notifications(snap, { due, buf, dueTasks, csv });
   const bellProps = { notes, go, fetchCsv, csv };
   const navIdx = PAGES.findIndex((p) => p.id === page);

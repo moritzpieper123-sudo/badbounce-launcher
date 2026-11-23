@@ -328,6 +328,24 @@ function scanFinals() {
   return out;
 }
 ipcMain.handle('finals', () => scanFinals());
+/* Libraries page: <vault>/Libraries/<Library>/index.json, written by Engine/Libraries/build_libraries.py (images) and build_sounds.py (sounds). */
+function scanLibraries() {
+  const root = path.join(vault(), 'Libraries'); const out = [];
+  let ds = []; try { ds = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { return out; }
+  for (const d of ds) {
+    const dir = path.join(root, d); let j;
+    try { j = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')); } catch { continue; }
+    if (j.kind === 'sounds') {
+      const concepts = (j.concepts || []).map((c) => ({ id: c.id, name: c.name, items: (c.items || []).map((it) => ({ ...it, path: it.file ? path.join(dir, c.id, it.file) : null })) }));
+      out.push({ folder: dir, kind: 'sounds', title: j.title || d, concept: null, desc: 'Every sound the concept engines put into the videos, nothing else.', items: [], concepts });
+    } else {
+      out.push({ folder: dir, kind: 'images', title: j.title || d, concept: j.concept || null, desc: j.desc || '', items: (j.items || []).map((it) => ({ ...it, path: path.join(dir, it.file) })), concepts: [] });
+    }
+  }
+  let mtime = 0; try { mtime = fs.statSync(path.join(root, 'index.json')).mtimeMs; } catch { /* */ }
+  return { root, built: mtime, libraries: out };
+}
+ipcMain.handle('libraries', () => scanLibraries());
 ipcMain.handle('mailConnect', async (_e, id, secret) => { try { const r = await gmail.connect(String(id).trim(), String(secret).trim(), true); broadcast(); return { ok: true, email: r.email }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
 ipcMain.handle('mailRead', async (_e, id) => { const r = await gmail.markRead(String(id)); broadcast(); return r; });
 ipcMain.handle('mailAllowModify', async () => { try { await gmail.allowModify(); broadcast(); return { ok: true }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
