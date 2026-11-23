@@ -16,7 +16,7 @@ export default function Overview() {
   const [markers, setMarkers] = useState<Record<string, Marker[]>>({});
   useEffect(() => { let on = true; (bb.finals ? bb.finals() : Promise.resolve([])).then((f) => { if (on) setFinals(f); }).catch(() => on && setFinals([])); return () => { on = false; }; }, []);
   const byId = new Map((finals ?? []).map((f) => [f.id.toLowerCase(), f]));
-  const list = CONCEPTS.map((c) => ({ c, f: byId.get(c.id.toLowerCase()) }));
+  const list = CONCEPTS.map((c) => ({ c, f: [c.id, ...(c.alt ?? [])].map((x) => byId.get(x.toLowerCase())).find(Boolean) }));
   const cur = list.find((x) => x.c.id === sel) ?? list[0];
   const copy = async (t: string) => { await bb.copyText(t); toast('Description copied'); };
   return <>
@@ -32,7 +32,7 @@ export default function Overview() {
           <span className="chip" style={{ background: kColor(cur.c.k) + '33', color: kColor(cur.c.k) }}><span className="dot" style={{ background: kColor(cur.c.k) }} />{cur.c.id}</span>
           <span className="chip ov-ref">Reference only · not for upload</span>
         </div>
-        <h2 className="ov-title"><span className="ov-n">{list.indexOf(cur) + 1}.</span>{cur.c.name}</h2>
+        <h2 className="ov-title"><span className="ov-n">{cur.c.id}</span>{cur.c.name}</h2>
         <p className="ov-about">{cur.c.about}</p>
         <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>{cur.c.facts.map((t) => <span key={t} className="chip">{t}</span>)}</div>
         <div className="ov-sec">
@@ -50,19 +50,27 @@ export default function Overview() {
       </div>
     </div>}
     <div className="lib ov-grid">
-      {list.map(({ c, f }, i) => {
-        const url = f?.thumb ? bb.fileUrl(f.thumb) : '';
-        return <button key={c.id} className={`glass card ov-card ${sel === c.id ? 'on' : ''}`} onClick={() => { setSel(c.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }} aria-label={`${i + 1}. ${c.id} ${c.name}`}>
-          <div className="poster" style={{ backgroundImage: url ? `url("${url}")` : undefined }}>
-            {!url && <div className="ball" />}
-            <span className="ov-num">{i + 1}</span>
-            <span className="tag"><span className="chip" style={{ background: 'rgba(0,0,0,.6)' }}><span className="dot" style={{ background: kColor(c.k) }} />{c.id}</span></span>
+      {list.map(({ c, f }) => {
+        return <button key={c.id} className={`glass card ov-card ${sel === c.id ? 'on' : ''}`} onClick={() => { setSel(c.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }} aria-label={`${c.id} ${c.name}`} style={{ ['--kc' as string]: kColor(c.k) }}>
+          <div className="poster">
+            <Poster thumb={f?.thumb} video={f?.video} alt={`${c.id} ${c.name}`} />
+            <span className="ov-num">{c.id}</span>
             <span className="ov-play"><Icon name="play" size={18} /></span>
           </div>
-          <b className="ov-name">{c.name}</b>
+          <b className="ov-name"><span className="ov-n">{c.id}</span>{c.name}</b>
           <span className="small muted ov-short">{c.about}</span>
         </button>;
       })}
     </div>
   </>;
+}
+
+/* Card picture: the thumbnail as a real <img> (CSS background images did not show on the PC).
+   No thumbnail or it fails to load -> first frame of the final video; nothing at all -> the glowing ball. */
+function Poster({ thumb, video, alt }: { thumb?: string | null; video?: string; alt: string }) {
+  const [bad, setBad] = useState(false);
+  useEffect(() => setBad(false), [thumb]);
+  if (thumb && !bad) return <img className="ov-img" src={bb.fileUrl(thumb)} alt={alt} loading="lazy" decoding="async" draggable={false} onError={() => setBad(true)} />;
+  if (video) return <video className="ov-img" src={bb.fileUrl(video) + '#t=0.8'} muted playsInline preload="metadata" aria-label={alt} />;
+  return <div className="ball" />;
 }

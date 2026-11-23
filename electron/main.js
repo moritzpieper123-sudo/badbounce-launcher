@@ -308,19 +308,79 @@ function snapshot() {
 ipcMain.handle('snapshot', () => snapshot());
 /* Overview page: the final reference video of every Konzept (Konzepte/Konzept N/Drafts/Final/**). Reference only, never uploaded. */
 function scanFinals() {
-  const root = path.join(vault(), 'Konzepte'); const out = [];
-  const walk = (d, depth) => { let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+  // 2026-11-23 standard: Konzepte/Konzept N/Final/<ID> video.mp4 | <ID> thumbnail.png | <ID> description.txt
+  // old layout (fallback): Konzepte/Konzept N/Drafts/Final/**/<ID> Final video.mp4
+  const root = path.join(vault(), 'Konzepte'); const out = []; const seen = new Set();
+  const add = (id, d, f, thumbName, descName) => {
+    const key = id.toLowerCase(); if (seen.has(key)) return; seen.add(key);
+    const sib = (n) => { const x = path.join(d, n); return fs.existsSync(x) ? x : null; };
+    const descFile = sib(descName); let description = ''; try { if (descFile) description = fs.readFileSync(descFile, 'utf8').trim(); } catch { /* ignore */ }
+    let size = 0, mtime = 0; try { const s = fs.statSync(f); size = s.size; mtime = s.mtimeMs; } catch { /* ignore */ }
+    out.push({ id, folder: d, video: f, thumb: sib(thumbName), description, size, mtime }); };
+  const walkOld = (d, depth) => { let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
     for (const e of ents) { const f = path.join(d, e.name);
-      if (e.isDirectory()) { if (depth < 3) walk(f, depth + 1); continue; }
-      const m = e.name.match(/^(.+?) Final video\.mp4$/i); if (!m) continue;
-      const id = m[1]; const sib = (suf) => { const x = path.join(d, `${id} Final ${suf}`); return fs.existsSync(x) ? x : null; };
-      const descFile = sib('description.txt'); let description = ''; try { if (descFile) description = fs.readFileSync(descFile, 'utf8').trim(); } catch { /* ignore */ }
-      let size = 0, mtime = 0; try { const s = fs.statSync(f); size = s.size; mtime = s.mtimeMs; } catch { /* ignore */ }
-      out.push({ id, folder: d, video: f, thumb: sib('thumbnail.png'), description, size, mtime }); } };
-  try { for (const k of fs.readdirSync(root)) { if (/^Konzept \d+$/.test(k)) walk(path.join(root, k, 'Drafts', 'Final'), 0); } } catch { /* no vault */ }
+      if (e.isDirectory()) { if (depth < 3) walkOld(f, depth + 1); continue; }
+      const m = e.name.match(/^(.+?) Final video\.mp4$/i); if (m) add(m[1], d, f, `${m[1]} Final thumbnail.png`, `${m[1]} Final description.txt`); } };
+  let ks = []; try { ks = fs.readdirSync(root).filter((k) => /^Konzept \d+$/.test(k)); } catch { return out; }
+  for (const k of ks) { const d = path.join(root, k, 'Final'); let ents = []; try { ents = fs.readdirSync(d); } catch { /* none */ }
+    for (const n of ents) { const m = n.match(/^(K\d+[a-z]?) video\.mp4$/i); if (m) add(m[1], d, path.join(d, n), `${m[1]} thumbnail.png`, `${m[1]} description.txt`); } }
+  for (const k of ks) walkOld(path.join(root, k, 'Drafts', 'Final'), 0);
   return out;
 }
 ipcMain.handle('finals', () => scanFinals());
+/* Libraries page: <vault>/Libraries/<Library>/index.json, written by Engine/Libraries/build_libraries.py (images) and build_sounds.py (sounds). */
+function scanLibraries() {
+  const root = path.join(vault(), 'Libraries'); const out = [];
+  let ds = []; try { ds = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { return out; }
+  for (const d of ds) {
+    if (/\.(new|old)$/.test(d)) continue;
+    const dir = path.join(root, d); let j;
+    try { j = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')); } catch { continue; }
+    if (j.kind === 'sounds') {
+      const concepts = (j.concepts || []).map((c) => ({ id: c.id, name: c.name, items: (c.items || []).map((it) => ({ ...it, path: it.file ? path.join(dir, c.id, it.file) : null })) }));
+      out.push({ folder: dir, kind: 'sounds', title: j.title || d, concept: null, desc: 'Every sound the concept engines put into the videos, nothing else.', items: [], concepts });
+    } else {
+      out.push({ folder: dir, kind: 'images', title: j.title || d, concept: j.concept || null, desc: j.desc || '', items: (j.items || []).map((it) => ({ ...it, path: path.join(dir, it.file) })), concepts: [] });
+    }
+  }
+  let mtime = 0; try { mtime = fs.statSync(path.join(root, 'index.json')).mtimeMs; } catch { /* */ }
+  return { root, built: mtime, libraries: out };
+}
+ipcMain.handle('libraries', () => ({ ...scanLibraries(), status: libStatus }));
+/* Libraries stay current by themselves: at start, every 15 min and when an Engine file changes, run the generator with
+   --if-changed (it compares a stamp of all engine files and exits at once when nothing changed). Low priority, hidden. */
+let libStatus = { state: 'idle', msg: '', at: 0 }; let libProc = null; let libAgain = false; let libWatch = null; let libTimer = null;
+function libSet(state, msg) { libStatus = { state, msg, at: Date.now() }; sendAll('librariesStatus', libStatus); }
+function rebuildLibraries(force) {
+  const v = vault(); const script = path.join(v, 'Engine', 'Libraries', 'build_libraries.py');
+  if (!fs.existsSync(script)) return;
+  if (libProc) { libAgain = true; return; }
+  const tries = process.platform === 'win32' ? [['py', ['-3']], ['python', []]] : [['python3', []]];
+  const logp = path.join(dataDir(), 'libraries-build-log.txt');
+  const run = (i) => {
+    if (i >= tries.length) { libSet('error', 'Python not found, libraries not rebuilt'); return; }
+    const [cmd, pre] = tries[i]; let out = '';
+    let p; try { p = spawn(cmd, [...pre, script, 'Engine', 'Libraries', ...(force ? [] : ['--if-changed'])], { cwd: v, windowsHide: true, env: { ...process.env, OMP_NUM_THREADS: '1', PYTHONIOENCODING: 'utf-8' } }); } catch { run(i + 1); return; }
+    libProc = p; let started = false;
+    try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* */ }
+    const onData = (d) => { out += d; if (!started && !/^up to date/m.test(out)) { started = true; libSet('running', 'Rebuilding libraries…'); } const m = String(d).trim().split('\n').pop(); if (started && m) libSet('running', m.slice(0, 120)); };
+    p.stdout.on('data', onData); p.stderr.on('data', (d) => { out += d; });
+    p.on('error', () => { libProc = null; run(i + 1); });
+    p.on('close', (code) => {
+      libProc = null; try { fs.writeFileSync(logp, `${new Date().toISOString()} exit ${code}\n${out}`); } catch { /* */ }
+      if (/^up to date/m.test(out)) { if (libStatus.state !== 'idle') libSet('idle', ''); }
+      else { const f = (out.match(/failed: (.*)/) || [])[1]; libSet(code === 0 ? 'done' : 'error', code === 0 ? 'Libraries rebuilt' : `Rebuild had errors${f && f !== 'none' ? ': ' + f : ''} (log: ${logp})`); }
+      if (libAgain) { libAgain = false; setTimeout(() => rebuildLibraries(false), 5000); }
+    });
+  };
+  run(0);
+}
+function startLibrariesAuto() {
+  setTimeout(() => rebuildLibraries(false), 20000);
+  clearInterval(libTimer); libTimer = setInterval(() => rebuildLibraries(false), 15 * 60000);
+  try { libWatch?.close(); let t = null; libWatch = fs.watch(path.join(vault(), 'Engine'), { recursive: true }, (_ev, f) => { if (f && /__pycache__|\.(pyc|mp4|log|tmp)$/i.test(String(f))) return; clearTimeout(t); t = setTimeout(() => rebuildLibraries(false), 60000); }); } catch { /* no Engine folder */ }
+}
+ipcMain.handle('librariesRebuild', () => { rebuildLibraries(true); return libStatus; });
 ipcMain.handle('mailConnect', async (_e, id, secret) => { try { const r = await gmail.connect(String(id).trim(), String(secret).trim(), true); broadcast(); return { ok: true, email: r.email }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
 ipcMain.handle('mailRead', async (_e, id) => { const r = await gmail.markRead(String(id)); broadcast(); return r; });
 ipcMain.handle('mailAllowModify', async () => { try { await gmail.allowModify(); broadcast(); return { ok: true }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
@@ -468,6 +528,7 @@ else {
     app.setAppUserModelId(AUMID);
     fixShortcuts();
     if (restartWithUpdate(HIDDEN)) return;
+    startLibrariesAuto();
     // vault files for the UI. Videos need byte ranges (206), else Chromium stalls after the first chunk (Overview player froze after ~1 s).
     const MIME = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8' };
     protocol.handle('bbfile', async (req) => {
