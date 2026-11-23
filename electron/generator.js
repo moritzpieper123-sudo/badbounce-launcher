@@ -110,7 +110,10 @@ function startClaude({ vault, cid, num, reason, deadline, onStatus, onDone }) {
   const emit = (state, msg) => { if (running) running.msg = msg; onStatus && onStatus({ state, num, cid, msg }); };
   emit('running', `${cid}: Claude is working`);
   const args = ['-p', claudePrompt(cid, num, reason || 'planned', deadline), '--allowedTools', 'Bash Read Write Edit Glob Grep', '--permission-mode', 'acceptEdits', '--add-dir', vault, '--output-format', 'text'];
-  const p = spawn('claude', args, { cwd: vault, shell: process.platform === 'win32', windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+  // the launcher may start without the npm folder in PATH (autostart): fall back to the npm shim of the user
+  const shim = process.env.APPDATA && path.join(process.env.APPDATA, 'npm', 'claude.cmd');
+  const exe = shim && fs.existsSync(shim) ? shim : 'claude';
+  const p = spawn(exe.includes(' ') ? `"${exe}"` : exe, args, { cwd: vault, shell: process.platform === 'win32', windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
   try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* */ }
   let out = '', killed = false;
   const timer = setTimeout(() => { killed = true; try { p.kill(); } catch { /* */ } }, 100 * 60e3);
