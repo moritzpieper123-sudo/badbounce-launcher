@@ -193,6 +193,13 @@ if __name__ == '__main__':
     if check and os.path.exists(sp):
         old = open(sp).read()   # same engines: skip; earlier failures are retried at most every 6 h
         if old.split()[0:1] == [stamp] and ('failed' not in old or time.time() - os.path.getmtime(sp) < 6*3600): print('up to date'); sys.exit()
+    import tempfile; lock = os.path.join(tempfile.gettempdir(), 'badbounce-libraries.lock')   # only ONE build at a time
+    try:
+        if time.time() - os.path.getmtime(lock) > 3600: os.remove(lock)   # stale lock from a crashed build
+    except OSError: pass
+    try: os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+    except FileExistsError: print('up to date (another library build is running)'); sys.exit()
+    import atexit; atexit.register(lambda: os.path.exists(lock) and os.remove(lock))
     clean_leftovers(LIB); bad = []
     for k in keys or LIBS + ['sounds']:
         if k == 'sounds': cmd = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build_sounds.py'), E, LIB]
