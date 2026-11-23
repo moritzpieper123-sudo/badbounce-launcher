@@ -46,7 +46,7 @@ def _retry(f, *a):
 def build_dir(name):
     """fresh scratch folder OUTSIDE the vault (OneDrive refuses folder deletes/renames while it syncs)"""
     import tempfile
-    d = os.path.join(tempfile.gettempdir(), 'badbounce-libraries', name)
+    d = os.path.join(tempfile.gettempdir(), 'badbounce-libraries', os.environ.get('BB_LIB_RUN') or str(os.getpid()), name)   # own folder per build run
     shutil.rmtree(d, ignore_errors=True); os.makedirs(d, exist_ok=True); return d
 
 
@@ -200,6 +200,7 @@ if __name__ == '__main__':
     try: os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
     except FileExistsError: print('up to date (another library build is running)'); sys.exit()
     import atexit; atexit.register(lambda: os.path.exists(lock) and os.remove(lock))
+    os.environ['BB_LIB_RUN'] = str(os.getpid())   # child processes share this run's scratch folder
     clean_leftovers(LIB); bad = []
     for k in keys or LIBS + ['sounds']:
         if k == 'sounds': cmd = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build_sounds.py'), E, LIB]
@@ -211,4 +212,5 @@ if __name__ == '__main__':
         if os.path.exists(p): j = json.load(open(p, encoding='utf-8')); libs.append(dict(folder=d, kind=j.get('kind'), title=j.get('title', d), concept=j.get('concept')))
     json.dump(dict(libraries=libs, failed=bad), open(os.path.join(LIB, 'index.json'), 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
     if not keys: open(sp, 'w').write(stamp + ('\nfailed: ' + ' '.join(bad) if bad else '') + '\n')
+    shutil.rmtree(os.path.join(tempfile.gettempdir(), 'badbounce-libraries', os.environ['BB_LIB_RUN']), ignore_errors=True)
     print('failed:', bad or 'none'); sys.exit(1 if bad else 0)
