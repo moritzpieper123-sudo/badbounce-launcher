@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../ctx';
 import { Header } from './parts';
 import { Icon } from '../ui';
-import { bb, isDesktop, type LibrariesScan, type LibItem } from '../bridge';
+import { bb, isDesktop, type LibrariesScan, type LibItem, type LibStatus } from '../bridge';
 
 export default function Libraries() {
   const { toast } = useApp();
@@ -14,7 +14,10 @@ export default function Libraries() {
   const [playing, setPlaying] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   const load = () => (bb.libraries ? bb.libraries() : Promise.resolve({ root: '', built: 0, libraries: [] })).then((s) => { setScan(s); setSel((x) => x || s.libraries[0]?.folder || ''); }).catch(() => setScan({ root: '', built: 0, libraries: [] }));
+  const [st, setSt] = useState<LibStatus | null>(null);
   useEffect(() => { load(); return () => { audio.current?.pause(); }; }, []);
+  useEffect(() => { if (scan?.status) setSt(scan.status); }, [scan]);
+  useEffect(() => bb.onLibrariesStatus?.((s) => { setSt(s); if (s.state === 'done') load(); }), []);
   const libs = scan?.libraries ?? [];
   const cur = libs.find((l) => l.folder === sel) ?? libs[0];
   const m = (it: LibItem) => !q || `${it.name} ${it.desc ?? ''} ${it.when ?? ''} ${it.tag ?? ''}`.toLowerCase().includes(q.toLowerCase());
@@ -28,9 +31,10 @@ export default function Libraries() {
   const count = (l: typeof libs[number]) => l.kind === 'sounds' ? l.concepts.reduce((n, c) => n + c.items.filter((i) => i.file).length, 0) : l.items.length;
   const built = scan?.built ? new Date(scan.built).toLocaleString() : '';
   return <>
-    <Header title="Libraries" sub={scan ? `${libs.length} libraries · ${libs.reduce((n, l) => n + count(l), 0)} items${built ? ` · built ${built}` : ''}` : 'Loading…'}
+    <Header title="Libraries" sub={scan ? `${libs.length} libraries · ${libs.reduce((n, l) => n + count(l), 0)} items${built ? ` · built ${built}` : ''} · rebuilt automatically when an engine changes` : 'Loading…'}
       right={isDesktop ? <div className="row" style={{ gap: 6 }}>
-        <button className="btn sm" onClick={() => { load(); toast('Libraries reloaded'); }}><Icon name="update" size={14} /> Reload</button>
+        {st && st.state !== 'idle' && <span className={`chip ${st.state === 'error' ? 'warn' : ''}`} title={st.msg}>{st.state === 'running' ? 'Rebuilding…' : st.state === 'done' ? 'Up to date' : 'Rebuild error'}</span>}
+        <button className="btn sm" disabled={st?.state === 'running'} onClick={async () => { if (bb.librariesRebuild) { setSt(await bb.librariesRebuild()); toast('Rebuilding libraries from the engines…'); } else load(); }}><Icon name="update" size={14} /> Rebuild now</button>
         <button className="btn sm" onClick={() => bb.openVault('Libraries')}><Icon name="folder" size={14} /> Open folder</button>
       </div> : undefined} />
     {!isDesktop && <div className="glass card"><div className="empty">The libraries live in the vault on the PC. Open them in the Windows launcher.</div></div>}

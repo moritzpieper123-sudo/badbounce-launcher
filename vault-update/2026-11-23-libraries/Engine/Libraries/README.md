@@ -6,7 +6,10 @@ The launcher page **Libraries** shows everything in the vault folder `Libraries\
 - **Image libraries:** Machines (K1), Heads (K3), Flags (K5b), Weapons (K5b), Bosses (K6b), Shapes (K9), Boxes & effects (K10).
 - **Sound library:** `Libraries\Sounds\<ID>\` holds every sound each Konzept and sub-Konzept really mixes into its video, and nothing else.
 
-## Rebuild (after ANY engine, asset or sound change, or a new Konzept)
+## Automatic rebuild
+The launcher (1.13.26+) rebuilds the libraries by itself: at start, every 15 min and about 1 min after any file in `Engine\` changes. It runs the generator with `--if-changed`, which compares a stamp of all engine files (`Libraries\.engine-stamp`) and stops at once when nothing changed. A failed library keeps its old folder. Log: launcher data folder `libraries-build-log.txt`. Button "Rebuild now" on the Libraries page forces a full rebuild.
+
+## Manual rebuild (still works)
 Run from the vault folder `C:\Users\Morit\OneDrive\Badbounce`:
 
     python Engine\Libraries\build_libraries.py Engine Libraries

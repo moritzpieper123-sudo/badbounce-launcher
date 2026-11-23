@@ -2,6 +2,7 @@
 plus the SOUND library (build_sounds.py). The launcher shows <Libraries>/*/index.json on its "Libraries" page.
 usage:  python build_libraries.py <Engine folder> <Libraries folder> [library ...]      (no library = all, sounds included)
         libraries: machines heads flags weapons bosses shapes boxes sounds
+        --if-changed: only rebuild when an engine file changed since the last build (the launcher runs this by itself)
 Every library is read from the engine itself (registries, draw functions, asset folders), so re-running this script after an engine
 change keeps the libraries current. KEEP CURRENT: see README.md in this folder."""
 import sys, os, json, math, re, shutil, subprocess
@@ -32,9 +33,31 @@ def tile(im, pad=0):
     t = Image.new('RGB', (TILE, TILE), BG); t.paste(im, ((TILE - im.width)//2, (TILE - im.height)//2), im); return t
 
 
+def swap(tmp, final):
+    """put a freshly built folder in place; the old one stays if the build failed before this"""
+    old = final + '.old'
+    if os.path.isdir(old): shutil.rmtree(old, ignore_errors=True)
+    if os.path.isdir(final): os.rename(final, old)
+    os.rename(tmp, final); shutil.rmtree(old, ignore_errors=True)
+
+
+STAMP_EXT = ('.py', '.png', '.jpg', '.wav', '.mp3', '.otf', '.ttf'); STAMP_SKIP = {'__pycache__', 'Upload', 'out', 'renders', 'tmp'}
+
+
+def engine_stamp(E):
+    """size + mtime of every engine file a library can depend on"""
+    h = []
+    for r, ds, fs in os.walk(E):
+        ds[:] = sorted(d for d in ds if d not in STAMP_SKIP and not d.startswith('.'))
+        for f in sorted(fs):
+            if f.lower().endswith(STAMP_EXT):
+                st = os.stat(os.path.join(r, f)); h.append(f"{os.path.relpath(os.path.join(r, f), E)}|{st.st_size}|{int(st.st_mtime)}")
+    import hashlib; return hashlib.sha1('\n'.join(h).encode()).hexdigest()
+
+
 class Out:
     def __init__(self, LIB, key):
-        self.dir = os.path.join(LIB, META[key][1]); self.key = key; self.items = []
+        self.final = os.path.join(LIB, META[key][1]); self.dir = self.final + '.new'; self.key = key; self.items = []
         if os.path.isdir(self.dir): shutil.rmtree(self.dir)
         os.makedirs(self.dir)
 
@@ -46,8 +69,8 @@ class Out:
     def done(self):
         cid, title, desc = META[self.key]
         json.dump(dict(kind='images', key=self.key, concept=cid, title=title, desc=desc, items=self.items),
-                  open(os.path.join(self.dir, 'index.json'), 'w'), indent=1, ensure_ascii=False)
-        print(self.key, len(self.items), 'items')
+                  open(os.path.join(self.dir, 'index.json'), 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
+        swap(self.dir, self.final); print(self.key, len(self.items), 'items')
 
 
 def run(key, E, LIB):
@@ -127,8 +150,11 @@ def run(key, E, LIB):
 
 
 if __name__ == '__main__':
-    E, LIB = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2]); keys = sys.argv[3:]
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]; check = '--if-changed' in sys.argv
+    E, LIB = os.path.abspath(args[0]), os.path.abspath(args[1]); keys = args[2:]
     if len(keys) == 1 and keys[0] in LIBS: run(keys[0], E, LIB); sys.exit()
+    os.makedirs(LIB, exist_ok=True); sp = os.path.join(LIB, '.engine-stamp'); stamp = engine_stamp(E)
+    if check and os.path.exists(sp) and open(sp).read().split()[0:1] == [stamp]: print('up to date'); sys.exit()
     bad = []
     for k in keys or LIBS + ['sounds']:
         if k == 'sounds': cmd = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build_sounds.py'), E, LIB]
@@ -138,5 +164,6 @@ if __name__ == '__main__':
     for d in sorted(os.listdir(LIB)):
         p = os.path.join(LIB, d, 'index.json')
         if os.path.exists(p): j = json.load(open(p, encoding='utf-8')); libs.append(dict(folder=d, kind=j.get('kind'), title=j.get('title', d), concept=j.get('concept')))
-    json.dump(dict(libraries=libs), open(os.path.join(LIB, 'index.json'), 'w'), indent=1, ensure_ascii=False)
-    print('failed:', bad or 'none')
+    json.dump(dict(libraries=libs, failed=bad), open(os.path.join(LIB, 'index.json'), 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
+    if not keys: open(sp, 'w').write(stamp + ('\nfailed: ' + ' '.join(bad) if bad else '') + '\n')
+    print('failed:', bad or 'none'); sys.exit(1 if bad else 0)

@@ -4,7 +4,7 @@ writes  <Libraries>/Sounds/<ID>/<NN name>.wav  +  <Libraries>/Sounds/<ID>/index.
 Every ID runs in its own process from inside Engine/<ID> (engines share module names like bb_render).
 Sounds that are module functions are imported from the engine (always current). Sounds that are written inline inside an
 engine's audio function are copied here 1:1 -> when such an engine sound changes, update its block below (see KEEP CURRENT in README.md)."""
-import sys, os, json, math, subprocess, wave
+import sys, os, json, math, subprocess, wave, shutil
 import numpy as np
 
 IDS = ['K1', 'K2', 'K3', 'K4', 'K5a', 'K5b', 'K5c', 'K6a', 'K6b', 'K7a', 'K7b', 'K8', 'K9', 'K10']
@@ -16,9 +16,8 @@ NAME = {'K1': 'Crush & multiply', 'K2': 'Edge increase', 'K3': 'Meme drop', 'K4'
 class Lib:
     def __init__(self, out, sr):
         self.out, self.sr, self.items = out, sr, []
-        os.makedirs(out, exist_ok=True)
-        for f in os.listdir(out):
-            if f.endswith('.wav'): os.remove(os.path.join(out, f))
+        if os.path.isdir(out): shutil.rmtree(out)
+        os.makedirs(out)
 
     def add(self, name, x, when, sr=None):
         """name = short title, x = mono float signal, when = when the engine plays it"""
@@ -49,7 +48,7 @@ def at(pairs, sr, dur):
 
 
 def run(ID, E, LIB):
-    os.chdir(os.path.join(E, ID)); sys.path.insert(0, os.getcwd()); out = os.path.join(LIB, 'Sounds', ID)
+    os.chdir(os.path.join(E, ID)); sys.path.insert(0, os.getcwd()); out = os.path.join(LIB, 'Sounds', ID + '.new')
 
     if ID == 'K1':
         import k1_sound as KS; L = Lib(out, KS.SR)
@@ -219,7 +218,11 @@ def run(ID, E, LIB):
         L.add('Launch', mix(noise(0.35, 8, 0.3, 0.5), tone(200, 0.35, 6, 0.25, f2=700)), 'a ball is launched')
         L.add('Arena burst', mix(tone(90, 2.2, 1.6, 1.0, f2=32), noise(1.8, 3.0, 0.7, 0.25), tone(180, 0.6, 5, 0.3, f2=60)), 'the arena bursts at the end')
 
-    json.dump(dict(id=ID, name=NAME[ID], items=L.items), open(os.path.join(out, 'index.json'), 'w'), indent=1, ensure_ascii=False)
+    json.dump(dict(id=ID, name=NAME[ID], items=L.items), open(os.path.join(out, 'index.json'), 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
+    final = out[:-4]; old = final + '.old'   # swap the fresh folder in; the old one stays if this ID failed
+    if os.path.isdir(old): shutil.rmtree(old, ignore_errors=True)
+    if os.path.isdir(final): os.rename(final, old)
+    os.rename(out, final); shutil.rmtree(old, ignore_errors=True)
     print(ID, len([i for i in L.items if i['file']]), 'sounds')
 
 
@@ -233,6 +236,6 @@ if __name__ == '__main__':
     allx = []
     for ID in IDS:
         p = os.path.join(LIB, 'Sounds', ID, 'index.json')
-        if os.path.exists(p): allx.append(json.load(open(p)))
-    json.dump(dict(kind='sounds', title='Sound library', concepts=allx), open(os.path.join(LIB, 'Sounds', 'index.json'), 'w'), indent=1, ensure_ascii=False)
-    print('failed:', bad or 'none')
+        if os.path.exists(p): allx.append(json.load(open(p, encoding='utf-8')))
+    json.dump(dict(kind='sounds', title='Sound library', concepts=allx), open(os.path.join(LIB, 'Sounds', 'index.json'), 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
+    print('failed:', bad or 'none'); sys.exit(1 if bad else 0)

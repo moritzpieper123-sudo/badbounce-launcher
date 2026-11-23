@@ -49,6 +49,8 @@ export interface BB {
   vaultGraph?(): Promise<VaultGraph>;
   finals?(): Promise<FinalVideo[]>;
   libraries?(): Promise<LibrariesScan>;
+  librariesRebuild?(): Promise<LibStatus>;
+  onLibrariesStatus?(cb: (s: LibStatus) => void): () => void;
   onGraphChanged?(cb: () => void): () => void;
   noteText?(id: string): Promise<string>;
   openNote?(id: string): Promise<void>;
@@ -114,4 +116,5 @@ export interface MediaNow { app: string; title: string; artist: string; album?: 
 export interface LibItem { file: string | null; name: string; desc?: string; tag?: string | null; when?: string; seconds?: number; path: string | null }
 export interface LibConcept { id: string; name: string; items: LibItem[] }
 export interface Lib { folder: string; kind: 'images' | 'sounds'; title: string; concept: string | null; desc: string; items: LibItem[]; concepts: LibConcept[] }
-export interface LibrariesScan { root: string; built: number; libraries: Lib[] }
+export interface LibStatus { state: 'idle' | 'running' | 'done' | 'error'; msg: string; at: number }
+export interface LibrariesScan { root: string; built: number; libraries: Lib[]; status?: LibStatus }
