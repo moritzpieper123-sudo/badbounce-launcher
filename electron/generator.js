@@ -103,13 +103,13 @@ function claudePrompt(cid, num, reason, deadline) {
     `Finish with one line: DONE #${num} or FAILED #${num}: <reason>.`,
   ].join('\n');
 }
-function startClaude({ vault, cid, num, reason, deadline, onStatus, onDone }) {
+function startClaude({ vault, cid, num, reason, deadline, model, onStatus, onDone }) {
   const dir = path.join(vault, 'Results', `#${num}`);
   if (fs.existsSync(dir) && safeLs(dir).length) return { ok: false, error: `Results\\#${num} already exists` };
   running = { num, cid, msg: 'Claude is starting…' };
   const emit = (state, msg) => { if (running) running.msg = msg; onStatus && onStatus({ state, num, cid, msg }); };
   emit('running', `${cid}: Claude is working`);
-  const args = ['-p', claudePrompt(cid, num, reason || 'planned', deadline), '--allowedTools', 'Bash Read Write Edit Glob Grep', '--permission-mode', 'acceptEdits', '--add-dir', vault, '--output-format', 'text'];
+  const args = ['-p', claudePrompt(cid, num, reason || 'planned', deadline), '--allowedTools', 'Bash Read Write Edit Glob Grep', '--permission-mode', 'acceptEdits', '--add-dir', vault, '--output-format', 'text', '--model', /^(sonnet|haiku|opus)$/.test(model) ? model : 'sonnet'];
   // the launcher may start without the npm folder in PATH (autostart): fall back to the npm shim of the user
   const cands = [process.env.USERPROFILE && path.join(process.env.USERPROFILE, '.local', 'bin', 'claude.exe'), process.env.APPDATA && path.join(process.env.APPDATA, 'npm', 'claude.cmd')].filter(Boolean);
   const exe = cands.find((c) => fs.existsSync(c)) || 'claude';
@@ -130,10 +130,10 @@ function startClaude({ vault, cid, num, reason, deadline, onStatus, onDone }) {
   return { ok: true };
 }
 
-function start({ vault, cid, num, via, reason, deadline, onStatus, onDone }) {
+function start({ vault, cid, num, via, reason, deadline, model, onStatus, onDone }) {
   if (running) return { ok: false, error: `already rendering #${running.num}` };
   const R = recipes(vault)[cid];
-  if (via === 'claude' || !R) return startClaude({ vault, cid, num, reason, deadline, onStatus, onDone });
+  if (via === 'claude' || !R) return startClaude({ vault, cid, num, reason, deadline, model, onStatus, onDone });
   const engine = path.join(vault, 'Engine', cid);
   if (!fs.existsSync(engine)) return { ok: false, error: `Engine\\${cid} not found` };
   const dir = path.join(vault, 'Results', `#${num}`);

@@ -82,7 +82,7 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
         const next = [...au.genJobs].filter((j) => j.state === 'queued').sort((a, b) => (a.deadline ?? '9').localeCompare(b.deadline ?? '9') || a.num - b.num)[0];
         bb.genQueueWrite?.(au.genJobs.filter((j) => j.state === 'queued' || j.state === 'running'));
         if (next && gs?.state !== 'running' && !genRunning.current) {
-          const r = await bb.genStart!({ cid: next.cid, num: next.num, via, reason: next.reason, deadline: next.deadline && new Date(new Date(next.deadline).getTime() + 75 * 60e3).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) });
+          const r = await bb.genStart!({ cid: next.cid, num: next.num, via, model: au.model ?? 'sonnet', reason: next.reason, deadline: next.deadline && new Date(new Date(next.deadline).getTime() + 75 * 60e3).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) });
           if (r.ok) await upd.current((st) => patch(st, (a) => ({ ...a, genJobs: a.genJobs.map((j) => (j.id === next.id ? { ...j, state: 'running' as const } : j)) })));
           else { await upd.current((st) => patch(st, (a) => ({ ...a, genJobs: a.genJobs.map((j) => (j.id === next.id ? { ...j, state: 'error' as const, msg: r.error } : j)) }))); await alert({ id: `gen-${next.cid}`, kind: 'gen', title: `Cannot render ${next.cid}`, sub: r.error ?? '' }); }
         }

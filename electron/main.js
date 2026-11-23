@@ -486,7 +486,7 @@ ipcMain.handle('autoUploadBatch', (_e, items, mode, quiet) => {
 });
 ipcMain.handle('uploadStatus', () => uploader.status());
 /* Autopilot: render one new video in the background (hidden, low priority) */
-ipcMain.handle('genStart', (_e, job) => generator.start({ vault: vault(), cid: String(job.cid), num: +job.num, via: job.via, reason: job.reason, deadline: job.deadline, onStatus: (st) => sendAll('genStatus', st) }));
+ipcMain.handle('genStart', (_e, job) => generator.start({ vault: vault(), cid: String(job.cid), num: +job.num, via: job.via, reason: job.reason, deadline: job.deadline, model: job.model, onStatus: (st) => sendAll('genStatus', st) }));
 ipcMain.handle('genStatus', () => generator.status());
 ipcMain.handle('genReady', () => generator.ready(vault()));
 /* ranked render queue as a file (for Claude and for you): Engine\Auto\gen-requests.json */

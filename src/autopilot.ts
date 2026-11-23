@@ -39,6 +39,7 @@ export interface AutoState {
   genJobs: GenJob[];
   alerts: AutoAlert[];
   leadMin?: number;
+  model?: 'sonnet' | 'haiku' | 'opus';       // Claude model that renders (default sonnet: the videos are a fixed kit, Mo 2026-11-24)
   producer?: 'claude' | 'launcher';          // who renders: Claude Code on the PC (default, Mo 2026-11-24) or the launcher's own recipes
   hotSeen?: Record<string, string>;         // post link -> ISO when we announced it
   lastPlan?: { at: string; slots: PlanRow[] };
