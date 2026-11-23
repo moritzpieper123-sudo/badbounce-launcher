@@ -219,10 +219,8 @@ def run(ID, E, LIB):
         L.add('Arena burst', mix(tone(90, 2.2, 1.6, 1.0, f2=32), noise(1.8, 3.0, 0.7, 0.25), tone(180, 0.6, 5, 0.3, f2=60)), 'the arena bursts at the end')
 
     json.dump(dict(id=ID, name=NAME[ID], items=L.items), open(os.path.join(out, 'index.json'), 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
-    final = out[:-4]; old = final + '.old'   # swap the fresh folder in; the old one stays if this ID failed
-    if os.path.isdir(old): shutil.rmtree(old, ignore_errors=True)
-    if os.path.isdir(final): os.rename(final, old)
-    os.rename(out, final); shutil.rmtree(old, ignore_errors=True)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from build_libraries import swap
+    swap(out, out[:-4])   # file by file; the old sounds stay if this ID failed
     print(ID, len([i for i in L.items if i['file']]), 'sounds')
 
 

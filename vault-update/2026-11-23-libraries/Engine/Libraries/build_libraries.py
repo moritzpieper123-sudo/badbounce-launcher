@@ -5,7 +5,7 @@ usage:  python build_libraries.py <Engine folder> <Libraries folder> [library ..
         --if-changed: only rebuild when an engine file changed since the last build (the launcher runs this by itself)
 Every library is read from the engine itself (registries, draw functions, asset folders), so re-running this script after an engine
 change keeps the libraries current. KEEP CURRENT: see README.md in this folder."""
-import sys, os, json, math, re, shutil, subprocess
+import sys, os, json, math, re, shutil, subprocess, time
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
@@ -33,12 +33,36 @@ def tile(im, pad=0):
     t = Image.new('RGB', (TILE, TILE), BG); t.paste(im, ((TILE - im.width)//2, (TILE - im.height)//2), im); return t
 
 
+def _retry(f, *a):
+    import time
+    for k in range(8):
+        try: return f(*a)
+        except FileNotFoundError: return
+        except OSError:
+            if k == 7: raise
+            time.sleep(0.5*(k + 1))   # OneDrive / a viewer can hold a file for a moment
+
+
 def swap(tmp, final):
-    """put a freshly built folder in place; the old one stays if the build failed before this"""
-    old = final + '.old'
-    if os.path.isdir(old): shutil.rmtree(old, ignore_errors=True)
-    if os.path.isdir(final): os.rename(final, old)
-    os.rename(tmp, final); shutil.rmtree(old, ignore_errors=True)
+    """put a freshly built folder in place FILE BY FILE (no folder renames: those fail on Windows/OneDrive);
+    the old folder stays untouched if the build failed before this"""
+    os.makedirs(final, exist_ok=True); new = set(os.listdir(tmp))
+    for f in os.listdir(final):
+        p = os.path.join(final, f)
+        if f not in new and os.path.isfile(p): _retry(os.remove, p)
+    for f in sorted(new, key=lambda x: x == 'index.json'):   # index.json last
+        _retry(os.replace, os.path.join(tmp, f), os.path.join(final, f))
+    shutil.rmtree(tmp, ignore_errors=True)
+
+
+def clean_leftovers(root):
+    """remove *.new / *.old folders an interrupted or older build left behind"""
+    if not os.path.isdir(root): return
+    for d in os.listdir(root):
+        p = os.path.join(root, d)
+        if os.path.isdir(p):
+            if d.endswith(('.new', '.old')): shutil.rmtree(p, ignore_errors=True)
+            elif d == 'Sounds': clean_leftovers(p)
 
 
 STAMP_EXT = ('.py', '.png', '.jpg', '.wav', '.mp3', '.otf', '.ttf'); STAMP_SKIP = {'__pycache__', 'Upload', 'out', 'renders', 'tmp'}
@@ -154,8 +178,10 @@ if __name__ == '__main__':
     E, LIB = os.path.abspath(args[0]), os.path.abspath(args[1]); keys = args[2:]
     if len(keys) == 1 and keys[0] in LIBS: run(keys[0], E, LIB); sys.exit()
     os.makedirs(LIB, exist_ok=True); sp = os.path.join(LIB, '.engine-stamp'); stamp = engine_stamp(E)
-    if check and os.path.exists(sp) and open(sp).read().split()[0:1] == [stamp]: print('up to date'); sys.exit()
-    bad = []
+    if check and os.path.exists(sp):
+        old = open(sp).read()   # same engines: skip; earlier failures are retried at most every 6 h
+        if old.split()[0:1] == [stamp] and ('failed' not in old or time.time() - os.path.getmtime(sp) < 6*3600): print('up to date'); sys.exit()
+    clean_leftovers(LIB); bad = []
     for k in keys or LIBS + ['sounds']:
         if k == 'sounds': cmd = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build_sounds.py'), E, LIB]
         else: cmd = [sys.executable, os.path.abspath(__file__), E, LIB, k]
