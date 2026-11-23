@@ -4,6 +4,7 @@ export interface Video {
   num: number;            // #X
   folder: string;         // absolute folder path
   konzept: number | null; // 1..7
+  cid?: string | null;    // concept id such as K5b (from the Notes text), see autopilot.ts cidOf
   title: string;
   hasVideo: boolean;
   hasThumb: boolean;
@@ -93,6 +94,7 @@ export interface AppState {
   settings: Settings;
   lastBackup?: string;
   migrations?: Record<string, boolean>; // one-time fixes already applied
+  auto?: import('./autopilot').AutoState; // autopilot: approvals, generation queue, alerts (Control Room)
 }
 
 export interface RenderStatus { video?: string; konzept?: number; progress?: number; etaSec?: number; label?: string; updated?: string; }

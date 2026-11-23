@@ -9,7 +9,11 @@ export interface BB {
   onChange(cb: () => void): () => void;
   uploadPack(num: number): Promise<{ ok: boolean; folder?: string; error?: string }>;
   autoUpload?(num: number, slotIso: string, mode: 'schedule' | 'test'): Promise<{ ok: boolean; error?: string }>;
-  autoUploadBatch?(items: { num: number; slotIso: string }[], mode: 'schedule' | 'test'): Promise<{ ok: boolean; error?: string }>;
+  autoUploadBatch?(items: { num: number; slotIso: string }[], mode: 'schedule' | 'test', quiet?: boolean): Promise<{ ok: boolean; error?: string }>;
+  genStart?(job: { cid: string; num: number }): Promise<{ ok: boolean; error?: string }>;
+  genStatus?(): Promise<GenStatus>;
+  genReady?(): Promise<string[]>;
+  onGenStatus?(cb: (s: GenStatus) => void): () => void;
   uploadStatus?(): Promise<UploadStatus>;
   onUploadStatus?(cb: (s: UploadStatus) => void): () => void;
   copyText(text: string): Promise<void>;
@@ -41,7 +45,7 @@ export interface BB {
   onMedia?(cb: (m: MediaNow | null) => void): () => void;
   statsFetch?(): Promise<void>;
   onStatsStatus?(cb: (s: CsvStatus) => void): () => void;
-  onStatsPosts?(cb: (r: { posts: PostStat[]; followers?: number; at: string; audience?: import('./types').Audience }) => void): () => void;
+  onStatsPosts?(cb: (r: { posts: PostStat[]; followers?: number; at: string; audience?: import('./types').Audience; health?: { studio: 'ok' | 'login' | 'changed'; probed: number; keysFound: number; videos: number } }) => void): () => void;
   csvShow?(): void;
   csvCancel?(): void;
   onCsvStatus?(cb: (s: CsvStatus) => void): () => void;
@@ -64,6 +68,7 @@ export interface BB {
 }
 export interface ProgressInfo { displays: { id: number; label: string; chosen: boolean }[]; autostart: boolean; hideBar: boolean; visible: boolean; full: boolean; signedIn: boolean }
 export interface FinalVideo { id: string; folder: string; video: string; thumb: string | null; description: string; size: number; mtime: number }
+export interface GenStatus { state: 'idle' | 'running' | 'done' | 'error'; num?: number; cid?: string; msg?: string }
 export interface UploadStatus { state: 'idle' | 'running' | 'ok' | 'error'; key?: string; mode?: string; msg?: string }
 export interface CsvStatus { state: 'idle' | 'running' | 'login' | 'needs-you' | 'done' | 'error'; msg: string }
 export interface GraphNode { id: string; name: string; folder: string; tags: string[]; unresolved?: boolean; mtime?: number }

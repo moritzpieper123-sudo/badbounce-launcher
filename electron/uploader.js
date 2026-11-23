@@ -12,7 +12,23 @@ const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate(
 const scriptDir = (vault) => path.join(vault, 'Engine', 'Upload');
 const status = () => (running ? { state: 'running', key: running.key, mode: running.mode, msg: running.msg || 'starting…' } : { state: 'idle' });
 
-function start({ vault, key, mode, slotIso, onStatus, onDone }) {
+/* Quiet mode (autopilot): Chrome opens far off-screen instead of maximised, so it never pops over a game. Done by a tiny, idempotent
+   patch of Mo's bb_upload.py (marker BB_QUIET). Nothing is hidden from TikTok: it is the same normal Chrome with the same login. */
+function patchQuiet(dir) {
+  const f = path.join(dir, 'bb_upload.py');
+  try {
+    let t = fs.readFileSync(f, 'utf8');
+    if (t.includes('BB_QUIET')) return true;
+    const a = "args=['--start-maximized'])";
+    if (!t.includes(a)) return false;
+    t = t.replace(a, "args=(['--window-position=-32000,-32000', '--window-size=1400,1000', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'] if os.environ.get('BB_QUIET') else ['--start-maximized']))  # BB_QUIET");
+    t = t.replace("page.wait_for_timeout(300000)", "page.wait_for_timeout(8000 if os.environ.get('BB_QUIET') else 300000)");
+    t = t.replace("page.wait_for_timeout(120000)", "page.wait_for_timeout(3000 if os.environ.get('BB_QUIET') else 120000)");
+    fs.writeFileSync(f, t); return true;
+  } catch { return false; }
+}
+
+function start({ vault, key, mode, slotIso, quiet, onStatus, onDone }) {
   if (running) return { ok: false, error: `an upload is already running (#${running.key})` };
   const dir = scriptDir(vault), script = path.join(dir, 'bb_upload.py');
   if (!fs.existsSync(script)) return { ok: false, error: `bb_upload.py not found in ${dir}` };
@@ -24,6 +40,7 @@ function start({ vault, key, mode, slotIso, onStatus, onDone }) {
     if (mode === 'test') args.push('--test');
   } else return { ok: false, error: 'bad mode' };
 
+  const quietOk = quiet && patchQuiet(dir);
   running = { key: String(key), mode, msg: 'starting…' };
   const startedAt = Date.now();
   const emit = (extra) => onStatus && onStatus({ ...status(), ...extra });
@@ -35,7 +52,7 @@ function start({ vault, key, mode, slotIso, onStatus, onDone }) {
     onDone && onDone({ ...st, slotIso, ok });
   };
   const launch = (exe) => {
-    const p = spawn(exe, args, { cwd: dir, env: { ...process.env, PYTHONIOENCODING: 'utf-8' }, windowsHide: false });
+    const p = spawn(exe, args, { cwd: dir, env: { ...process.env, PYTHONIOENCODING: 'utf-8', ...(quietOk ? { BB_QUIET: '1' } : {}) }, windowsHide: !!quietOk });
     const onLine = (b) => { const ln = String(b).split(/\r?\n/).map((s) => s.trim()).filter(Boolean).pop(); if (ln && running) { running.msg = ln; emit(); } };
     p.stdout.on('data', onLine); p.stderr.on('data', onLine);
     p.on('error', (e) => { if (e.code === 'ENOENT' && exe === 'py') return launch('python'); finish(false, `could not start Python (${e.code || e.message})`); });
@@ -50,4 +67,4 @@ function start({ vault, key, mode, slotIso, onStatus, onDone }) {
   return { ok: true };
 }
 
-module.exports = { start, status };
+module.exports = { start, status, patchQuiet };

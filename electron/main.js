@@ -14,6 +14,7 @@ const statsfetch = require('./statsfetch');
 const media = require('./media');
 const progress = require('./progress');
 const uploader = require('./uploader');
+const generator = require('./generator');
 
 const DEFAULT_SETTINGS = { day1: '2026-11-11', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
 const HIDDEN = process.argv.includes('--hidden');
@@ -181,9 +182,11 @@ function scanVideos() {
     let desc; if (de) try { desc = fs.readFileSync(path.join(folder, de), 'utf8'); } catch { /* */ }
     const km = notes.match(/Konzept\s*(\d+)/i);
     const konzept = km ? +km[1] : idx[num]?.konzept ?? null;
+    const cm = notes.match(/\bK(1[01]|[1-9])([abc])?\b/);
+    const cid = cm ? `K${cm[1]}${cm[2] || ''}` : null;
     const titleM = notes.match(/^#\s+(.+)$/m);
     let created = 0; try { created = fs.statSync(folder).birthtimeMs || fs.statSync(folder).mtimeMs; } catch { /* */ }
-    out.push({ num, folder, konzept, title: idx[num]?.title || (titleM ? titleM[1] : name), hasVideo: !!vid, hasThumb: !!th, hasDesc: !!de,
+    out.push({ num, folder, konzept, cid, title: idx[num]?.title || (titleM ? titleM[1] : name), hasVideo: !!vid, hasThumb: !!th, hasDesc: !!de,
       videoFile: vid && path.join(folder, vid), thumbFile: th && path.join(folder, th), descFile: de && path.join(folder, de), description: desc,
       durationSec: vid ? mp4Duration(path.join(folder, vid)) : null, createdMs: created });
   }
@@ -405,8 +408,27 @@ ipcMain.on('openGraphWindow', () => {
 });
 /* background TikTok CSV fetch */
 ipcMain.handle('csvFetch', () => csvfetch.start({ status: (st) => sendAll('csvStatus', st), files: (f) => sendAll('csvFiles', f) }));
-const runStats = () => statsfetch.run({ dataDir, status: (st) => sendAll('statsStatus', st), result: (r) => sendAll('statsPosts', r) });
+/* Studio pages are only opened for fresh videos (<= 72 h) and for a few that never got their numbers: keeps each run short, so we can pull often */
+function deepFn() {
+  const known = new Set(); let unknown = 0;
+  try { for (const p of loadState().stats.posts || []) if (p.link && (p.avgWatch != null || p.retention)) known.add((p.link.match(/video\/(\d+)/) || [])[1]); } catch { /* */ }
+  return (p) => {
+    const age = p.postTime ? (Date.now() - Date.parse(p.postTime)) / 3600e3 : 0;
+    if (age <= 72) return true;
+    const id = (p.link.match(/video\/(\d+)/) || [])[1];
+    return !known.has(id) && unknown++ < 8;
+  };
+}
+let lastStatsAt = 0;
+const runStats = () => { lastStatsAt = Date.now(); statsfetch.run({ dataDir, deep: deepFn(), status: (st) => sendAll('statsStatus', st), result: (r) => sendAll('statsPosts', r) }); };
 ipcMain.handle('statsFetch', () => { runStats(); });
+/* Hourly or better (Mo 2026-11-24): every 20 min while a video is younger than 12 h (viral watch), else every 45 min. Never while a run is active. */
+function statsDue() {
+  if (statsfetch.isRunning()) return false;
+  let fresh = false;
+  try { fresh = (loadState().stats.posts || []).some((p) => p.postTime && Date.now() - Date.parse(p.postTime) < 12 * 3600e3); } catch { /* */ }
+  return Date.now() - lastStatsAt >= (fresh ? 20 : 45) * 60e3;
+}
 ipcMain.on('csvShow', () => csvfetch.show());
 ipcMain.on('csvCancel', () => csvfetch.cancel((st) => sendAll('csvStatus', st)));
 function toggleFull() { if (!mainWin) return; const full = !mainWin.isFullScreen(); mainWin.setFullScreen(full); const c = readCfg(); c.windowed = !full; writeCfg(c); }
@@ -432,8 +454,8 @@ function markScheduled(num, slotIso) {
   st.uploads[String(num)] = { at: slotIso, realAt: new Date().toISOString(), slot: slotIso, scheduled: true };
   saveState(st); broadcast();
 }
-const runOne = (num, slotIso, mode, extra) => new Promise((resolve) => {
-  const r = uploader.start({ vault: vault(), key: vkey(num), mode, slotIso,
+const runOne = (num, slotIso, mode, extra, quiet) => new Promise((resolve) => {
+  const r = uploader.start({ vault: vault(), key: vkey(num), mode, slotIso, quiet,
     onStatus: (st) => sendAll('uploadStatus', { ...st, msg: (extra || '') + (st.msg || '') }),
     onDone: (d) => { if (d.ok && mode === 'schedule') markScheduled(num, slotIso); resolve(d); } });
   if (!r.ok) resolve({ ok: false, msg: r.error });
@@ -445,7 +467,7 @@ ipcMain.handle('autoUpload', (_e, num, slotIso, mode) => {
     onDone: (r) => { if (r.ok && r.mode === 'schedule') markScheduled(num, r.slotIso); } });
 });
 /* all ready videos in one run: items = [{ num, slotIso }] in slot order; stops at the first failure */
-ipcMain.handle('autoUploadBatch', (_e, items, mode) => {
+ipcMain.handle('autoUploadBatch', (_e, items, mode, quiet) => {
   if (batchBusy || uploader.status().state === 'running') return { ok: false, error: 'an upload is already running' };
   if (!Array.isArray(items) || !items.length) return { ok: false, error: 'nothing to schedule' };
   batchBusy = true;
@@ -453,7 +475,7 @@ ipcMain.handle('autoUploadBatch', (_e, items, mode) => {
     let done = 0;
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
-      const d = await runOne(it.num, it.slotIso, mode, `(${i + 1}/${items.length}) `);
+      const d = await runOne(it.num, it.slotIso, mode, `(${i + 1}/${items.length}) `, !!quiet);
       if (!d.ok) { sendAll('uploadStatus', { state: 'error', key: vkey(it.num), mode, msg: `stopped at ${i + 1}/${items.length}: ${d.msg}` }); batchBusy = false; return; }
       done++;
     }
@@ -463,6 +485,10 @@ ipcMain.handle('autoUploadBatch', (_e, items, mode) => {
   return { ok: true };
 });
 ipcMain.handle('uploadStatus', () => uploader.status());
+/* Autopilot: render one new video in the background (hidden, low priority) */
+ipcMain.handle('genStart', (_e, job) => generator.start({ vault: vault(), cid: String(job.cid), num: +job.num, onStatus: (st) => sendAll('genStatus', st) }));
+ipcMain.handle('genStatus', () => generator.status());
+ipcMain.handle('genReady', () => generator.ready(vault()));
 ipcMain.handle('uploadPack', (_e, num) => {
   try {
     const v = scanVideos().find((x) => x.num === num);
@@ -567,7 +593,7 @@ else {
     media.start((m) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('media', m); }, path.join(dataDir(), 'media-log.txt'));
     app.on('before-quit', () => media.stop());
     autoBackup(); setInterval(autoBackup, 3600000);
-    setTimeout(runStats, 40e3); setInterval(runStats, 30 * 60e3); // live stats in the background, every 30 min
+    setTimeout(runStats, 40e3); setInterval(() => { if (statsDue()) runStats(); }, 60e3); // live stats in the background, 20-45 min apart (hidden window)
     // re-scan the vault every 20 s so new Gen results appear on their own
     setInterval(broadcast, 20000);
     // look for a new version in OneDrive every 5 min; install it right away while the window is hidden
