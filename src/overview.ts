@@ -17,4 +17,5 @@ export const CONCEPTS: Concept[] = [
   { id: 'K8', k: 8, name: 'Spiral roll', about: 'White balls roll down a spiral of glass tiles under real gravity and smash them into rubble. The last ball rolls into the gem in the centre and it pops.', facts: ['11 balls', '62 s', 'Glass + gem'] },
   { id: 'K9', k: 9, name: 'Sheet drop', about: 'A sheet of balls in the shape of the video drops onto a glass floor. Every ring bounces at its own speed with a soft tick, so waves and a funnel appear.', facts: ['100 shapes', 'K10 ticks'] },
   { id: 'K10', k: 10, name: 'Gamble crush', about: 'A crusher spins like a slot machine and slams the balls into one of 8 boxes: multiply, shrink, grow or die. One ball escalates until the arena bursts.', facts: ['1 ball → 8,000+', '≈58 s', 'Wall ticks'] },
+  { id: 'K11', k: 11, name: 'Paint conquer', about: 'Two colours start on one board, each with its own rule (one grows, one multiplies). Balls paint the squares they touch, and a split bar and big percent numbers show who is winning. The loser turns grey, the winner glows.', facts: ['Pink vs blue', '65 s', 'One rule per video'] },
 ];
