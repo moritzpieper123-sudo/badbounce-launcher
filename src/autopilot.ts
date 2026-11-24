@@ -77,6 +77,8 @@ export interface PostScore {
   quality: number | null;      // 0..100 from completion + watch time vs the channel
   engagement: number | null;   // 0..100
   score: number;               // 0..100 viral potential
+  pick: number | null;         // 0..100 chooser score: reach 50% + new followers 30% + watched to the end 20% (Mo 2026-11-24)
+  follow: number | null;       // 0..100 new followers vs the channel
   status: Status; reasons: string[]; checkpointH: number | null; lastHour: number | null; accel: number | null;
 }
 
@@ -97,6 +99,7 @@ export function scorePosts(snap: Snapshot): PostScore[] {
   const mFull = med((p) => p.fullWatch), mAvgRatio = med((p) => (p.avgWatch && p.retentionSecs ? p.avgWatch / p.retentionSecs : undefined));
   const eng = (p: PostStat) => (p.views ? ((p.likes || 0) + 2 * (p.shares || 0) + 1.5 * (p.saves || 0) + (p.comments || 0)) / p.views : undefined);
   const mEng = med(eng);
+  const mNf = med((p) => p.newFollowers);
   const out: PostScore[] = [];
   for (const m of matched) {
     const p = m.post, ageH = ageHours(p, now); if (isNaN(ageH) || ageH < 0) continue;
@@ -126,6 +129,12 @@ export function scorePosts(snap: Snapshot): PostScore[] {
     const quality = parts.length ? parts.reduce((s, x) => s + x, 0) / parts.length : null;
     const e = eng(p), engagement = e != null && mEng > 0 ? clamp(25 + 25 * l2(Math.max(e / mEng, 0.05))) : null;
     if (engagement != null && engagement >= 62) reasons.push('people like / share / save it a lot');
+    // 3b. chooser score (the test board and the day planner use this one)
+    const follow = p.newFollowers != null && mNf > 0 ? clamp(25 + 25 * l2(Math.max(p.newFollowers / mNf, 0.05))) : null;
+    const pw: [number | null, number][] = [[vel, 0.5], [follow, 0.3], [quality, 0.2]];
+    const ph = pw.filter((x) => x[0] != null) as [number, number][];
+    const pws = ph.reduce((s, x) => s + x[1], 0);
+    const pick = pws ? Math.round(ph.reduce((s, x) => s + x[0] * x[1], 0) / pws) : null;
     // 4. blend (missing parts do not count)
     const w: [number | null, number][] = [[vel, 0.55], [quality, 0.3], [engagement, 0.15]];
     const have = w.filter((x) => x[0] != null) as [number, number][];
@@ -139,7 +148,7 @@ export function scorePosts(snap: Snapshot): PostScore[] {
     else if (score >= 56 || ratio >= 1.6) status = 'rising';
     else if (ageH >= 6 && ratio < 0.4) status = 'flop';
     else if (ageH >= 3 && (ratio < 0.7 || score < 28)) status = 'weak';
-    out.push({ link: p.link ? normLink(p.link) : p.title, num: m.num, cid, title: p.title, ageH, views: p.views || 0, ratio, quality, engagement, score, status, reasons, checkpointH: cp, lastHour, accel });
+    out.push({ link: p.link ? normLink(p.link) : p.title, num: m.num, cid, title: p.title, ageH, views: p.views || 0, ratio, quality, engagement, score, pick, follow, status, reasons, checkpointH: cp, lastHour, accel });
   }
   return out.sort((a, b) => a.ageH - b.ageH);
 }
