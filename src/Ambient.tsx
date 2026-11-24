@@ -9,7 +9,7 @@ import { homeData } from './homeData';
 import type { HomeData } from './homeData';
 import { Icon, Rings, Spark } from './ui';
 import { fmtNum, kColor, minsUntil, fmtIn } from './logic';
-import type { GenStatus } from './bridge';
+import type { GenStatus, MediaNow } from './bridge';
 
 export function useHomeData() {
   const { snap } = useApp();
@@ -29,39 +29,83 @@ function Ring({ frac, color, size = 92, w = 11, children }: { frac: number; colo
   </div>;
 }
 
-function Widgets({ d }: { d: HomeData }) {
+const hh = (x: Date) => `${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`;
+
+/** The autopilot as a pipeline: queued → rendering → review → approved → in TikTok. */
+function Pipeline({ d }: { d: HomeData }) {
+  const st = [
+    { k: 'queue', icon: 'play', n: d.queued, label: 'Queued' },
+    { k: 'render', icon: 'film', n: d.rendering ? 1 : 0, label: 'Rendering' },
+    { k: 'review', icon: 'sparkle', n: d.pending, label: 'Review' },
+    { k: 'ready', icon: 'check', n: d.approved, label: 'Approved' },
+    { k: 'tiktok', icon: 'upload', n: d.scheduled, label: 'In TikTok' },
+  ];
   const n = d.nextSlot, mins = n ? minsUntil(n.when, d.now) : 0;
+  return <div className="ax-p ax-pipe">
+    <div className="ax-ph"><span className={`ax-led ${d.errors.length ? 'bad' : d.enabled ? 'on' : ''}`} /><b>Autopilot</b><em>{d.enabled ? (d.paused ? 'paused' : 'running') : 'off'}</em>{d.autoApprove && <span className="ax-badge"><Icon name="check" size={13} color="currentColor" sw={3} />auto-approve</span>}</div>
+    <div className="ax-now">{d.headline}</div>
+    <div className="ax-stages">{st.map((x, i) => <React.Fragment key={x.k}>
+      {i > 0 && <i className={`ax-link ${x.n || st[i - 1].n ? 'lit' : ''}`} />}
+      <div className={`ax-st ${x.n ? 'has' : ''} ${x.k === 'render' && d.rendering ? 'busy' : ''}`}>
+        <span className="ax-st-ico"><Icon name={x.icon} size={26} color="currentColor" /></span>
+        <b className="num">{x.n}</b><small>{x.label}</small></div>
+    </React.Fragment>)}</div>
+    <div className="ax-next">
+      <div><small>Next slot</small><b className="num">{n?.time ?? '–'}</b></div>
+      <div><small>Concept</small><b><span className="dot" style={{ background: kColor(n?.cid ? parseInt(n.cid.slice(1), 10) : null) }} />{n ? (n.cid ?? 'not planned') : '–'}</b></div>
+      <div><small>In</small><b className="num">{n ? fmtIn(mins).replace(/^in /, '') : '–'}</b></div>
+      <div><small>Upload starts</small><b className="num">{n && d.enabled ? hh(n.actionAt) : '–'}</b></div>
+    </div>
+  </div>;
+}
+
+/** Today's and tomorrow's slots as cards. */
+function Slots({ d }: { d: HomeData }) {
+  const list = d.slots.filter((s) => s.when.getTime() > d.now.getTime() - 2 * 3600e3).slice(0, 5);
+  return <div className="ax-p ax-day">
+    <div className="ax-ph"><Icon name="calendar" size={17} color="currentColor" /><b>Schedule</b></div>
+    <div className="ax-sl">{list.map((s) => <div key={s.when.toISOString()} className={`ax-slot ${s.state}`}>
+      <b className="num">{s.time}</b>
+      <span className="ax-slot-ico">{s.state === 'uploaded' ? <Icon name="check" size={16} color="currentColor" sw={3} /> : s.num != null ? <Icon name="film" size={16} color="currentColor" /> : <Icon name="bell" size={16} color="currentColor" />}</span>
+      <small>{s.num != null ? `#${s.num}` : 'no video'}{s.auto ? ' · auto' : ''}</small>
+    </div>)}</div>
+  </div>;
+}
+
+function Activity({ d }: { d: HomeData }) {
+  const col: Record<string, string> = { plan: '#AAC3F0', render: '#FFC63A', upload: '#7FD9A8', info: '#96AFDC', warn: '#FF8F7A' };
+  return <div className="ax-p ax-act">
+    <div className="ax-ph"><Icon name="radar" size={17} color="currentColor" /><b>Latest</b></div>
+    <div className="ax-log">{d.log.slice(0, 3).map((l, i) => <div key={i}><i style={{ background: col[l.kind] ?? '#AAC3F0', boxShadow: `0 0 10px ${col[l.kind] ?? '#AAC3F0'}` }} /><span className="num">{hh(new Date(l.t))}</span><em>{l.text}</em></div>)}
+      {!d.log.length && <div className="ax-empty">–</div>}</div>
+  </div>;
+}
+
+const mmss = (x: number) => { x = Math.max(0, Math.floor(x)); return `${Math.floor(x / 60)}:${String(x % 60).padStart(2, '0')}`; };
+/** Spotify (or any player) via the Windows media controls: display only, any mouse move ends the screen saver. */
+function Player({ m }: { m: MediaNow }) {
+  const [, tick] = useState(0);
+  useEffect(() => { const i = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(i); }, []);
+  const pos = Math.min(m.dur || 0, m.pos + (m.playing && m.at ? (Date.now() - m.at) / 1000 : 0));
+  return <div className={`ax-p ax-pl ${m.playing ? 'on' : ''}`}>
+    <div className="ax-cover" style={m.cover ? { backgroundImage: `url("${m.cover}")` } : undefined}>{!m.cover && <Icon name="music" size={44} color="currentColor" />}</div>
+    <div className="ax-pl-mid">
+      <div className="ax-pl-src"><Icon name="music" size={14} color="currentColor" />{/spotify/i.test(m.app) ? 'Spotify' : 'Now playing'}{m.playing && <span className="ax-eq"><i /><i /><i /><i /></span>}</div>
+      <div className="ax-pl-t">{m.title}</div>
+      <div className="ax-pl-a">{m.artist}</div>
+      <div className="ax-pl-bar"><i style={{ width: `${m.dur ? (pos / m.dur) * 100 : 0}%` }} /></div>
+      <div className="ax-pl-time num"><span>{mmss(pos)}</span><span>{mmss(m.dur)}</span></div>
+    </div>
+  </div>;
+}
+
+function Stats({ d }: { d: HomeData }) {
   const f = d.k.followers ?? 0, v = d.k.hasData ? d.k.views30 : 0;
-  const cid = n?.cid ? parseInt(n.cid.slice(1), 10) : null;
-  return <div className="ax-widgets">
-    <div className="ax-w">
-      <div className="ax-wh"><Icon name="calendar" size={15} color="currentColor" /><span>Next</span></div>
-      <div className="ax-wtime num">{n?.time ?? '–'}</div>
-      <div className="ax-bar"><i style={{ width: `${Math.max(0, Math.min(1, 1 - mins / 300)) * 100}%` }} /></div>
-      <div className="ax-wfoot"><span className="dot" style={{ background: kColor(cid) }} />{n ? (n.cid ?? '–') : '–'}<em>{n ? fmtIn(mins).replace(/^in /, '') : ''}</em></div>
-    </div>
-    <div className="ax-w">
-      <div className="ax-wh"><Icon name="radar" size={15} color="currentColor" /><span>Autopilot</span></div>
-      <div className="ax-wmid"><Ring frac={d.enabled ? 1 : 0} color={d.rendering ? '#FFC63A' : '#7FD9A8'} size={120}><Icon name={d.rendering ? 'film' : 'radar'} size={26} color="currentColor" /></Ring></div>
-      <div className="ax-wfoot"><Icon name="film" size={13} color="currentColor" />{d.pending}<Icon name="check" size={13} color="currentColor" />{d.approved}<Icon name="play" size={12} color="currentColor" />{d.queued}</div>
-    </div>
-    <div className="ax-w">
-      <div className="ax-wh"><Icon name="sparkle" size={15} color="currentColor" /><span>Goals</span></div>
-      <div className="ax-wmid"><Rings size={132} rings={[{ frac: f / 10000, color: '#AAC3F0' }, { frac: v / 100000, color: '#FFC63A' }, { frac: d.today.total ? d.today.uploaded / d.today.total : 0, color: '#7FD9A8' }]} /></div>
-      <div className="ax-wfoot">{d.today.uploaded}/{d.today.total}<em>today</em></div>
-    </div>
-    <div className="ax-w">
-      <div className="ax-wh"><Icon name="check" size={15} color="currentColor" /><span>Followers</span></div>
-      <div className="ax-wnum num">{d.k.followers != null ? fmtNum(d.k.followers) : '–'}</div>
-      <Spark values={d.followers14} color="#AAC3F0" height={46} area={false} />
-      <div className="ax-wfoot">{d.k.followers7 != null ? `+${d.k.followers7}` : ''}<em>7 days</em></div>
-    </div>
-    <div className="ax-w">
-      <div className="ax-wh"><Icon name="play" size={14} color="currentColor" /><span>Views</span></div>
-      <div className="ax-wnum num">{d.k.hasData ? fmtNum(d.k.views30) : '–'}</div>
-      <Spark values={d.views14} color="#FFC63A" height={46} area={false} />
-      <div className="ax-wfoot">{d.hit ? `${d.hit.label}` : ''}<em>30 days</em></div>
-    </div>
+  return <div className="ax-p ax-strip">
+    <div className="ax-sg"><Rings size={78} rings={[{ frac: f / 10000, color: '#AAC3F0' }, { frac: v / 100000, color: '#FFC63A' }, { frac: d.today.total ? d.today.uploaded / d.today.total : 0, color: '#7FD9A8' }]} />
+      <div><small>Today</small><b className="num">{d.today.uploaded}/{d.today.total}</b></div></div>
+    <div className="ax-sg"><div><small><Icon name="check" size={13} color="currentColor" /> Followers</small><b className="num">{d.k.followers != null ? fmtNum(d.k.followers) : '–'}</b></div><Spark values={d.followers14} color="#AAC3F0" height={44} area={false} /></div>
+    <div className="ax-sg"><div><small><Icon name="play" size={12} color="currentColor" /> Views · 30 d</small><b className="num">{d.k.hasData ? fmtNum(d.k.views30) : '–'}</b></div><Spark values={d.views14} color="#FFC63A" height={44} area={false} /></div>
   </div>;
 }
 
@@ -72,6 +116,8 @@ export default function Ambient() {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => { const a = setTimeout(() => setDeep(true), 10 * 60e3); const t = setInterval(() => setNow(new Date()), 5e3); return () => { clearTimeout(a); clearInterval(t); }; }, []);
   const pal = useMemo(() => darkPalette(themePalette(mode, theme, now), deep ? 0.88 : 0.8), [mode, theme, now, deep]);
+  const [media, setMedia] = useState<MediaNow | null>(null);
+  useEffect(() => { bb.mediaNow?.().then(setMedia); return bb.onMedia?.(setMedia); }, []);
   const err = d.errors.length > 0;
   const vars = { '--a0': pal[0], '--a1': pal[1], '--a2': pal[2], '--a3': pal[3], '--a4': pal[4] } as React.CSSProperties;
   return <div className={`ax ${err ? 'err' : ''} ${deep ? 'deep' : ''}`} style={vars} aria-label="Screen saver">
@@ -79,9 +125,14 @@ export default function Ambient() {
     <div className="ax-drift"><div className="ax-inner">
       <div className="ax-date">{now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
       <div className="ax-clock num">{now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>
-      {err ? <div className="ax-alert"><span><Icon name="bell" size={22} color="currentColor" /></span><div><b>{d.errors[0].title}</b>{d.errors.length > 1 && <small>+{d.errors.length - 1} more</small>}</div></div>
-        : <div className="ax-slots">{d.slots.filter((s) => s.when.getTime() > now.getTime() - 3 * 3600e3).slice(0, 5).map((s) => <span key={s.when.toISOString()} className={s.state}><i /><small className="num">{s.time}</small></span>)}</div>}
-      <Widgets d={d} />
+      {err && <div className="ax-alert"><span><Icon name="bell" size={22} color="currentColor" /></span><div><b>{d.errors[0].title}</b>{d.errors.length > 1 && <small>+{d.errors.length - 1} more</small>}</div></div>}
+      {media && <Player m={media} />}
+      <div className="ax-grid">
+        <Pipeline d={d} />
+        <Slots d={d} />
+        <Activity d={d} />
+        <Stats d={d} />
+      </div>
     </div></div>
   </div>;
 }

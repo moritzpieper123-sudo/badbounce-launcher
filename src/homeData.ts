@@ -9,6 +9,7 @@ export interface HomeData {
   now: Date; dayNo: number; phase: string;
   enabled: boolean; autoApprove: boolean; headline: string; rendering: string | null; queued: number; paused: string | null;
   nextSlot: { time: string; when: Date; cid: string | null; name: string; why: string; actionAt: Date } | null;
+  scheduled: number;
   errors: { title: string; sub: string }[];   // real failures only (red screen)
   pending: number; approved: number; problems: { title: string; sub: string }[];
   slots: { time: string; when: Date; state: string; num: number | null; auto: boolean }[];   // today and tomorrow
@@ -61,6 +62,7 @@ export function homeData(snap: Snapshot, ready: Set<string>, gen: { state?: stri
     now, dayNo: dayNumber(now, st.settings.day1), phase: phaseLabel(dayNumber(now, st.settings.day1), now),
     enabled: au.enabled, autoApprove: !!au.autoApprove, headline, rendering, queued, paused: dec.paused,
     nextSlot: ns ? { time: hm(ns.when), when: ns.when, cid: row?.cid ?? null, name: row ? CID_NAME[row.cid] : 'not planned yet', why: row?.reason ?? 'planning starts 3 h before the first slot of the day', actionAt: new Date(ns.when.getTime() - lead * 60e3) } : null,
+    scheduled: Object.values(st.uploads).filter((u) => u.scheduled && new Date(u.slot ?? u.at).getTime() > now.getTime()).length,
     errors: [...au.alerts.filter((a) => !a.resolved && ['stats', 'upload', 'gen', 'studio'].includes(a.kind)).map((a) => ({ title: a.title, sub: a.sub })), ...(dec.paused && !au.alerts.some((a) => a.id === 'gen-paused' && !a.resolved) ? [{ title: 'Rendering paused', sub: dec.paused }] : [])],
     pending: stock.pending.length, approved: stock.approved.length, problems, slots,
     hit: hotP ? { label: `${hotP.cid ?? 'Video'}${hotP.num != null ? ` #${hotP.num}` : ''}`, views: hotP.views, ratio: hotP.ratio, score: hotP.score, ageH: hotP.ageH } : null,
