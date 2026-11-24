@@ -41,7 +41,7 @@ const dataDir = () => path.join(vault(), '.claude-workspace', 'launcher-data');
 const stateFile = () => path.join(dataDir(), 'state.json');
 
 /* ---------- state ---------- */
-function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true, posted1115: true, skip1119: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
+function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true, posted1115: true, skip1119: true, skip1124: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
 function loadState() {
   try {
     const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
@@ -92,6 +92,14 @@ function loadState() {
       const skip = [new Date(2026, 10, 19, 18, 30, 0, 0).toISOString(), new Date(2026, 10, 19, 21, 0, 0, 0).toISOString()];
       st.settings.skipSlots = Array.from(new Set([...(st.settings.skipSlots || []), ...skip]));
       st.migrations = { ...(st.migrations || {}), skip1119: true };
+      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
+    }
+    // Mo 2026-11-24: he uploads by hand and wants the plan to start with tomorrow's first slot: today's remaining slots are skipped (a slot that already holds an upload stays). One time only.
+    if (!(st.migrations || {}).skip1124) {
+      const have = new Set(Object.values(st.uploads || {}).map((u) => new Date(u.slot || u.at).toISOString()));
+      const skip = [[1, 5], [5, 55], [10, 40], [15, 30], [20, 20]].map(([h, m]) => new Date(2026, 10, 24, h, m, 0, 0).toISOString()).filter((iso) => !have.has(iso));
+      st.settings.skipSlots = Array.from(new Set([...(st.settings.skipSlots || []), ...skip]));
+      st.migrations = { ...(st.migrations || {}), skip1124: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
     return st;
