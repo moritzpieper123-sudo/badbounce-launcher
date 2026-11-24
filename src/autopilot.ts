@@ -47,6 +47,8 @@ export interface AutoState {
   variants?: { job?: boolean; cat?: boolean };   // overlay variants the autopilot may use (both on by default), see variants.ts
   hotSeen?: Record<string, string>;         // post link -> ISO when we announced it
   lastPlan?: { at: string; slots: PlanRow[] };
+  cloud?: boolean;                          // renders happen in the cloud (default on): the launcher plans tomorrow's 5 videos each evening, the cloud tasks render, the launcher downloads
+  dayPlan?: { date: string; at: string; items: { slotIso: string; cid: string; variant?: 'job' | 'cat'; kind: 'test' | 'best'; reason: string; num: number }[]; got?: number[]; missingAlerted?: boolean };
 }
 export const DEFAULT_AUTO: AutoState = { enabled: false, approvals: {}, genJobs: [], alerts: [] };
 export const autoOf = (st: AppState): AutoState => ({ ...DEFAULT_AUTO, ...(st.auto || {}) });

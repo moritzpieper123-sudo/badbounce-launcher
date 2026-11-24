@@ -6,6 +6,7 @@ import type { AppState, Snapshot } from './types';
 import { autoOf, raise, resolve, type AutoState, type GenJob, type LogEntry } from './autopilot';
 import { decide } from './autoDecide';
 import { vn } from './logic';
+import { dayTick } from './cloud/dayRun';
 
 type Update = (fn: (st: AppState) => AppState) => Promise<void>;
 const patch = (st: AppState, f: (a: AutoState) => AutoState): AppState => ({ ...st, auto: f(autoOf(st)) });
@@ -79,8 +80,10 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
         else clear('gen-paused');
         // 2. reset a render job that was running when the launcher closed
         if (gs?.state !== 'running' && au.genJobs.some((j) => j.state === 'running')) await upd.current((st) => patch(st, (a) => ({ ...a, genJobs: a.genJobs.map((j) => (j.state === 'running' ? { ...j, state: 'queued' as const } : j)) })));
-        // 3. queue renders the plan needs
-        if (d.enqueue.length) {
+        const cloud = au.cloud !== false;   // cloud mode (default): the evening day plan + cloud tasks replace the local queue
+        if (cloud) await dayTick({ snap: ref.current, now, patch: (f) => upd.current((st) => patch(st, f)), note: (t, k) => note(t, k), alert: (a) => alert(a), clear });
+        // 3. queue renders the plan needs (local mode only)
+        if (!cloud && d.enqueue.length) {
           const maxNum = Math.max(0, ...s.videos.map((v) => Math.floor(v.num)), ...au.genJobs.map((j) => j.num));
           const jobs: GenJob[] = d.enqueue.map((e, i) => ({ id: `${Date.now()}-${i}`, cid: e.cid, num: maxNum + 1 + i, state: 'queued', at: new Date().toISOString(), reason: e.reason, deadline: e.deadline, variant: e.variant }));
           await upd.current((st) => patch(st, (a) => ({ ...a, genJobs: [...a.genJobs, ...jobs].slice(-40) })));
@@ -89,14 +92,14 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
         // 4. start the next queued render (one at a time)
         const next = [...au.genJobs].filter((j) => j.state === 'queued').sort((a, b) => Number(!!b.first) - Number(!!a.first) || Number(/^follow-up/.test(b.reason)) - Number(/^follow-up/.test(a.reason)) || (a.deadline ?? '9').localeCompare(b.deadline ?? '9') || a.num - b.num)[0];   // your pick first, then viral follow-ups (they lose value every hour), then the earliest deadline
         bb.genQueueWrite?.(au.genJobs.filter((j) => j.state === 'queued' || j.state === 'running'));
-        if (next && gs?.state !== 'running' && !genRunning.current && Date.now() >= limitUntil.current) {
+        if (!cloud && next && gs?.state !== 'running' && !genRunning.current && Date.now() >= limitUntil.current) {
           const r = await bb.genStart!({ cid: next.cid, num: next.num, via, model: au.model ?? 'sonnet', reason: next.reason, variant: next.variant, deadline: next.deadline && new Date(new Date(next.deadline).getTime() + 75 * 60e3).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) });
           if (r.ok) await upd.current((st) => patch(st, (a) => ({ ...a, genJobs: a.genJobs.map((j) => (j.id === next.id ? { ...j, state: 'running' as const } : j)) })));
           if (r.ok) await note(`Started rendering ${next.cid} #${next.num} with ${via === 'claude' ? 'Claude (' + (au.model ?? 'sonnet') + ')' : 'the launcher'}.`, 'render');
           else await upd.current((st) => patch(st, (a) => ({ ...a, genJobs: a.genJobs.map((j) => (j.id === next.id ? { ...j, state: 'error' as const, msg: r.error, endedAt: new Date().toISOString() } : j)) })));   // the planner queues a new job; repeated failures end in the pause alert
         }
         // 5. concepts that need Claude (hot or winning, no automatic recipe)
-        for (const c of d.claude) await alert({ id: `claude-${c.cid}`, kind: 'stock', title: `${c.cid} needs a Gen round with Claude`, sub: `${c.why}. Make ${c.need} more: Gen x${c.need} ${c.cid} (Control Room > copy).` });
+        if (!cloud) for (const c of d.claude) await alert({ id: `claude-${c.cid}`, kind: 'stock', title: `${c.cid} needs a Gen round with Claude`, sub: `${c.why}. Make ${c.need} more: Gen x${c.need} ${c.cid} (Control Room > copy).` });
         // 6. nothing approved for the next slot? (Mo posts by hand since 2026-11-24, the launcher no longer uploads)
         if (!d.noVideo) clear('stock-slot');
         for (const x of autoOf(ref.current.state).alerts) if (!x.resolved && x.id.startsWith('claude-') && x.kind === 'stock' && !d.claude.some((c) => `claude-${c.cid}` === x.id)) clear(x.id);

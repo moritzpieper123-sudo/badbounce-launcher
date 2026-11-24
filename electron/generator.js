@@ -208,4 +208,18 @@ function start({ vault, cid, num, via, reason, deadline, model, variant, onStatu
 
 const status = () => (running ? { state: 'running', num: running.num, cid: running.cid, msg: running.msg } : { state: 'idle' });
 
-module.exports = { publish, start, stop, cancel, status, ready, finalDescription, usedNumbers, RECIPES };
+/** Cloud delivery: the renderer hands over the four downloaded files of video N; they go through the same staging + publish as a local render. */
+function saveCloud(vault, num, files) {
+  const stage = path.join(vault, 'Results', '_building', `#${num}`), final = path.join(vault, 'Results', `#${num}`);
+  if (fs.existsSync(final) && safeLs(final).length) throw new Error(`Results\\#${num} already exists`);
+  fs.rmSync(stage, { recursive: true, force: true }); fs.mkdirSync(stage, { recursive: true });
+  for (const f of files) { const n = path.basename(String(f.name)); if (!/^(Badbounce|Thumbnail|Description|Notes) #\d+\.(mp4|png|txt|md)$/.test(n)) throw new Error('unexpected file ' + n); fs.writeFileSync(path.join(stage, n), Buffer.from(f.data)); }
+  publish(stage, final, num);
+}
+/** leftovers of crashed renders: _building folders older than 3 h that no running job uses */
+function cleanBuilding(vault, keepNums = []) {
+  const root = path.join(vault, 'Results', '_building'); let n = 0;
+  for (const d of safeLs(root)) { const f = path.join(root, d); try { if (!keepNums.includes(+d.replace('#', '')) && Date.now() - fs.statSync(f).mtimeMs > 3 * 3600e3) { fs.rmSync(f, { recursive: true, force: true }); n++; } } catch { /* */ } }
+  return n;
+}
+module.exports = { saveCloud, cleanBuilding, publish, start, stop, cancel, status, ready, finalDescription, usedNumbers, RECIPES };

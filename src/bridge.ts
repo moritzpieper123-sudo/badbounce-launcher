@@ -10,6 +10,8 @@ export interface BB {
   uploadPack(num: number): Promise<{ ok: boolean; folder?: string; error?: string }>;
   genStart?(job: { cid: string; num: number; via?: 'claude' | 'launcher'; reason?: string; deadline?: string; model?: string; variant?: 'job' | 'cat' }): Promise<{ ok: boolean; error?: string }>;
   genQueueWrite?(jobs: unknown[]): Promise<boolean>;
+  renderSave?(num: number, files: { name: string; data: ArrayBuffer }[]): Promise<{ ok: boolean; error?: string }>;
+  cleanBuilding?(keep: number[]): Promise<number>;
   genStatus?(): Promise<GenStatus>;
   genReady?(): Promise<string[]>;
   genStop?(): Promise<boolean>;
