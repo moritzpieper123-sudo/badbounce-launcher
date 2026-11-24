@@ -39,7 +39,7 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
   }), []);
   useEffect(() => bb.onUploadStatus?.((st) => {
     if (st.state === 'error' && st.mode === 'schedule') alert({ id: 'upload', kind: 'upload', title: `Upload failed${st.key ? ` (#${st.key})` : ''}`, sub: `${st.msg ?? ''} · screenshot in Engine\\Upload\\upload_logs. TikTok Studio probably changed, or the login ran out (run: py bb_upload.py --login).` });
-    if (st.state === 'ok' && st.mode === 'schedule') { clear('upload'); clear('stock-slot'); }
+    if (st.state === 'ok' && st.mode === 'schedule') { clear('upload'); clear('upload-giveup'); clear('stock-slot'); }
   }), []);
   useEffect(() => bb.onGenStatus?.((st) => {
     if (st.state === 'running') { genRunning.current = true; return; }
@@ -89,12 +89,15 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
         // 5. concepts that need Claude (hot or winning, no automatic recipe)
         for (const c of d.claude) await alert({ id: `claude-${c.cid}`, kind: 'stock', title: `${c.cid} needs a Gen round with Claude`, sub: `${c.why}. Make ${c.need} more: Gen x${c.need} ${c.cid} (Control Room > copy).` });
         // 6. put the next video into TikTok (quiet Chrome, just in time)
+        if (!d.noVideo) clear('stock-slot');
+        for (const x of autoOf(ref.current.state).alerts) if (!x.resolved && x.id.startsWith('claude-') && x.kind === 'stock' && !d.claude.some((c) => `claude-${c.cid}` === x.id)) clear(x.id);
         if (d.noVideo) await alert({ id: 'stock-slot', kind: 'stock', title: 'No approved video for the next slot', sub: `${new Date(d.noVideo.slotIso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} has nothing approved. ${d.noVideo.waiting} video${d.noVideo.waiting === 1 ? '' : 's'} wait for your review in the Control Room.` });
         if (d.schedule) {
           const key = d.schedule.slotIso, t = tries.current[key];
           if (!t || (t.n < 2 && Date.now() - t.at > 5 * 60e3)) {
             tries.current[key] = { n: (t?.n ?? 0) + 1, at: Date.now() };
-            await bb.autoUploadBatch!([{ num: d.schedule.num, slotIso: d.schedule.slotIso }], 'schedule', true);
+            const r = await bb.autoUploadBatch!([{ num: d.schedule.num, slotIso: d.schedule.slotIso }], 'schedule', true);
+            if (r && !r.ok) { if (t) tries.current[key] = t; else delete tries.current[key]; }   // refused because another upload runs: that is not a failed try
           } else if (t.n >= 2) await alert({ id: 'upload-giveup', kind: 'upload', title: `Gave up on the ${new Date(key).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} slot`, sub: 'Two tries failed. Post it by hand or fix the upload (see the alert above).' });
         }
       } catch (e) { console.error('autopilot tick', e); }

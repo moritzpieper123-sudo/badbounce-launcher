@@ -28,6 +28,23 @@ function patchQuiet(dir) {
   } catch { return false; }
 }
 
+/* TikTok Studio sometimes shows a guided-tour overlay (react-joyride) that blocks every click ("subtree intercepts pointer events").
+   Idempotent patch of bb_upload.py (marker BB_NOJOY): a style that hides the overlay on every Studio page. */
+function patchNoJoy(dir) {
+  const f = path.join(dir, 'bb_upload.py');
+  try {
+    let t = fs.readFileSync(f, 'utf8');
+    if (t.includes('BB_NOJOY')) return true;
+    const a = "    page = ctx.pages[0] if ctx.pages else ctx.new_page()\n    page.goto(UPLOAD_URL";
+    if (!t.includes(a)) return false;
+    const js = "(()=>{const k=()=>{if(document.getElementById('bb-nojoy'))return;const s=document.createElement('style');s.id='bb-nojoy';s.textContent='#react-joyride-portal,.react-joyride__overlay,.react-joyride__spotlight{display:none!important;pointer-events:none!important}';(document.head||document.documentElement).appendChild(s)};k();document.addEventListener('DOMContentLoaded',k);setInterval(k,1500)})()";
+    t = t.replace(a, "    try: ctx.add_init_script(\"" + js + "\")  # BB_NOJOY\n    except Exception: pass\n" + a);
+    fs.writeFileSync(f, t); return true;
+  } catch { return false; }
+}
+/** One short line for the UI: Playwright errors carry a huge call log. */
+const shorten = (m) => { const s = String(m || '').split(/\s+Call log:/)[0].replace(/\s+/g, ' ').trim(); return s.length > 220 ? s.slice(0, 217) + '...' : s; };
+
 function start({ vault, key, mode, slotIso, quiet, onStatus, onDone }) {
   if (running) return { ok: false, error: `an upload is already running (#${running.key})` };
   const dir = scriptDir(vault), script = path.join(dir, 'bb_upload.py');
@@ -40,6 +57,7 @@ function start({ vault, key, mode, slotIso, quiet, onStatus, onDone }) {
     if (mode === 'test') args.push('--test');
   } else return { ok: false, error: 'bad mode' };
 
+  patchNoJoy(dir);
   const quietOk = quiet && patchQuiet(dir);
   running = { key: String(key), mode, msg: 'starting…' };
   const startedAt = Date.now();
@@ -47,7 +65,7 @@ function start({ vault, key, mode, slotIso, quiet, onStatus, onDone }) {
   emit();
   const finish = (ok, msg) => {
     const was = running; running = null;
-    const st = { state: ok ? 'ok' : 'error', key: was.key, mode: was.mode, msg };
+    const st = { state: ok ? 'ok' : 'error', key: was.key, mode: was.mode, msg: ok ? msg : shorten(msg) };
     onStatus && onStatus(st);
     onDone && onDone({ ...st, slotIso, ok });
   };
@@ -67,4 +85,4 @@ function start({ vault, key, mode, slotIso, quiet, onStatus, onDone }) {
   return { ok: true };
 }
 
-module.exports = { start, status, patchQuiet };
+module.exports = { start, status, patchQuiet, patchNoJoy };

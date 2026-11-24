@@ -113,7 +113,10 @@ const BACKLOG_DAYS = 14;
  *  A slot more than BACKLOG_DAYS older than the post is skipped (counts as missed). */
 export function slotMap(st: AppState): Map<number, string> {
   const out = new Map<number, string>();
-  const posted = Object.entries(st.uploads).map(([n, u]) => ({ n: +n, t: Date.parse(u.realAt || u.at) || 0 }))
+  // posts the launcher itself scheduled in TikTok keep their real slot (so the next video goes into the next FREE slot, not behind them)
+  const pinned = new Set<string>();
+  for (const [n, u] of Object.entries(st.uploads)) if (u.scheduled && u.slot) { const iso = new Date(u.slot).toISOString(); out.set(+n, iso); pinned.add(iso); }
+  const posted = Object.entries(st.uploads).filter(([, u]) => !(u.scheduled && u.slot)).map(([n, u]) => ({ n: +n, t: Date.parse(u.realAt || u.at) || 0 }))
     .sort((a, b) => a.t - b.t || a.n - b.n);
   if (!posted.length) return out;
   let day = parseYmd(st.settings.day1), guard = 0, i = 0;
@@ -123,6 +126,7 @@ export function slotMap(st: AppState): Map<number, string> {
     day = addDays(day, 1);
     while (queue.length && i < posted.length) {
       const s = queue[0];
+      if (pinned.has(s.toISOString())) { queue.shift(); continue; }
       if (s.getTime() < posted[i].t - BACKLOG_DAYS * 86400000) { queue.shift(); continue; }
       out.set(posted[i].n, s.toISOString()); queue.shift(); i++;
     }
