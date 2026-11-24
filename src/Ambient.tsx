@@ -6,7 +6,7 @@ import { bb } from './bridge';
 import { useTheme } from './theme';
 import { darkPalette, themePalette } from './scene';
 import { homeData } from './homeData';
-import { AutopilotPanel, NextSlotPanel, StatsPanel, Timeline } from './homeWidgets';
+import { AutopilotPanel, NextSlotPanel, StatsPanel, Timeline, GoalsPanel, WeekPanel, ActivityPanel } from './homeWidgets';
 import { fmtDay } from './logic';
 import type { GenStatus } from './bridge';
 
@@ -36,6 +36,7 @@ export default function Ambient() {
       <div className="amb-date">{greet}, Mo · {fmtDay(now)}{d.dayNo >= 1 ? ` · Day ${d.dayNo}` : ''}</div>
       <div className="amb-tl"><Timeline d={d} /></div>
       <div className="amb-cards"><AutopilotPanel d={d} big /><NextSlotPanel d={d} /><StatsPanel d={d} /></div>
+      <div className="amb-cards c3"><GoalsPanel d={d} /><WeekPanel d={d} /><ActivityPanel d={d} /></div>
     </div></div>
     <div className="amb-hint">move the mouse to return</div>
   </div>;
