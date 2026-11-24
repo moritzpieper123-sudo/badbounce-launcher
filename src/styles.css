@@ -964,3 +964,6 @@ main.content > .grid > *:nth-child(4) { animation-delay: .22s; } main.content > 
 .cat-head { display: flex; align-items: center; gap: 12px; margin: 22px 2px 10px; flex-wrap: wrap; }
 .cat-head h2 { font-size: 18px; }
 .cat-ico { width: 34px; height: 34px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; background: var(--surface); border: 1px solid var(--line); color: var(--yellow-text, #ffd24a); flex: none; }
+
+.cr-ov-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid rgba(var(--wrgb), .07); }
+.cr-ov-row:first-of-type { border-top: 0; }

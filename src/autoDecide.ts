@@ -1,6 +1,6 @@
 /* What the autopilot does right now: pure function (snapshot in, decision out), so it can be tested without the app. */
 import type { Snapshot, Video } from './types';
-import { addDays, at, parseYmd, slotsForDay, slotMap, ymd } from './logic';
+import { addDays, at, hm, parseYmd, slotsForDay, slotMap, ymd } from './logic';
 import {
   AUTO_GEN, CIDS, GEN_LEAD_H, RENDER_LEAD_MIN, LEAD_MIN, MOMENTUM_MIN_SLOTS, autoOf, cidOf, conceptStats, pickConcept, planSlots, scorePosts, stockOf,
   type ConceptStat, type PlanRow, type PostScore,
@@ -64,7 +64,7 @@ export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canG
       const mine = rows.filter((r) => r.cid === s.cid);   // job i is for the i-th planned slot of this concept (earliest deadline first)
       for (let i = 0; i < want && slotsLeft > 0; i++, slotsLeft--) {
         const slot = mine[Math.max(0, have) + i]?.slotIso;
-        enqueue.push({ cid: s.cid, reason: hot ? 'follow-up for a hot video' : 'plan for today', deadline: slot ? new Date(new Date(slot).getTime() - RENDER_LEAD_MIN * 60e3).toISOString() : undefined });
+        enqueue.push({ cid: s.cid, reason: hot ? `follow-up: ${s.cid} is hot (score ${Math.round(s.hotScore)}), more of it while it is viral` : `fills the ${slot ? hm(new Date(slot)) : 'next'} slot${mine[Math.max(0, have) + i] ? ': ' + mine[Math.max(0, have) + i].reason : ''}`, deadline: slot ? new Date(new Date(slot).getTime() - RENDER_LEAD_MIN * 60e3).toISOString() : undefined });
       }
     } else if (hot || s.status === 'winner') {
       claude.push({ cid: s.cid, need: want, why: hot ? 'hot right now, follow-ups wanted' : 'a winner, stock is low' });

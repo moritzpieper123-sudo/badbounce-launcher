@@ -6,7 +6,7 @@ import { bb, isDesktop } from '../bridge';
 import type { GenStatus } from '../bridge';
 import { Header, Thumb } from './parts';
 import { Icon, Spark } from '../ui';
-import { fmtNum, hm, kColor, vn } from '../logic';
+import { fmtNum, hm, kColor, vn, ymd } from '../logic';
 import type { AppState, Video } from '../types';
 import { AUTO_GEN, CID_NAME, autoOf, cidOf, stockOf, type AutoState, type ConceptStat, type PostScore } from '../autopilot';
 import { decide } from '../autoDecide';
@@ -67,6 +67,8 @@ export default function Control() {
       <div className="cr-stat"><small>Rendering</small><b>{gen.state === 'running' ? `${gen.cid} #${gen.num}` : au.genJobs.filter((j) => j.state === 'queued').length ? `${au.genJobs.filter((j) => j.state === 'queued').length} queued` : 'idle'}</b>{gen.state === 'running' && <span className="small dim">{gen.msg}</span>}</div>
       <div className="cr-stat"><small>Last data pull</small><b>{lastPull ? ago(lastPull) : '–'}</b></div>
     </section>
+
+    <Overview d={d} au={au} now={now} gen={gen} stock={stock} uploads={snap.state.uploads} />
 
     {alerts.length > 0 && <section className="glass card cr-alerts">
       <h2><Icon name="bell" size={16} /> Needs you</h2>
@@ -178,4 +180,50 @@ function ConceptRow({ s, max, canGen, onQueue, onCopy }: { s: ConceptStat; max: 
     <div className="row between small dim"><span>{s.judged ? `median ${fmtNum(s.medianViews)} views · ${s.posts} posts${s.trend ? ` · ${s.trend === 'up' ? '▲' : s.trend === 'down' ? '▼' : '–'}` : ''}` : `${s.posts} posts, no verdict yet`}</span>
       <span>{s.stock ? `${s.stock} in stock ` : 'no stock '}{canGen ? <button className="chip chip-btn" onClick={onQueue}>render 1</button> : <button className="chip chip-btn" title="This Konzept needs Claude (new machine, song or seed search)" onClick={onCopy}>Gen x3</button>}</span></div>
   </div>;
+}
+
+/* "What is the autopilot doing, why, and when": right now, next 30 hours, and a log of what it already did. */
+function Overview({ d, au, now, gen, stock, uploads }: { d: ReturnType<typeof decide>; au: AutoState; now: Date; gen: GenStatus; stock: ReturnType<typeof stockOf>; uploads: AppState['uploads'] }) {
+  const lead = Math.max(20, au.leadMin ?? 40);
+  const queued = au.genJobs.filter((j) => j.state === 'queued'), running = au.genJobs.find((j) => j.state === 'running');
+  const upcoming = d.slots.filter((s) => s.when.getTime() > now.getTime() && s.when.getTime() - now.getTime() < 30 * 3600e3);
+  const nextUp = upcoming.find((s) => !s.taken);
+  // headline: what is happening right now and what comes next
+  let headline: string;
+  if (!au.enabled) headline = 'The autopilot is OFF: nothing is rendered or scheduled by itself. Press "Autopilot OFF" at the top to start it.';
+  else if (gen.state === 'running' || running) headline = `Rendering ${gen.cid ?? running?.cid} #${gen.num ?? running?.num} now. ${queued.length ? `${queued.length} more waiting in the queue.` : 'Nothing else is queued.'}`;
+  else if (queued.length) headline = `${queued.length} render${queued.length > 1 ? 's are' : ' is'} queued and starts within a minute.`;
+  else headline = 'Idle: nothing to render right now.';
+  const nextAct = au.enabled && nextUp ? `Next upload action: about ${hm(new Date(nextUp.when.getTime() - lead * 60e3))} the best approved video goes into the ${hm(nextUp.when)} slot.` : '';
+  const dayStart = (iso: string) => { const day = ymd(new Date(iso)); const first = d.slots.find((x) => ymd(x.when) === day); return first ? hm(new Date(first.when.getTime() - 3 * 3600e3)) : '–'; };
+  const log = [...(au.log ?? [])].reverse().slice(0, 14);
+  const dot = { plan: 'var(--yellow)', render: 'var(--blue, #6aa9ff)', upload: 'var(--green)', warn: 'var(--red)', info: 'var(--dim)' } as const;
+  return <section className="glass card">
+    <h2><Icon name="radar" size={16} /> Autopilot overview</h2>
+    <p style={{ margin: '0 0 4px' }}><b>{headline}</b></p>
+    {nextAct && <p className="small muted" style={{ margin: 0 }}>{nextAct}</p>}
+    <div className="grid g-auto" style={{ marginTop: 12 }}>
+      <div>
+        <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Next 30 hours: what goes where, and why</h3>
+        {upcoming.length ? upcoming.map((s) => {
+          const up = Object.entries(uploads).find(([, u]) => new Date(u.slot ?? u.at).toISOString() === s.iso);
+          const row = d.rows.find((r) => r.slotIso === s.iso);
+          const day = ymd(s.when) === ymd(now) ? 'Today' : s.when.toLocaleDateString('en-GB', { weekday: 'short' });
+          let what: React.ReactNode, why = '', color = 'var(--muted)';
+          if (up) { what = <>#{vn(+up[0])} is scheduled in TikTok</>; why = up[1].scheduled ? 'put there by the launcher' : 'marked as uploaded by hand'; color = 'var(--green)'; }
+          else if (row) {
+            const ready = stock.approved.find((v) => cidOf(v) === row.cid);
+            const job = au.genJobs.find((j) => j.cid === row.cid && (j.state === 'queued' || j.state === 'running'));
+            what = <><span className="dot" style={{ background: cidColor(row.cid) }} /> {row.cid} {CID_NAME[row.cid]}</>;
+            why = `${row.reason}. ${ready ? `Video #${ready.num} is ready and goes in at about ${hm(new Date(s.when.getTime() - lead * 60e3))}.` : job ? `Its video is ${job.state === 'running' ? 'rendering now' : 'queued for rendering'}.` : 'No video yet, a render will be queued.'}`;
+          } else { what = <span className="dim">Not planned yet</span>; why = `Planning for this day starts at ${dayStart(s.iso)} (3 h before its first slot).`; }
+          return <div key={s.iso} className="cr-ov-row"><b className="num" style={{ minWidth: 70 }}>{day} {hm(s.when)}</b><div style={{ minWidth: 0 }}><div style={{ color }}>{what}</div><div className="small dim">{why}</div></div></div>;
+        }) : <div className="empty">No slots in the next 30 hours.</div>}
+      </div>
+      <div>
+        <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>What it already did</h3>
+        {log.length ? log.map((e, i) => <div key={i} className="cr-ov-row"><span className="dot" style={{ background: dot[e.kind], marginTop: 6 }} /><div style={{ minWidth: 0 }}><div className="small">{e.text}</div><div className="small dim">{ago(e.t)}</div></div></div>) : <div className="empty">Nothing yet. Every action of the autopilot appears here with its reason.</div>}
+      </div>
+    </div>
+  </section>;
 }
