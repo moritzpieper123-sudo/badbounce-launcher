@@ -15,6 +15,7 @@ export interface BB {
   genStatus?(): Promise<GenStatus>;
   genReady?(): Promise<string[]>;
   genStop?(): Promise<boolean>;
+  autoPatch?(op: { type: 'enabled' | 'autoApprove'; value: boolean } | { type: 'approve'; nums: number[] } | { type: 'dismiss'; id: string }): Promise<boolean>;
   onGenStatus?(cb: (s: GenStatus) => void): () => void;
   uploadStatus?(): Promise<UploadStatus>;
   onUploadStatus?(cb: (s: UploadStatus) => void): () => void;

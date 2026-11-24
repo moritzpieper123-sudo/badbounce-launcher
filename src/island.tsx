@@ -12,6 +12,9 @@ import type { Task } from './types';
 import { doUploadPack, markUploaded } from './actions';
 import { Icon, Tick } from './ui';
 import { TikTokLogo } from './logos';
+import { autoOf, cidOf, stockOf, CID_NAME, type AutoState } from './autopilot';
+import { decide } from './autoDecide';
+import type { GenStatus } from './bridge';
 
 /* The island window is transparent: never paint the page background behind the pill. */
 document.documentElement.style.background = 'transparent';
@@ -23,6 +26,10 @@ function Island() {
   const [open, setOpen] = useState(false);
   const [alert, setAlert] = useState<Alert | { title: string; sub: string; kind: 'toast' } | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [ready, setReady] = useState<Set<string>>(new Set());
+  const [gen, setGen] = useState<GenStatus>({ state: 'idle' } as GenStatus);
+  const seenAuto = useRef<Set<string>>(new Set());
+  useEffect(() => { bb.genReady?.().then((r) => setReady(new Set(r))); bb.genStatus?.().then(setGen); return bb.onGenStatus?.(setGen); }, []);
   const hoverT = useRef<number | undefined>();
   const alertT = useRef<number | undefined>();
 
@@ -52,10 +59,22 @@ function Island() {
     });
   }, [snap, alert, show, update]);
 
+  // autopilot problems and viral videos pop out of the island once
+  useEffect(() => {
+    if (!snap || !snap.state.settings.islandEnabled || alert) return;
+    const next = autoOf(snap.state).alerts.find((x) => !x.resolved && !x.read && !seenAuto.current.has(x.id + x.last));
+    if (next) { seenAuto.current.add(next.id + next.last); show({ title: next.title, sub: next.sub, kind: 'toast' }); }
+  }, [snap, alert, show]);
+
   if (!snap || !snap.state.settings.islandEnabled) return null;
   const now = new Date(snap.now);
+  const au = autoOf(snap.state), stock = stockOf(snap);
+  const dec = decide(snap, now, { uploadBusy: false, canGen: true, canUpload: true, genReady: ready });
+  const problems = au.alerts.filter((x) => !x.resolved && x.kind !== 'hot');
+  const hotNow = dec.scores.filter((x) => x.status === 'hot' && x.ageH <= 120).sort((x, y) => y.score - x.score)[0];
   const st = islandStatus(snap);
-  const mood = MOOD[st.mood];
+  const moodKey = problems.length ? 'overdue' : st.mood;
+  const mood = MOOD[moodKey];
   const plan = buildPlan(snap, now, 3).filter((s) => !s.uploaded && s.state !== 'missed');
   const next = plan.find((s) => s.video) || null;
   const b = bufferInfo(snap);
@@ -83,9 +102,10 @@ function Island() {
 
   const render = snap.render;
   const STRIP = 34;
-  let width = render ? 150 : 120, height = STRIP, radius = 999;
+  const rendering = gen.state === 'running';
+  let width = rendering || render || au.enabled ? 190 : 130, height = STRIP, radius = 999;
   if (alert && !open) { width = 340; height = STRIP + 48; radius = 24; }
-  if (open) { width = 600; height = STRIP + 262; radius = 30; }
+  if (open) { width = 640; height = STRIP + 424; radius = 30; }
   const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const doneN = st.todaySlots.filter((s) => s.uploaded).length;
   const nextMins = next ? minsUntil(next.when, now) : 0;
@@ -96,13 +116,16 @@ function Island() {
     <div className="island" style={{ width, height, borderRadius: radius }} onMouseEnter={enter} onMouseLeave={leave}>
       {/* the two dots: same spot in every state, click = open launcher */}
       <button className="isl-dots" onClick={() => { setOpen(false); setAlert(null); bb.islandHover(false); bb.showMain('today'); }} title="Open launcher" aria-label="Open launcher">
-        <span className={st.mood === 'due' ? 'dot pulse' : 'dot'} style={{ background: mood, boxShadow: `0 0 8px ${mood}` }} />
-        <span className={st.mood === 'due' ? 'dot pulse' : 'dot'} style={{ background: mood, boxShadow: `0 0 8px ${mood}` }} />
+        <span className={moodKey === 'due' || problems.length ? 'dot pulse' : 'dot'} style={{ background: mood, boxShadow: `0 0 8px ${mood}` }} />
+        <span className={moodKey === 'due' || problems.length ? 'dot pulse' : 'dot'} style={{ background: mood, boxShadow: `0 0 8px ${mood}` }} />
       </button>
 
       {/* strip around the dots */}
-      {!open && !alert && render && <div className="isl-strip">
-        <Icon name="film" size={13} color="#AAC3F0" /><span className="small num" style={{ color: '#AAC3F0' }}>{Math.round((render.progress ?? 0) * 100)}%</span>
+      {!open && !alert && <div className="isl-strip" style={{ padding: '0 14px' }}>
+        <span className="small" title={au.enabled ? 'Autopilot is running' : 'Autopilot is off'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: problems.length ? '#FF6B5C' : au.enabled ? '#7FD9A8' : '#7C86A6', fontWeight: 700 }}><Icon name="radar" size={13} color="currentColor" />{problems.length ? problems.length : au.enabled ? 'ON' : 'off'}</span>
+        <span className="small num" style={{ color: '#AAC3F0', display: 'inline-flex', alignItems: 'center', gap: 4 }} title={rendering ? `Rendering ${gen.cid} #${gen.num}` : render ? 'Rendering' : 'Next slot'}>
+          {rendering ? <><Icon name="film" size={12} color="#AAC3F0" />{gen.cid}</> : render ? <><Icon name="film" size={12} color="#AAC3F0" />{Math.round((render.progress ?? 0) * 100)}%</> : (() => { const ns = dec.slots.find((x) => x.when.getTime() > now.getTime() && !x.taken); return ns ? <><Icon name="calendar" size={12} color="#AAC3F0" />{short(minsUntil(ns.when, now))}</> : null; })()}
+        </span>
       </div>}
       {open && <div className="isl-strip">
         <span className="small num" style={{ fontWeight: 700 }}>{time}</span>
@@ -119,9 +142,11 @@ function Island() {
 
       {open && <AppCtx.Provider value={{ snap, update, toast: flash, go: (p) => bb.showMain(p) }}><div className="pop isl-body isl-dock">
         <div className="isl-row">
-          <GenTile flash={flash} />
-          <UploadTile flash={flash} />
+          <AutopilotTile au={au} dec={dec} gen={gen} flash={flash} />
+          <NextVideoTile flash={flash} />
         </div>
+        <ScheduleTile flash={flash} />
+        <NeedsRow au={au} stock={stock} problems={problems} hot={hotNow} flash={flash} />
         <TodoTile />
         {note && <div className="isl-note">{note}</div>}
       </div></AppCtx.Provider>}
@@ -137,6 +162,47 @@ function Ring({ frac, color, size = 54, children, title }: { frac: number; color
     <svg width={size} height={size}><circle cx={size / 2} cy={size / 2} r={r} stroke="rgba(170,195,240,.14)" strokeWidth="4" fill="none" />
       <circle cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth="4" fill="none" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - Math.max(0, Math.min(1, frac)))} transform={`rotate(-90 ${size / 2} ${size / 2})`} style={{ filter: `drop-shadow(0 0 4px ${color})`, transition: 'stroke-dashoffset .6s' }} /></svg>
     <span>{children}</span>
+  </div>;
+}
+
+/* ---------- Autopilot: switch, what it does now, render stop ---------- */
+function AutopilotTile({ au, dec, gen, flash }: { au: AutoState; dec: ReturnType<typeof decide>; gen: GenStatus; flash: (m: string) => void }) {
+  const queued = au.genJobs.filter((j) => j.state === 'queued').length;
+  const rendering = gen.state === 'running';
+  const line = !au.enabled ? 'Off: nothing is rendered or posted by itself.'
+    : dec.paused ? `Paused: ${dec.paused}.`
+    : rendering ? `Rendering ${gen.cid} #${gen.num}${queued ? `, ${queued} more queued` : ''}.`
+    : queued ? `${queued} render${queued > 1 ? 's' : ''} queued, starting.`
+    : dec.rows[0] ? `Next: ${dec.rows[0].cid} ${CID_NAME[dec.rows[0].cid]}. ${dec.rows[0].reason}` : 'Idle, waiting for the next slot window.';
+  return <div className="isl-tile dk ap-tile">
+    <div className="ap-top">
+      <button className={`ap-sw ${au.enabled ? 'on' : ''}`} onClick={() => bb.autoPatch?.({ type: 'enabled', value: !au.enabled })} title={au.enabled ? 'Autopilot is ON: click to stop it' : 'Autopilot is OFF: click to start it'} aria-label="Autopilot switch"><i /></button>
+      <div style={{ minWidth: 0 }}><b style={{ fontSize: 13 }}>Autopilot {au.enabled ? 'ON' : 'OFF'}</b><div className="small ap-line">{line}</div></div>
+    </div>
+    <div className="ap-btns">
+      <button className={`dk-btn ${au.autoApprove ? 'y' : ''}`} onClick={() => bb.autoPatch?.({ type: 'autoApprove', value: !au.autoApprove })} title="Auto-approve: new 60-75 s videos with all files are scheduled without your review">Auto-approve {au.autoApprove ? 'ON' : 'OFF'}</button>
+      {rendering && <button className="dk-btn" style={{ color: '#FF8F7A' }} onClick={async () => { await bb.genStop?.(); flash('Render stopped'); }} title={`Stop the render of ${gen.cid} #${gen.num}`}>Stop render</button>}
+      <button className="dk-btn" onClick={() => bb.showMain('control')} title="Open the Control Room">Control Room</button>
+    </div>
+  </div>;
+}
+
+/* ---------- Needs you / review / viral, in one row ---------- */
+function NeedsRow({ au, stock, problems, hot, flash }: { au: AutoState; stock: ReturnType<typeof stockOf>; problems: AutoState['alerts']; hot?: { cid: string | null; num: number | null; score: number }; flash: (m: string) => void }) {
+  const p = problems[0];
+  return <div className="isl-row ap-row">
+    <div className={`isl-tile dk ap-card ${p ? 'bad' : 'good'}`} title={p ? `${p.title}: ${p.sub}` : 'No problem the autopilot could not fix itself'}>
+      {p ? <><Icon name="bell" size={14} color="#FF8F7A" /><div className="ap-txt"><b>{p.title}</b><span>{problems.length > 1 ? `+${problems.length - 1} more` : 'needs you'}</span></div>
+        <button className="dk-ib" onClick={() => bb.autoPatch?.({ type: 'dismiss', id: p.id })} title="Dismiss" aria-label="Dismiss"><Tick size={12} color="#7FD9A8" /></button></>
+        : <><Tick size={14} color="#7FD9A8" /><div className="ap-txt"><b>All good</b><span>nothing needs you</span></div></>}
+    </div>
+    <div className="isl-tile dk ap-card" title="Videos waiting for your review in the Control Room">
+      <Icon name="film" size={14} color="#FFD978" /><div className="ap-txt"><b>{stock.pending.length} review</b><span>{au.autoApprove ? 'auto checks' : `${stock.approved.length} approved`}</span></div>
+      {stock.pending.length > 0 && <button className="dk-btn y" onClick={async () => { await bb.autoPatch?.({ type: 'approve', nums: stock.pending.map((v) => v.num) }); flash(`${stock.pending.length} approved`); }}>Approve</button>}
+    </div>
+    <div className="isl-tile dk ap-card" title="Best video of the last 5 days">
+      <Icon name="sparkle" size={14} color="#FFC63A" /><div className="ap-txt"><b>{hot ? `${hot.cid ?? 'Video'}${hot.num != null ? ` #${vn(hot.num)}` : ''}` : 'No hit now'}</b><span>{hot ? `going viral · score ${hot.score}` : 'nothing viral right now'}</span></div>
+    </div>
   </div>;
 }
 
@@ -166,7 +232,7 @@ function GenTile({ flash }: { flash: (m: string) => void }) {
 
 /* ---------- uploads: next video + slot bubbles for 3 days ---------- */
 const SC = { uploaded: '#7FD9A8', ready: '#AAC3F0', next: '#FFC63A', missing: '#FF8F7A', overdue: '#FF8F7A', missed: 'rgba(255,255,255,.25)' } as const;
-function UploadTile({ flash }: { flash: (m: string) => void }) {
+function NextVideoTile({ flash }: { flash: (m: string) => void }) {
   const { snap, update } = React.useContext(AppCtx)!;
   const now = new Date(snap.now);
   const plan = buildPlan(snap, now, 3);
@@ -175,7 +241,7 @@ function UploadTile({ flash }: { flash: (m: string) => void }) {
   const days = [0, 1, 2].map((i) => { const d = addDays(now, i); return { d, i, slots: plan.filter((x) => x.date === ymd(d)) }; });
   const v = next?.video;
   const thumb = v?.thumbFile ? bb.fileUrl(v.thumbFile) : '';
-  return <div className="isl-tile y dk dk-up">
+  return <div className="isl-tile y dk dk-up" style={{ flex: '0 0 auto' }}>
     {v ? <div className="dk-next">
       <div className="dk-thumb" style={thumb ? { backgroundImage: `url("${thumb}")` } : undefined} title={`Next upload #${vn(v.num)} · ${next!.time}`}>
         {!thumb && <Icon name="film" size={16} color="#FFD978" />}<b>#{vn(v.num)}</b>
@@ -187,6 +253,19 @@ function UploadTile({ flash }: { flash: (m: string) => void }) {
         <button className="dk-ib" onClick={() => bb.openUrl('https://www.tiktok.com/tiktokstudio/upload')} title="Open TikTok Studio" aria-label="Open TikTok Studio"><TikTokLogo size={14} /></button>
       </div>
     </div> : <div className="dk-next empty" title="No ready video"><Icon name="film" size={20} color="#FF8F7A" /></div>}
+  </div>;
+}
+
+function ScheduleTile({ flash }: { flash: (m: string) => void }) {
+  const { snap, update } = React.useContext(AppCtx)!;
+  const now = new Date(snap.now);
+  const plan = buildPlan(snap, now, 3);
+  const next = plan.filter((x) => !x.uploaded && x.state !== 'missed').find((x) => x.video) || null;
+  const mins = next ? minsUntil(next.when, now) : 0;
+  const days = [0, 1, 2].map((i) => { const d = addDays(now, i); return { d, i, slots: plan.filter((x) => x.date === ymd(d)) }; });
+  const v = next?.video;
+  const thumb = v?.thumbFile ? bb.fileUrl(v.thumbFile) : '';
+  return <div className="isl-tile dk dk-sch">
     <div className="dk-sched">
       {days.map(({ d, i, slots }) => <div key={i} className={`dk-srow ${i === 0 ? 'today' : ''}`}>
         <span className="dk-sday">{i === 0 ? 'Today' : i === 1 ? 'Tmrw' : d.toLocaleDateString('en-GB', { weekday: 'short' })}<small>{d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })}</small></span>
@@ -218,8 +297,8 @@ function TodoTile() {
     <div className="dk-board">
       {COLS.map((c) => { const list = pick(c.key); return <div key={c.key} data-col={c.key} className={`dk-col ${c.key} ${over === c.key ? 'over' : ''}`} title={c.name}>
         <div className="dk-ch"><span className="dk-ci" style={{ color: c.dot, borderColor: c.dot, background: c.key === 'done' ? c.dot : 'transparent' }}>{c.key === 'done' ? <Tick size={9} color="#0B2016" /> : c.key === 'prog' ? <Icon name="half" size={10} color={c.dot} /> : null}</span><b>{list.length}</b></div>
-        {list.slice(0, 4).map((t) => card(t))}
-        {list.length > 4 && <span className="dk-more">+{list.length - 4}</span>}
+        {list.slice(0, 3).map((t) => card(t))}
+        {list.length > 3 && <span className="dk-more">+{list.length - 3}</span>}
       </div>; })}
     </div>
     {dragged && drag && createPortal(card(dragged, true), document.body)}

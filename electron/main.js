@@ -253,7 +253,7 @@ function autoBackup() {
 
 /* ---------- windows ---------- */
 let mainWin = null, islandWin = null, tray = null, quitting = false;
-const ISL_W = 900, ISL_H = 420;
+const ISL_W = 900, ISL_H = 520;
 const iconPath = () => path.join(__dirname, process.platform === 'win32' ? 'icon.ico' : 'icon.png');
 function load(win, page) {
   if (DEV_URL) win.loadURL(`${DEV_URL}/${page}.html`);
@@ -495,6 +495,17 @@ ipcMain.handle('uploadStatus', () => uploader.status());
 ipcMain.handle('genStart', (_e, job) => generator.start({ vault: vault(), cid: String(job.cid), num: +job.num, via: job.via, reason: job.reason, deadline: job.deadline, model: job.model, onStatus: (st) => sendAll('genStatus', st) }));
 ipcMain.handle('genStatus', () => generator.status());
 ipcMain.handle('genStop', () => generator.cancel());
+/* small atomic changes of the autopilot state from the island window (it must not save a whole stale copy of the state) */
+ipcMain.handle('autoPatch', (_e, op) => {
+  const st = loadState(); const a = st.auto = st.auto || { enabled: false, approvals: {}, genJobs: [], alerts: [] };
+  a.approvals = a.approvals || {}; a.genJobs = a.genJobs || []; a.alerts = a.alerts || [];
+  if (op.type === 'enabled') a.enabled = !!op.value;
+  else if (op.type === 'autoApprove') a.autoApprove = !!op.value;
+  else if (op.type === 'approve') for (const n of op.nums || []) a.approvals[String(n)] = 'ok';
+  else if (op.type === 'dismiss') a.alerts = a.alerts.map((x) => (x.id === op.id ? { ...x, resolved: true } : x));
+  else return false;
+  saveState(st); broadcast(); return true;
+});
 ipcMain.handle('genReady', () => generator.ready(vault()));
 /* ranked render queue as a file (for Claude and for you): Engine\Auto\gen-requests.json */
 ipcMain.handle('genQueueWrite', (_e, jobs) => { try { const d = path.join(vault(), 'Engine', 'Auto'); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'gen-requests.json'), JSON.stringify({ updated: new Date().toISOString(), jobs }, null, 1)); return true; } catch { return false; } });
