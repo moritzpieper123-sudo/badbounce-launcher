@@ -9,6 +9,7 @@ export interface Video {
   hasVideo: boolean;
   hasThumb: boolean;
   hasDesc: boolean;
+  hasNotes?: boolean;
   videoFile?: string;
   thumbFile?: string;
   descFile?: string;

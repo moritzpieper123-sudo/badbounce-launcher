@@ -186,7 +186,7 @@ function scanVideos() {
     const cid = cm ? `K${cm[1]}${cm[2] || ''}` : null;
     const titleM = notes.match(/^#\s+(.+)$/m);
     let created = 0; try { created = fs.statSync(folder).birthtimeMs || fs.statSync(folder).mtimeMs; } catch { /* */ }
-    out.push({ num, folder, konzept, cid, title: idx[num]?.title || (titleM ? titleM[1] : name), hasVideo: !!vid, hasThumb: !!th, hasDesc: !!de,
+    out.push({ num, folder, konzept, cid, title: idx[num]?.title || (titleM ? titleM[1] : name), hasVideo: !!vid, hasThumb: !!th, hasDesc: !!de, hasNotes: !!no,
       videoFile: vid && path.join(folder, vid), thumbFile: th && path.join(folder, th), descFile: de && path.join(folder, de), description: desc,
       durationSec: vid ? mp4Duration(path.join(folder, vid)) : null, createdMs: created });
   }
