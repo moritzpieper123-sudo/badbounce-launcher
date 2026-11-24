@@ -109,6 +109,19 @@ function Stats({ d }: { d: HomeData }) {
   </div>;
 }
 
+/** Glass clock drawn as SVG so the rim can sit INSIDE the digits (a stroke clipped to the glyphs). */
+function GlassClock({ text }: { text: string }) {
+  return <svg className="ax-clock" viewBox="0 0 400 100" preserveAspectRatio="xMidYMid meet" aria-label={text} role="img">
+    <defs>
+      <linearGradient id="axg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".66" /><stop offset=".48" stopColor="#fff" stopOpacity=".14" /><stop offset=".62" stopColor="#fff" stopOpacity=".05" /><stop offset="1" stopColor="#fff" stopOpacity=".3" /></linearGradient>
+      <linearGradient id="axr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".9" /><stop offset=".5" stopColor="#fff" stopOpacity=".28" /><stop offset="1" stopColor="#fff" stopOpacity=".55" /></linearGradient>
+      <clipPath id="axc"><text x="200" y="80" textAnchor="middle" className="ax-clock-t">{text}</text></clipPath>
+    </defs>
+    <text x="200" y="80" textAnchor="middle" className="ax-clock-t" fill="url(#axg)">{text}</text>
+    <g clipPath="url(#axc)"><text x="200" y="80" textAnchor="middle" className="ax-clock-t" fill="none" stroke="url(#axr)" strokeWidth="3.4">{text}</text></g>
+  </svg>;
+}
+
 export default function Ambient() {
   const d = useHomeData();
   const { mode, theme } = useTheme();
@@ -118,13 +131,14 @@ export default function Ambient() {
   const pal = useMemo(() => darkPalette(themePalette(mode, theme, now), deep ? 0.88 : 0.8), [mode, theme, now, deep]);
   const [media, setMedia] = useState<MediaNow | null>(null);
   useEffect(() => { bb.mediaNow?.().then(setMedia); return bb.onMedia?.(setMedia); }, []);
+  const night = now.getHours() >= 22 || now.getHours() < 7;   // night version: far less light, for leaving it on overnight
   const err = d.errors.length > 0;
   const vars = { '--a0': pal[0], '--a1': pal[1], '--a2': pal[2], '--a3': pal[3], '--a4': pal[4] } as React.CSSProperties;
-  return <div className={`ax ${err ? 'err' : ''} ${deep ? 'deep' : ''}`} style={vars} aria-label="Screen saver">
+  return <div className={`ax ${err ? 'err' : ''} ${deep ? 'deep' : ''} ${night ? 'night' : ''}`} style={vars} aria-label="Screen saver">
     <div className="ax-bg"><i className="b1" /><i className="b2" /><i className="b3" /></div>
     <div className="ax-drift"><div className="ax-inner">
       <div className="ax-date">{now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
-      <div className="ax-clock num">{now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>
+      <GlassClock text={now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} />
       {err && <div className="ax-alert"><span><Icon name="bell" size={22} color="currentColor" /></span><div><b>{d.errors[0].title}</b>{d.errors.length > 1 && <small>+{d.errors.length - 1} more</small>}</div></div>}
       {media && <Player m={media} />}
       <div className="ax-grid">

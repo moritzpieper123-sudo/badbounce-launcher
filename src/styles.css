@@ -1228,3 +1228,18 @@ main.content > .grid > *:nth-child(4) { animation-delay: .22s; } main.content > 
 .ax-pl-t { font-size: clamp(22px, 1.85vw, 30px); }
 .ax-pl-a { font-size: clamp(15px, 1.15vw, 18px); }
 .ax-pl-bar { height: 6px; margin-top: 9px; }
+
+/* v5: SVG glass clock (rim inside the digits) + night version */
+svg.ax-clock { display: block; width: clamp(480px, min(52vw, 68vh), 900px); height: auto; aspect-ratio: 4 / 1; background: none; -webkit-text-fill-color: initial; -webkit-text-stroke: 0; font-size: inherit; filter: drop-shadow(0 10px 40px rgba(0,0,0,.35)) drop-shadow(0 0 26px rgba(255,255,255,.14)); overflow: visible; }
+.ax-clock-t { font: 800 98px/1 -apple-system, 'SF Pro Display', 'Inter Variable', Inter, system-ui, sans-serif; letter-spacing: -4px; font-variant-numeric: tabular-nums; }
+.ax.night .ax-inner { filter: brightness(.5) saturate(.75); }
+.ax.night::after { background: rgba(0,0,0,.72); }
+.ax.night .ax-bg i { opacity: .42; }
+.ax.night svg.ax-clock { filter: drop-shadow(0 8px 30px rgba(0,0,0,.4)); }
+.ax.night .ax-p, .ax.night .ax-pl, .ax.night .ax-pl.on { box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 20px 50px rgba(0,0,0,.4); }
+.ax.night .ax-st.has .ax-st-ico, .ax.night .ax-st.busy .ax-st-ico, .ax.night .ax-slot.next { box-shadow: inset 0 1px 0 rgba(255,255,255,.3); }
+.ax.night .ax-link.lit, .ax.night .ax-pl-bar i { box-shadow: none; }
+.ax.night.err .ax-bg { animation-name: axflashn; }
+@keyframes axflashn { 0%, 100% { opacity: .2; } 50% { opacity: .55; } }
+.ax.night .ax-alert { animation: none; box-shadow: 0 0 30px rgba(255,59,48,.3); }
+.ax.err .ax-inner { zoom: .88; }
