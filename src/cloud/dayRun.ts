@@ -10,12 +10,16 @@ export const PLAN_HOUR = 18;       // the plan for tomorrow is made from 18:00
 export const CHECK_HOUR = 22;      // at 22:00 the launcher warns about videos that did not arrive
 type Ctx = { snap: Snapshot; now: Date; patch: (f: (a: AutoState) => AutoState) => Promise<void>; note: (t: string, k?: 'info' | 'plan' | 'render' | 'warn') => unknown; alert: (a: { id: string; kind: 'gen'; title: string; sub: string }) => unknown; clear: (id: string) => void };
 const checked = new Set<string>();
+let planning = false, plannedDate = '';   // the tick runs every few seconds: never plan twice while the first plan is still being written
 
 export async function dayTick(c: Ctx) {
   const { snap, now } = c, au = autoOf(snap.state);
   const tomorrow = planTarget(now), date = ymd(tomorrow);
   // 1. evening: make and publish tomorrow's plan once
   if (now.getHours() >= PLAN_HOUR && au.dayPlan?.date !== date) {
+    if (planning || plannedDate === date) return;
+    planning = true;
+    try {
     const taken = snap.videos.filter((v) => !snap.state.uploads[String(v.num)]);
     const pendingBy: Record<string, number> = {};
     for (const v of taken) { const cid = cidOf(v); if (cid) { const k = armKey(cid, v.variant as 'job' | 'cat' | undefined); pendingBy[k] = (pendingBy[k] || 0) + 1; } }
@@ -28,9 +32,11 @@ export async function dayTick(c: Ctx) {
     const file = bb.dayPlanWrite ? await bb.dayPlanWrite(plan) : null;
     if (!file) { c.alert({ id: 'day-plan', kind: 'gen', title: 'Could not write tomorrow\'s plan file', sub: 'day-plan.json in launcher-data was not written.' }); return; }
     c.clear('day-plan');
+    plannedDate = date;
     await c.patch((a) => ({ ...a, dayPlan: { date, at: now.toISOString(), items, got: [] } }));
     c.note(`Tomorrow's ${items.length} videos planned (${r.tests} test, ${items.length - r.tests} best guess): ${items.map((i) => `#${i.num} ${i.cid}${i.variant ? '/' + i.variant : ''}`).join(', ')}.`, 'plan');
     return;
+    } finally { planning = false; }
   }
   // 1b. auto-approve ON: every new video passes the checks first; pass = approved (free to upload), fail = stays in manual review with the reason
   if (au.autoApprove && bb.checkVideo) {
