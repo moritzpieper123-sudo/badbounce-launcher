@@ -97,10 +97,13 @@ export function testShare(stats: ArmStat[], n: number): number {
 }
 
 /** Plan one day: returns one item per slot (in slot order). */
+/** Slots that already hold an upload (Mo posts by hand and marks them). */
+const heldSlots = (st: Snapshot['state']) => new Set(Object.values(st.uploads || {}).map((u) => new Date(u.slot || u.at).getTime()));
+
 export function planDay(snap: Snapshot, now: Date, day: Date, pendingBy: Record<ArmKey, number> = {}, lastCid?: string | null): { items: PlanItem[]; stats: ArmStat[]; tests: number } {
   const st = snap.state;
   const stats = armStats(snap, now, pendingBy);
-  const slots = slotsForDay(day, st.settings.day1, st.settings.skipSlots).map((t) => at(day, t)).filter((d) => d.getTime() > now.getTime());
+  const slots = slotsForDay(day, st.settings.day1, st.settings.skipSlots).map((t) => at(day, t)).filter((d) => d.getTime() > now.getTime() && !heldSlots(st).has(d.getTime()));   // slots that already hold an upload (by hand) are not planned again
   const n = slots.length;
   if (!n) return { items: [], stats, tests: 0 };
   const dayCount: Record<string, number> = {}, armCount: Record<ArmKey, number> = {};
