@@ -154,8 +154,8 @@ export function conceptStats(scores: PostScore[], stockBy: Record<string, number
     const byAge = [...j].sort((a, b) => b.ageH - a.ageH), half = Math.floor(byAge.length / 2);
     let trend: ConceptStat['trend'] = null;
     if (byAge.length >= 4) { const a = median(byAge.slice(0, half).map((s) => s.views)), b = median(byAge.slice(half).map((s) => s.views)); trend = b > a * 1.25 ? 'up' : b < a * 0.75 ? 'down' : 'flat'; }
-    // momentum: a hot / rising post in the last 48 h that is still above the channel
-    const live = mine.filter((s) => s.ageH <= 48 && (s.status === 'hot' || (s.status === 'rising' && s.score >= 62)));
+    // momentum: a hot / rising post in the last 48 h that is still above the channel (or a huge hit within 5 days)
+    const live = mine.filter((s) => (s.ageH <= 48 && (s.status === 'hot' || (s.status === 'rising' && s.score >= 62))) || (s.ageH <= 120 && s.status === 'hot' && (s.ratio ?? 0) >= 5));   // a real viral hit (5x+ the usual views) keeps the momentum for 5 days
     const hotPost = live.sort((a, b) => b.score - a.score)[0] ?? null;
     // fading: the newest 2 posts (older than 3 h) are both clearly below the channel
     const recent = mine.filter((s) => s.ageH >= 3 && s.ratio != null).sort((a, b) => a.ageH - b.ageH).slice(0, 2);
