@@ -109,11 +109,14 @@ function startClaude({ vault, cid, num, reason, deadline, model, onStatus, onDon
   running = { num, cid, msg: 'Claude is starting…' };
   const emit = (state, msg) => { if (running) running.msg = msg; onStatus && onStatus({ state, num, cid, msg }); };
   emit('running', `${cid}: Claude is working`);
-  const args = ['-p', claudePrompt(cid, num, reason || 'planned', deadline), '--allowedTools', 'Bash Read Write Edit Glob Grep', '--permission-mode', 'acceptEdits', '--add-dir', vault, '--output-format', 'text', '--model', /^(sonnet|haiku|opus)$/.test(model) ? model : 'sonnet'];
-  // the launcher may start without the npm folder in PATH (autostart): fall back to the npm shim of the user
+  // the prompt goes in through stdin (multi-line text with quotes cannot be passed safely as an argument, esp. through cmd.exe)
+  const args = ['-p', '--allowedTools', 'Bash,Read,Write,Edit,Glob,Grep', '--permission-mode', 'acceptEdits', '--add-dir', vault.includes(' ') ? `"${vault}"` : vault, '--output-format', 'text', '--model', /^(sonnet|haiku|opus)$/.test(model) ? model : 'sonnet'];
+  // the launcher may start without the npm folder in PATH (autostart): look in the usual install folders
   const cands = [process.env.USERPROFILE && path.join(process.env.USERPROFILE, '.local', 'bin', 'claude.exe'), process.env.APPDATA && path.join(process.env.APPDATA, 'npm', 'claude.cmd')].filter(Boolean);
   const exe = cands.find((c) => fs.existsSync(c)) || 'claude';
-  const p = spawn(exe.includes(' ') ? `"${exe}"` : exe, args, { cwd: vault, shell: process.platform === 'win32', windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+  const viaShell = process.platform === 'win32' && !/\.exe$/i.test(exe);
+  const p = spawn(viaShell && exe.includes(' ') ? `"${exe}"` : exe, args, { cwd: vault, shell: viaShell, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+  p.stdin.on('error', () => {}); p.stdin.end(claudePrompt(cid, num, reason || 'planned', deadline));
   try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* */ }
   let out = '', killed = false;
   const timer = setTimeout(() => { killed = true; try { p.kill(); } catch { /* */ } }, 100 * 60e3);

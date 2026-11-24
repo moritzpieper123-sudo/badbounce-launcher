@@ -48,6 +48,7 @@ export default function Control() {
       <button className={`btn ${au.enabled ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, enabled: !a.enabled }))} title="When on: renders videos 3 h before the day's first slot, schedules approved videos shortly before each slot, reacts to viral videos">
         <Icon name="sparkle" size={15} /> Autopilot {au.enabled ? 'ON' : 'OFF'}</button>
       <button className="btn" onClick={() => set((a) => ({ ...a, producer: viaClaude ? 'launcher' : 'claude' }))} title="Who renders the videos"><Icon name="film" size={15} /> Rendered by {viaClaude ? 'Claude' : 'launcher (K6b, K9 only)'}</button>
+      <button className={`btn ${au.autoApprove ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, autoApprove: !a.autoApprove }))} title="ON: if you have not approved anything when a slot is due (night slots), the oldest waiting video is scheduled anyway. OFF: the slot stays empty and you get an alert.">Night auto-approve {au.autoApprove ? 'ON' : 'OFF'}</button>
       {viaClaude && <button className="btn" onClick={() => set((a) => ({ ...a, model: ({ sonnet: 'haiku', haiku: 'opus', opus: 'sonnet' } as const)[a.model ?? 'sonnet'] }))} title="Which Claude model renders the videos (click to change). Sonnet is the safe default, Haiku is cheapest, Opus is the strongest.">Model: {au.model ?? 'sonnet'}</button>}
       {isDesktop && <button className="btn" onClick={() => bb.statsFetch?.()}><Icon name="update" size={15} /> Pull data now</button>}
     </>} />
