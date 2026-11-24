@@ -10,15 +10,12 @@ import { vn } from './logic';
 type Update = (fn: (st: AppState) => AppState) => Promise<void>;
 const patch = (st: AppState, f: (a: AutoState) => AutoState): AppState => ({ ...st, auto: f(autoOf(st)) });
 
-let lastGive = 0;
 export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update }) {
   const ref = useRef(snap); ref.current = snap;
   const upd = useRef(update); upd.current = update;
   const busy = useRef(false);
-  const tries = useRef<Record<string, { n: number; at: number }>>({});
   const genRunning = useRef(false);
-  const fails = useRef({ stats: 0, studio: 0, slots: 0 });     // consecutive failures: one-off hiccups heal themselves silently
-  const skip = useRef(new Set<string>());                      // slots given up on
+  const fails = useRef({ stats: 0, studio: 0 });     // consecutive failures: one-off hiccups heal themselves silently
   const limitUntil = useRef(0);                                // Claude usage limit: no new render before this time
 
   const hmz = (iso: string | Date) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
@@ -44,15 +41,6 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
   useEffect(() => bb.onStatsStatus?.((st) => {
     if (st.state === 'error' && ++fails.current.stats >= 3) alert({ id: 'stats', kind: 'stats', title: 'Data pull keeps failing', sub: `${fails.current.stats} pulls in a row failed (the launcher retries by itself). Last message: ${st.msg}` });
   }), []);
-  useEffect(() => bb.onUploadStatus?.((st) => {
-    if (st.state === 'error' && st.mode === 'schedule' && autoOf(ref.current.state).enabled) note(`Upload of #${st.key} failed (${(st.msg ?? '').slice(0, 90)}). The launcher retries by itself.`, 'warn');
-    if (st.state === 'error' && st.mode === 'schedule') {
-      if (/not logged in|login/i.test(st.msg ?? '')) alert({ id: 'upload-login', kind: 'upload', title: 'TikTok upload login ran out', sub: 'Open cmd, go to Badbounce\\Engine\\Upload and run:  py bb_upload.py --login  , log in once, close Chrome. Scheduling continues by itself afterwards.' });
-      else if (!autoOf(ref.current.state).enabled) alert({ id: 'upload', kind: 'upload', title: `Upload failed${st.key ? ` (#${st.key})` : ''}`, sub: st.msg ?? '' });   // with the autopilot on, the driver retries and only reports what it cannot fix
-    }
-    if (st.state === 'ok' && st.mode === 'schedule' && st.key && st.key !== 'all') note(`#${st.key} is now scheduled in TikTok Studio.`, 'upload');
-    if (st.state === 'ok' && st.mode === 'schedule') { clear('upload'); clear('upload-giveup'); clear('upload-login'); clear('stock-slot'); fails.current.slots = 0; }
-  }), []);
   useEffect(() => bb.onGenStatus?.((st) => {
     if (st.state === 'running') { genRunning.current = true; return; }
     genRunning.current = false;
@@ -75,10 +63,10 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
       try {
         const s = ref.current, au = autoOf(s.state); if (!au.enabled) return;
         const now = new Date();
-        const up = await bb.uploadStatus?.(); const gs = await bb.genStatus?.(); const ready = new Set(await (bb.genReady?.() ?? Promise.resolve([] as string[])));
+        const gs = await bb.genStatus?.(); const ready = new Set(await (bb.genReady?.() ?? Promise.resolve([] as string[])));
         const via = au.producer === 'launcher' ? undefined : 'claude' as const;
         genRunning.current = gs?.state === 'running';
-        const d = decide(s, now, { uploadBusy: up?.state === 'running', canGen: !!bb.genStart, canUpload: !!bb.autoUploadBatch, genReady: ready, skip: skip.current });
+        const d = decide(s, now, { canGen: !!bb.genStart, genReady: ready });
 
         // 1. announce new viral videos (once)
         const seen = au.hotSeen ?? {}; const fresh = d.scores.filter((x) => x.status === 'hot' && !seen[x.link]);
@@ -109,23 +97,10 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
         }
         // 5. concepts that need Claude (hot or winning, no automatic recipe)
         for (const c of d.claude) await alert({ id: `claude-${c.cid}`, kind: 'stock', title: `${c.cid} needs a Gen round with Claude`, sub: `${c.why}. Make ${c.need} more: Gen x${c.need} ${c.cid} (Control Room > copy).` });
-        // 6. put the next video into TikTok (quiet Chrome, just in time)
+        // 6. nothing approved for the next slot? (Mo posts by hand since 2026-11-24, the launcher no longer uploads)
         if (!d.noVideo) clear('stock-slot');
         for (const x of autoOf(ref.current.state).alerts) if (!x.resolved && x.id.startsWith('claude-') && x.kind === 'stock' && !d.claude.some((c) => `claude-${c.cid}` === x.id)) clear(x.id);
         if (d.noVideo && (Date.parse(d.noVideo.slotIso) - Date.now() <= 22 * 60e3 || !au.genJobs.some((j) => j.state === 'queued' || j.state === 'running'))) await alert({ id: 'stock-slot', kind: 'stock', title: 'No approved video for the next slot', sub: `${new Date(d.noVideo.slotIso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} has nothing approved. ${d.noVideo.waiting} video${d.noVideo.waiting === 1 ? '' : 's'} wait for your review in the Control Room.` });
-        if (d.schedule && fails.current.slots >= 3 && Date.now() - lastGive > 60 * 60e3) { fails.current.slots = 2; skip.current.clear(); }   // scheduling as soon as possible must not burn through every slot while TikTok is broken: pause, then try again after an hour
-        if (d.schedule && fails.current.slots < 3) {
-          const key = d.schedule.slotIso, t = tries.current[key];
-          if (!t || (t.n < 4 && Date.now() - t.at > 4 * 60e3)) {
-            tries.current[key] = { n: (t?.n ?? 0) + 1, at: Date.now() };
-            await note(`Scheduling #${d.schedule.num} (${d.schedule.cid}) for the ${hmz(key)} slot: ${d.schedule.reason}. Try ${(t?.n ?? 0) + 1} of 4.`, 'upload');
-            const r = await bb.autoUploadBatch!([{ num: d.schedule.num, slotIso: d.schedule.slotIso }], 'schedule', true);
-            if (r && !r.ok) { if (t) tries.current[key] = t; else delete tries.current[key]; }   // refused because another upload runs: that is not a failed try
-          } else if (t.n >= 4 && !skip.current.has(key)) {
-            skip.current.add(key); fails.current.slots++; lastGive = Date.now(); await note(`Gave up on the ${hmz(key)} slot after 4 tries. The video goes into the next free slot.`, 'warn');                                         // this slot is lost: the video goes into the next free slot at the next tick
-            if (fails.current.slots >= 2) await alert({ id: 'upload-giveup', kind: 'upload', title: 'Uploads keep failing', sub: `${fails.current.slots} slots in a row could not be filled after 4 tries each (the last one: ${new Date(key).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}). TikTok Studio probably changed or the login ran out. Post by hand and tell Claude.` });
-          }
-        }
       } catch (e) { console.error('autopilot tick', e); }
       finally { busy.current = false; }
     };

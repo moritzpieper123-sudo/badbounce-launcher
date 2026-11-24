@@ -69,7 +69,7 @@ function Island() {
   if (!snap || !snap.state.settings.islandEnabled) return null;
   const now = new Date(snap.now);
   const au = autoOf(snap.state), stock = stockOf(snap);
-  const dec = decide(snap, now, { uploadBusy: false, canGen: true, canUpload: true, genReady: ready });
+  const dec = decide(snap, now, { canGen: true, genReady: ready });
   const problems = au.alerts.filter((x) => !x.resolved && x.kind !== 'hot');
   const hotNow = dec.scores.filter((x) => x.status === 'hot' && x.ageH <= 120).sort((x, y) => y.score - x.score)[0];
   const st = islandStatus(snap);

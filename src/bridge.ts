@@ -8,8 +8,6 @@ export interface BB {
   saveState(state: AppState): Promise<void>;
   onChange(cb: () => void): () => void;
   uploadPack(num: number): Promise<{ ok: boolean; folder?: string; error?: string }>;
-  autoUpload?(num: number, slotIso: string, mode: 'schedule' | 'test'): Promise<{ ok: boolean; error?: string }>;
-  autoUploadBatch?(items: { num: number; slotIso: string }[], mode: 'schedule' | 'test', quiet?: boolean): Promise<{ ok: boolean; error?: string }>;
   genStart?(job: { cid: string; num: number; via?: 'claude' | 'launcher'; reason?: string; deadline?: string; model?: string }): Promise<{ ok: boolean; error?: string }>;
   genQueueWrite?(jobs: unknown[]): Promise<boolean>;
   genStatus?(): Promise<GenStatus>;
@@ -17,8 +15,6 @@ export interface BB {
   genStop?(): Promise<boolean>;
   autoPatch?(op: { type: 'enabled' | 'autoApprove'; value: boolean } | { type: 'approve'; nums: number[] } | { type: 'dismiss'; id: string }): Promise<boolean>;
   onGenStatus?(cb: (s: GenStatus) => void): () => void;
-  uploadStatus?(): Promise<UploadStatus>;
-  onUploadStatus?(cb: (s: UploadStatus) => void): () => void;
   copyText(text: string): Promise<void>;
   openUrl(url: string): Promise<void>;
   openPath(p: string): Promise<void>;

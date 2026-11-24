@@ -1,4 +1,4 @@
-/* Control Room: review the auto-made videos before they are scheduled, see which videos can go viral, which Konzepte win or fail,
+/* Control Room: review the auto-made videos, see which videos can go viral, which Konzepte win or fail,
    what the autopilot plans for the next slots, and what needs you. Logic lives in autopilot.ts / autoDecide.ts / AutoDriver.tsx. */
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../ctx';
@@ -28,7 +28,7 @@ export default function Control() {
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30e3); return () => clearInterval(t); }, []);
   useEffect(() => { bb.genStatus?.().then(setGen); bb.genReady?.().then((r) => setReady(new Set(r))); return bb.onGenStatus?.(setGen); }, []);
   const set = (f: (a: AutoState) => AutoState) => update((st: AppState) => ({ ...st, auto: f(autoOf(st)) }));
-  const d = useMemo(() => decide(snap, now, { uploadBusy: false, canGen: isDesktop, canUpload: isDesktop, genReady: ready }), [snap, now, ready]);
+  const d = useMemo(() => decide(snap, now, { canGen: isDesktop, genReady: ready }), [snap, now, ready]);
   const viaClaude = au.producer !== 'launcher';
   const stock = stockOf(snap);
   const byNum = new Map(snap.videos.map((v) => [v.num, v] as const));
@@ -41,20 +41,14 @@ export default function Control() {
   const queueNow = (cid: string) => { if (!bb.genStart) return; set((a) => ({ ...a, genJobs: [...a.genJobs, { id: `${Date.now()}`, cid, num: Math.max(0, ...snap.videos.map((v) => Math.floor(v.num)), ...a.genJobs.map((j) => j.num)) + 1, state: 'queued' as const, at: new Date().toISOString(), reason: 'you asked' }] })); toast(`${cid} is queued for rendering`); };
   const copyGen = async (cid: string, n: number) => { await bb.copyText(`Gen x${n} ${cid}`); toast(`Copied "Gen x${n} ${cid}", paste it in the project chat`); };
   const nextRow = d.rows[0];
-  const scheduleNext = async (num: number) => {
-    const slot = d.slots.find((x) => x.when.getTime() - now.getTime() >= 20 * 60e3 && !x.taken);
-    if (!slot || !bb.autoUploadBatch) { toast('No free slot found (or not the desktop app)'); return; }
-    const r = await bb.autoUploadBatch([{ num, slotIso: slot.iso }], 'schedule', true);
-    toast(r?.ok ? `#${vn(num)} goes into TikTok for ${hm(slot.when)}, a Chrome window works in the background` : `Not started: ${r?.error ?? 'unknown error'}`);
-  };
   const nextSlot = d.slots.find((s) => s.when.getTime() > now.getTime() && !s.taken);
 
   return <>
     <Header title="Control Room" sub="Review what the autopilot made, watch what is going viral, and see what it plans next." right={<>
-      <button className={`btn ${au.enabled ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, enabled: !a.enabled }))} title="When on: renders videos 3 h before the day's first slot, schedules approved videos shortly before each slot, reacts to viral videos">
+      <button className={`btn ${au.enabled ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, enabled: !a.enabled }))} title="When on: renders videos 3 h before the day's first slot and reacts to viral videos. You upload by hand.">
         <Icon name="sparkle" size={15} /> Autopilot {au.enabled ? 'ON' : 'OFF'}</button>
       <button className="btn" onClick={() => set((a) => ({ ...a, producer: viaClaude ? 'launcher' : 'claude' }))} title="Who renders the videos"><Icon name="film" size={15} /> Rendered by {viaClaude ? 'Claude' : 'launcher (K6b, K9 only)'}</button>
-      <button className={`btn ${au.autoApprove ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, autoApprove: !a.autoApprove }))} title="ON (always): a new video counts as approved and is scheduled without your review, but only if it is 60-75 s long and has all 4 files (video, thumbnail, description, notes). A video without notes never fails anything, it just waits for your review. Everything else waits for you. OFF: only videos you approve are scheduled; if none is approved when a slot is due, the slot stays empty and you get an alert.">Auto-approve {au.autoApprove ? 'ON' : 'OFF'}</button>
+      <button className={`btn ${au.autoApprove ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, autoApprove: !a.autoApprove }))} title="ON (always): a new video counts as approved without your review, but only if it is 60-75 s long and has all 4 files (video, thumbnail, description, notes). A video without notes never fails anything, it just waits for your review. OFF: only videos you approve count as approved; if none is approved when a slot is close, you get an alert.">Auto-approve {au.autoApprove ? 'ON' : 'OFF'}</button>
       {viaClaude && <button className="btn" onClick={() => set((a) => ({ ...a, model: ({ sonnet: 'haiku', haiku: 'opus', opus: 'sonnet' } as const)[a.model ?? 'sonnet'] }))} title="Which Claude model renders the videos (click to change). Sonnet is the safe default, Haiku is cheapest, Opus is the strongest.">Model: {au.model ?? 'sonnet'}</button>}
       {isDesktop && <button className="btn" onClick={() => bb.statsFetch?.()}><Icon name="update" size={15} /> Pull data now</button>}
     </>} />
@@ -84,11 +78,11 @@ export default function Control() {
     <section className="glass card">
       <div className="between"><h2>Review queue <span className="chip">{stock.pending.length} new</span></h2>
         {stock.pending.length > 0 && <button className="btn sm primary" onClick={approveAll}><Icon name="check" size={14} /> Approve all</button>}</div>
-      {!stock.pending.length && !stock.approved.length && <div className="empty">Nothing waiting. New videos appear here the moment they are rendered; nothing is scheduled before you approve it.</div>}
+      {!stock.pending.length && !stock.approved.length && <div className="empty">Nothing waiting. New videos appear here the moment they are rendered; approve the ones you want to post.</div>}
       <div className="cr-queue">
-        {[...stock.pending, ...stock.approved].map((v) => <ReviewCard key={v.num} v={v} approved={au.approvals[String(v.num)] === 'ok'} onDecide={decide1} onNext={scheduleNext} planned={d.rows.find((r) => r.cid === cidOf(v))} />)}
+        {[...stock.pending, ...stock.approved].map((v) => <ReviewCard key={v.num} v={v} approved={au.approvals[String(v.num)] === 'ok'} onDecide={decide1} planned={d.rows.find((r) => r.cid === cidOf(v))} />)}
       </div>
-      {stock.rejected.length > 0 && <p className="small dim">{stock.rejected.length} rejected video{stock.rejected.length > 1 ? 's' : ''} stay in Results and are never scheduled. <button className="chip chip-btn" onClick={() => stock.rejected.forEach((v) => decide1(v.num, null))}>Undo all</button></p>}
+      {stock.rejected.length > 0 && <p className="small dim">{stock.rejected.length} rejected video{stock.rejected.length > 1 ? 's' : ''} stay in Results and are never offered for upload. <button className="chip chip-btn" onClick={() => stock.rejected.forEach((v) => decide1(v.num, null))}>Undo all</button></p>}
     </section>
 
     <section className="glass card">
@@ -115,7 +109,7 @@ export default function Control() {
             const v = u ? byNum.get(+u[0]) : null;
             return <tr key={s.iso}>
               <td className="num">{s.when.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })} {hm(s.when)}</td>
-              <td>{u ? <span><b style={{ color: 'var(--green)' }}>Scheduled</b> #{vn(+u[0])} {cidOf(v) ?? ''}</span> : r ? <span title={r.reason}><span className="dot" style={{ background: cidColor(r.cid), display: 'inline-block', marginRight: 6 }} /><b>{r.cid}</b> {CID_NAME[r.cid]} <span className="small dim">· {r.kind}</span></span> : <span className="small dim">{s.inWindow ? '–' : 'planned 3 h before the first slot of its day'}</span>}</td>
+              <td>{u ? <span><b style={{ color: 'var(--green)' }}>Posted</b> #{vn(+u[0])} {cidOf(v) ?? ''}</span> : r ? <span title={r.reason}><span className="dot" style={{ background: cidColor(r.cid), display: 'inline-block', marginRight: 6 }} /><b>{r.cid}</b> {CID_NAME[r.cid]} <span className="small dim">· {r.kind}</span></span> : <span className="small dim">{s.inWindow ? '–' : 'planned 3 h before the first slot of its day'}</span>}</td>
             </tr>;
           })}</tbody></table>;
         })()}
@@ -133,11 +127,11 @@ export default function Control() {
         </>}
       </section>
     </div>
-    <p className="small dim">Rules in force: one day at a time (renders start 3 h before the day's first slot), each approved video is scheduled into the next free slot as soon as it is ready, at most 5 of the same concept in a row then one other, a hot concept gets the next slots and follow-ups. <button className="chip chip-btn" onClick={() => go('upload')}>Upload page</button></p>
+    <p className="small dim">Rules in force: one day at a time (renders start 3 h before the day's first slot), you upload by hand (the launcher no longer uploads), at most 5 of the same concept in a row then one other, a hot concept gets the next slots and follow-ups. <button className="chip chip-btn" onClick={() => go('upload')}>Upload page</button></p>
   </>;
 }
 
-function ReviewCard({ v, approved, onDecide, onNext, planned }: { v: Video; approved: boolean; onDecide: (n: number, d: 'ok' | 'no' | null) => void; onNext: (n: number) => void; planned?: { cid: string } }) {
+function ReviewCard({ v, approved, onDecide, planned }: { v: Video; approved: boolean; onDecide: (n: number, d: 'ok' | 'no' | null) => void; planned?: { cid: string } }) {
   const [play, setPlay] = useState(false);
   const cid = cidOf(v);
   return <div className={`cr-card ${approved ? 'ok' : ''}`}>
@@ -150,7 +144,6 @@ function ReviewCard({ v, approved, onDecide, onNext, planned }: { v: Video; appr
       <div className="small dim">{v.durationSec ? `${Math.round(v.durationSec)} s` : ''}{v.durationSec && (v.durationSec < 60 || v.durationSec > 70) ? ' · outside 60-70 s' : ''}</div>
       <div className="row cr-actions" style={{ gap: 6, flexWrap: 'wrap' }}>
         {approved ? <button className="btn sm" onClick={() => onDecide(v.num, null)}>Undo</button> : <button className="btn sm primary" onClick={() => onDecide(v.num, 'ok')}><Icon name="check" size={13} /> Approve</button>}
-        <button className="btn sm" title="Puts this video into the next free TikTok slot right now" onClick={() => onNext(v.num)}>Next slot</button>
         <button className="btn sm danger" onClick={() => onDecide(v.num, 'no')}>Reject</button>
         <button className="btn sm icon" title="Open folder" onClick={() => bb.openPath(v.folder)}><Icon name="folder" size={13} /></button>
       </div>
@@ -190,18 +183,16 @@ function Overview({ d, au, now, gen, stock, uploads }: { d: ReturnType<typeof de
   const nextUp = upcoming.find((s) => !s.taken);
   // headline: what is happening right now and what comes next
   let headline: string;
-  if (!au.enabled) headline = 'The autopilot is OFF: nothing is rendered or scheduled by itself. Press "Autopilot OFF" at the top to start it.';
+  if (!au.enabled) headline = 'The autopilot is OFF: nothing is rendered by itself. Press "Autopilot OFF" at the top to start it.';
   else if (gen.state === 'running' || running) headline = `Rendering ${gen.cid ?? running?.cid} #${gen.num ?? running?.num} now. ${queued.length ? `${queued.length} more waiting in the queue.` : 'Nothing else is queued.'}`;
   else if (queued.length) headline = `${queued.length} render${queued.length > 1 ? 's are' : ' is'} queued and starts within a minute.`;
   else headline = 'Idle: nothing to render right now.';
-  const nextAct = au.enabled && nextUp ? `Next upload action: about ${hm(new Date(nextUp.when.getTime() - lead * 60e3))} the best approved video goes into the ${hm(nextUp.when)} slot.` : '';
   const dayStart = (iso: string) => { const day = ymd(new Date(iso)); const first = d.slots.find((x) => ymd(x.when) === day); return first ? hm(new Date(first.when.getTime() - 3 * 3600e3)) : '–'; };
   const log = [...(au.log ?? [])].reverse().slice(0, 14);
   const dot = { plan: 'var(--yellow)', render: 'var(--blue, #6aa9ff)', upload: 'var(--green)', warn: 'var(--red)', info: 'var(--dim)' } as const;
   return <section className="glass card">
     <h2><Icon name="radar" size={16} /> Autopilot overview</h2>
     <p style={{ margin: '0 0 4px' }}><b>{headline}</b></p>
-    {nextAct && <p className="small muted" style={{ margin: 0 }}>{nextAct}</p>}
     <div className="grid g-auto" style={{ marginTop: 12 }}>
       <div>
         <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Next 30 hours: what goes where, and why</h3>
@@ -210,12 +201,12 @@ function Overview({ d, au, now, gen, stock, uploads }: { d: ReturnType<typeof de
           const row = d.rows.find((r) => r.slotIso === s.iso);
           const day = ymd(s.when) === ymd(now) ? 'Today' : s.when.toLocaleDateString('en-GB', { weekday: 'short' });
           let what: React.ReactNode, why = '', color = 'var(--muted)';
-          if (up) { what = <>#{vn(+up[0])} is scheduled in TikTok</>; why = up[1].scheduled ? 'put there by the launcher' : 'marked as uploaded by hand'; color = 'var(--green)'; }
+          if (up) { what = <>#{vn(+up[0])} is posted</>; why = 'marked as uploaded by hand'; color = 'var(--green)'; }
           else if (row) {
             const ready = stock.approved.find((v) => cidOf(v) === row.cid);
             const job = au.genJobs.find((j) => j.cid === row.cid && (j.state === 'queued' || j.state === 'running'));
             what = <><span className="dot" style={{ background: cidColor(row.cid) }} /> {row.cid} {CID_NAME[row.cid]}</>;
-            why = `${row.reason}. ${ready ? `Video #${ready.num} is ready and goes in at about ${hm(new Date(s.when.getTime() - lead * 60e3))}.` : job ? `Its video is ${job.state === 'running' ? 'rendering now' : 'queued for rendering'}.` : 'No video yet, a render will be queued.'}`;
+            why = `${row.reason}. ${ready ? `Video #${ready.num} is ready to post.` : job ? `Its video is ${job.state === 'running' ? 'rendering now' : 'queued for rendering'}.` : 'No video yet, a render will be queued.'}`;
           } else { what = <span className="dim">Not planned yet</span>; why = `Planning for this day starts at ${dayStart(s.iso)} (3 h before its first slot).`; }
           return <div key={s.iso} className="cr-ov-row"><b className="num" style={{ minWidth: 70 }}>{day} {hm(s.when)}</b><div style={{ minWidth: 0 }}><div style={{ color }}>{what}</div><div className="small dim">{why}</div></div></div>;
         }) : <div className="empty">No slots in the next 30 hours.</div>}

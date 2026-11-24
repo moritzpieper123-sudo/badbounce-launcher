@@ -1,0 +1,731 @@
+diff --git a/electron/main.js b/electron/main.js
+index 6d14862..3b0791a 100644
+--- a/electron/main.js
++++ b/electron/main.js
+@@ -13,7 +13,6 @@ const csvfetch = require('./csvfetch');
+ const statsfetch = require('./statsfetch');
+ const media = require('./media');
+ const progress = require('./progress');
+-const uploader = require('./uploader');
+ const generator = require('./generator');
+ 
+ const DEFAULT_SETTINGS = { day1: '2026-11-11', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
+@@ -451,46 +450,6 @@ function openLink(u) {
+ ipcMain.handle('openUrl', (_e, u) => openLink(u));
+ ipcMain.handle('openPath', (_e, p) => shell.openPath(p));
+ ipcMain.handle('openVault', (_e, sub) => { const p = path.join(vault(), sub || ''); if (fs.existsSync(p)) return shell.openPath(p); fs.mkdirSync(p, { recursive: true }); return shell.openPath(p); });
+-/* Mo's own upload script (Engine\Upload\bb_upload.py): schedules ONE video per run in TikTok Studio */
+-const vkey = (num) => String(num).replace(/^(\d+)\.(\d+)$/, (_m, a, b) => a + String.fromCharCode(96 + +b));
+-let batchBusy = false;
+-function markScheduled(num, slotIso) {
+-  const st = loadState(); st.uploads = st.uploads || {};
+-  st.uploads[String(num)] = { at: slotIso, realAt: new Date().toISOString(), slot: slotIso, scheduled: true };
+-  freshMarks[String(num)] = { t: Date.now(), e: st.uploads[String(num)] };
+-  saveState(st); broadcast();
+-}
+-const runOne = (num, slotIso, mode, extra, quiet) => new Promise((resolve) => {
+-  const r = uploader.start({ vault: vault(), key: vkey(num), mode, slotIso, quiet,
+-    onStatus: (st) => sendAll('uploadStatus', { ...st, msg: (extra || '') + (st.msg || '') }),
+-    onDone: (d) => { if (d.ok && mode === 'schedule') markScheduled(num, slotIso); resolve(d); } });
+-  if (!r.ok) resolve({ ok: false, msg: r.error });
+-});
+-ipcMain.handle('autoUpload', (_e, num, slotIso, mode) => {
+-  if (batchBusy) return { ok: false, error: 'a batch run is active' };
+-  return uploader.start({ vault: vault(), key: vkey(num), mode, slotIso,
+-    onStatus: (st) => sendAll('uploadStatus', st),
+-    onDone: (r) => { if (r.ok && r.mode === 'schedule') markScheduled(num, r.slotIso); } });
+-});
+-/* all ready videos in one run: items = [{ num, slotIso }] in slot order; stops at the first failure */
+-ipcMain.handle('autoUploadBatch', (_e, items, mode, quiet) => {
+-  if (batchBusy || uploader.status().state === 'running') return { ok: false, error: 'an upload is already running' };
+-  if (!Array.isArray(items) || !items.length) return { ok: false, error: 'nothing to schedule' };
+-  batchBusy = true;
+-  (async () => {
+-    let done = 0;
+-    for (let i = 0; i < items.length; i++) {
+-      const it = items[i];
+-      const d = await runOne(it.num, it.slotIso, mode, `(${i + 1}/${items.length}) `, !!quiet);
+-      if (!d.ok) { sendAll('uploadStatus', { state: 'error', key: vkey(it.num), mode, msg: `stopped at ${i + 1}/${items.length}: ${d.msg}` }); batchBusy = false; return; }
+-      done++;
+-    }
+-    sendAll('uploadStatus', { state: 'ok', key: 'all', mode, msg: `${done} of ${items.length} ${mode === 'test' ? 'tested' : 'scheduled'}` });
+-    batchBusy = false;
+-  })();
+-  return { ok: true };
+-});
+-ipcMain.handle('uploadStatus', () => uploader.status());
+ /* Autopilot: render one new video in the background (hidden, low priority) */
+ ipcMain.handle('genStart', (_e, job) => generator.start({ vault: vault(), cid: String(job.cid), num: +job.num, via: job.via, reason: job.reason, deadline: job.deadline, model: job.model, onStatus: (st) => sendAll('genStatus', st) }));
+ ipcMain.handle('genStatus', () => generator.status());
+diff --git a/electron/preload.js b/electron/preload.js
+index 8ab7d79..aa1cb18 100644
+--- a/electron/preload.js
++++ b/electron/preload.js
+@@ -6,8 +6,6 @@ contextBridge.exposeInMainWorld('bb', {
+   getSnapshot: () => ipcRenderer.invoke('snapshot'),
+   saveState: (s) => ipcRenderer.invoke('save', s),
+   onChange: (cb) => on('changed', cb),
+-  autoUpload: (n, slot, mode) => ipcRenderer.invoke('autoUpload', n, slot, mode),
+-  autoUploadBatch: (items, mode, quiet) => ipcRenderer.invoke('autoUploadBatch', items, mode, quiet),
+   genStart: (job) => ipcRenderer.invoke('genStart', job),
+   genStatus: () => ipcRenderer.invoke('genStatus'),
+   genReady: () => ipcRenderer.invoke('genReady'),
+@@ -15,8 +13,6 @@ contextBridge.exposeInMainWorld('bb', {
+   autoPatch: (op) => ipcRenderer.invoke('autoPatch', op),
+   genQueueWrite: (j) => ipcRenderer.invoke('genQueueWrite', j),
+   onGenStatus: (cb) => on('genStatus', cb),
+-  uploadStatus: () => ipcRenderer.invoke('uploadStatus'),
+-  onUploadStatus: (cb) => on('uploadStatus', cb),
+   uploadPack: (n) => ipcRenderer.invoke('uploadPack', n),
+   copyText: (t) => ipcRenderer.invoke('copy', t),
+   openUrl: (u) => ipcRenderer.invoke('openUrl', u),
+diff --git a/electron/uploader.js b/electron/uploader.js
+deleted file mode 100644
+index 85d7274..0000000
+--- a/electron/uploader.js
++++ /dev/null
+@@ -1,88 +0,0 @@
+-/* Runs Mo's own bb_upload.py (Badbounce\Engine\Upload) for ONE video at a time.
+-   Modes: 'schedule' (schedules the post in TikTok Studio), 'test' (everything except the final click).
+-   The script writes last_result.json; this module reads it after the process ends. */
+-const path = require('path');
+-const fs = require('fs');
+-const { spawn } = require('child_process');
+-
+-let running = null; // { key, mode }
+-
+-const pad = (n) => String(n).padStart(2, '0');
+-const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+-const scriptDir = (vault) => path.join(vault, 'Engine', 'Upload');
+-const status = () => (running ? { state: 'running', key: running.key, mode: running.mode, msg: running.msg || 'starting…' } : { state: 'idle' });
+-
+-/* Quiet mode (autopilot): Chrome opens far off-screen instead of maximised, so it never pops over a game. Done by a tiny, idempotent
+-   patch of Mo's bb_upload.py (marker BB_QUIET). Nothing is hidden from TikTok: it is the same normal Chrome with the same login. */
+-function patchQuiet(dir) {
+-  const f = path.join(dir, 'bb_upload.py');
+-  try {
+-    let t = fs.readFileSync(f, 'utf8');
+-    if (t.includes('BB_QUIET')) return true;
+-    const a = "args=['--start-maximized'])";
+-    if (!t.includes(a)) return false;
+-    t = t.replace(a, "args=(['--window-position=-32000,-32000', '--window-size=1400,1000', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'] if os.environ.get('BB_QUIET') else ['--start-maximized']))  # BB_QUIET");
+-    t = t.replace("page.wait_for_timeout(300000)", "page.wait_for_timeout(8000 if os.environ.get('BB_QUIET') else 300000)");
+-    t = t.replace("page.wait_for_timeout(120000)", "page.wait_for_timeout(3000 if os.environ.get('BB_QUIET') else 120000)");
+-    fs.writeFileSync(f, t); return true;
+-  } catch { return false; }
+-}
+-
+-/* TikTok Studio sometimes shows a guided-tour overlay (react-joyride) that blocks every click ("subtree intercepts pointer events").
+-   Idempotent patch of bb_upload.py (marker BB_NOJOY): a style that hides the overlay on every Studio page. */
+-function patchNoJoy(dir) {
+-  const f = path.join(dir, 'bb_upload.py');
+-  try {
+-    let t = fs.readFileSync(f, 'utf8');
+-    if (t.includes('BB_NOJOY')) return true;
+-    const a = "    page = ctx.pages[0] if ctx.pages else ctx.new_page()\n    page.goto(UPLOAD_URL";
+-    if (!t.includes(a)) return false;
+-    const js = "(()=>{const k=()=>{if(document.getElementById('bb-nojoy'))return;const s=document.createElement('style');s.id='bb-nojoy';s.textContent='#react-joyride-portal,.react-joyride__overlay,.react-joyride__spotlight{display:none!important;pointer-events:none!important}';(document.head||document.documentElement).appendChild(s)};k();document.addEventListener('DOMContentLoaded',k);setInterval(k,1500)})()";
+-    t = t.replace(a, "    try: ctx.add_init_script(\"" + js + "\")  # BB_NOJOY\n    except Exception: pass\n" + a);
+-    fs.writeFileSync(f, t); return true;
+-  } catch { return false; }
+-}
+-/** One short line for the UI: Playwright errors carry a huge call log. */
+-const shorten = (m) => { const s = String(m || '').split(/\s+Call log:/)[0].replace(/\s+/g, ' ').trim(); return s.length > 220 ? s.slice(0, 217) + '...' : s; };
+-
+-function start({ vault, key, mode, slotIso, quiet, onStatus, onDone }) {
+-  if (running) return { ok: false, error: `an upload is already running (#${running.key})` };
+-  const dir = scriptDir(vault), script = path.join(dir, 'bb_upload.py');
+-  if (!fs.existsSync(script)) return { ok: false, error: `bb_upload.py not found in ${dir}` };
+-  if (!/^\d+[a-z]?$/i.test(String(key))) return { ok: false, error: 'bad video number' };
+-  const args = [script, String(key), '--launcher'];
+-  if (mode === 'test' || mode === 'schedule') {
+-    if (!slotIso) return { ok: false, error: 'no slot given' };
+-    args.push('--at', fmt(new Date(slotIso)));
+-    if (mode === 'test') args.push('--test');
+-  } else return { ok: false, error: 'bad mode' };
+-
+-  patchNoJoy(dir);
+-  const quietOk = quiet && patchQuiet(dir);
+-  running = { key: String(key), mode, msg: 'starting…' };
+-  const startedAt = Date.now();
+-  const emit = (extra) => onStatus && onStatus({ ...status(), ...extra });
+-  emit();
+-  const finish = (ok, msg) => {
+-    const was = running; running = null;
+-    const st = { state: ok ? 'ok' : 'error', key: was.key, mode: was.mode, msg: ok ? msg : shorten(msg) };
+-    onStatus && onStatus(st);
+-    onDone && onDone({ ...st, slotIso, ok });
+-  };
+-  const launch = (exe) => {
+-    const p = spawn(exe, args, { cwd: dir, env: { ...process.env, PYTHONIOENCODING: 'utf-8', ...(quietOk ? { BB_QUIET: '1' } : {}) }, windowsHide: !!quietOk });
+-    const onLine = (b) => { const ln = String(b).split(/\r?\n/).map((s) => s.trim()).filter(Boolean).pop(); if (ln && running) { running.msg = ln; emit(); } };
+-    p.stdout.on('data', onLine); p.stderr.on('data', onLine);
+-    p.on('error', (e) => { if (e.code === 'ENOENT' && exe === 'py') return launch('python'); finish(false, `could not start Python (${e.code || e.message})`); });
+-    p.on('close', () => {
+-      let r = null; try { r = JSON.parse(fs.readFileSync(path.join(dir, 'last_result.json'), 'utf8')); } catch { /* */ }
+-      const fresh = r && r.at && new Date(r.at).getTime() >= startedAt - 5000 && String(r.key) === String(key);
+-      if (fresh && r.ok) finish(true, mode === 'test' ? 'test done, nothing published' : 'scheduled in TikTok Studio');
+-      else finish(false, fresh ? (r.msg || 'failed') : 'no result from the script, see Engine\\Upload\\upload.log');
+-    });
+-  };
+-  launch('py');
+-  return { ok: true };
+-}
+-
+-module.exports = { start, status, patchQuiet, patchNoJoy };
+diff --git a/src/Ambient.tsx b/src/Ambient.tsx
+index 93d2994..2b42ca4 100644
+--- a/src/Ambient.tsx
++++ b/src/Ambient.tsx
+@@ -38,7 +38,6 @@ function Pipeline({ d }: { d: HomeData }) {
+     { k: 'render', icon: 'film', n: d.rendering ? 1 : 0, label: 'Rendering' },
+     { k: 'review', icon: 'sparkle', n: d.pending, label: 'Review' },
+     { k: 'ready', icon: 'check', n: d.approved, label: 'Approved' },
+-    { k: 'tiktok', icon: 'upload', n: d.scheduled, label: 'In TikTok' },
+   ];
+   const n = d.nextSlot, mins = n ? minsUntil(n.when, d.now) : 0;
+   return <div className="ax-p ax-pipe">
+@@ -54,7 +53,7 @@ function Pipeline({ d }: { d: HomeData }) {
+       <div><small>Next slot</small><b className="num">{n?.time ?? '–'}</b></div>
+       <div><small>Concept</small><b><span className="dot" style={{ background: kColor(n?.cid ? parseInt(n.cid.slice(1), 10) : null) }} />{n ? (n.cid ?? 'not planned') : '–'}</b></div>
+       <div><small>In</small><b className="num">{n ? fmtIn(mins).replace(/^in /, '') : '–'}</b></div>
+-      <div><small>Upload starts</small><b className="num">{n && d.enabled ? hh(n.actionAt) : '–'}</b></div>
++      <div><small>Post by</small><b className="num">{n ? hh(n.when) : '–'}</b></div>
+     </div>
+   </div>;
+ }
+@@ -67,7 +66,7 @@ function Slots({ d }: { d: HomeData }) {
+     <div className="ax-sl">{list.map((s) => <div key={s.when.toISOString()} className={`ax-slot ${s.state}`}>
+       <b className="num">{s.time}</b>
+       <span className="ax-slot-ico">{s.state === 'uploaded' ? <Icon name="check" size={16} color="currentColor" sw={3} /> : s.num != null ? <Icon name="film" size={16} color="currentColor" /> : <Icon name="bell" size={16} color="currentColor" />}</span>
+-      <small>{s.num != null ? `#${s.num}` : 'no video'}{s.auto ? ' · auto' : ''}</small>
++      <small>{s.num != null ? `#${s.num}` : 'no video'}</small>
+     </div>)}</div>
+   </div>;
+ }
+diff --git a/src/AutoDriver.tsx b/src/AutoDriver.tsx
+index c9ee9a9..6be1981 100644
+--- a/src/AutoDriver.tsx
++++ b/src/AutoDriver.tsx
+@@ -10,15 +10,12 @@ import { vn } from './logic';
+ type Update = (fn: (st: AppState) => AppState) => Promise<void>;
+ const patch = (st: AppState, f: (a: AutoState) => AutoState): AppState => ({ ...st, auto: f(autoOf(st)) });
+ 
+-let lastGive = 0;
+ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update }) {
+   const ref = useRef(snap); ref.current = snap;
+   const upd = useRef(update); upd.current = update;
+   const busy = useRef(false);
+-  const tries = useRef<Record<string, { n: number; at: number }>>({});
+   const genRunning = useRef(false);
+-  const fails = useRef({ stats: 0, studio: 0, slots: 0 });     // consecutive failures: one-off hiccups heal themselves silently
+-  const skip = useRef(new Set<string>());                      // slots given up on
++  const fails = useRef({ stats: 0, studio: 0 });     // consecutive failures: one-off hiccups heal themselves silently
+   const limitUntil = useRef(0);                                // Claude usage limit: no new render before this time
+ 
+   const hmz = (iso: string | Date) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+@@ -44,15 +41,6 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
+   useEffect(() => bb.onStatsStatus?.((st) => {
+     if (st.state === 'error' && ++fails.current.stats >= 3) alert({ id: 'stats', kind: 'stats', title: 'Data pull keeps failing', sub: `${fails.current.stats} pulls in a row failed (the launcher retries by itself). Last message: ${st.msg}` });
+   }), []);
+-  useEffect(() => bb.onUploadStatus?.((st) => {
+-    if (st.state === 'error' && st.mode === 'schedule' && autoOf(ref.current.state).enabled) note(`Upload of #${st.key} failed (${(st.msg ?? '').slice(0, 90)}). The launcher retries by itself.`, 'warn');
+-    if (st.state === 'error' && st.mode === 'schedule') {
+-      if (/not logged in|login/i.test(st.msg ?? '')) alert({ id: 'upload-login', kind: 'upload', title: 'TikTok upload login ran out', sub: 'Open cmd, go to Badbounce\\Engine\\Upload and run:  py bb_upload.py --login  , log in once, close Chrome. Scheduling continues by itself afterwards.' });
+-      else if (!autoOf(ref.current.state).enabled) alert({ id: 'upload', kind: 'upload', title: `Upload failed${st.key ? ` (#${st.key})` : ''}`, sub: st.msg ?? '' });   // with the autopilot on, the driver retries and only reports what it cannot fix
+-    }
+-    if (st.state === 'ok' && st.mode === 'schedule' && st.key && st.key !== 'all') note(`#${st.key} is now scheduled in TikTok Studio.`, 'upload');
+-    if (st.state === 'ok' && st.mode === 'schedule') { clear('upload'); clear('upload-giveup'); clear('upload-login'); clear('stock-slot'); fails.current.slots = 0; }
+-  }), []);
+   useEffect(() => bb.onGenStatus?.((st) => {
+     if (st.state === 'running') { genRunning.current = true; return; }
+     genRunning.current = false;
+@@ -75,10 +63,10 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
+       try {
+         const s = ref.current, au = autoOf(s.state); if (!au.enabled) return;
+         const now = new Date();
+-        const up = await bb.uploadStatus?.(); const gs = await bb.genStatus?.(); const ready = new Set(await (bb.genReady?.() ?? Promise.resolve([] as string[])));
++        const gs = await bb.genStatus?.(); const ready = new Set(await (bb.genReady?.() ?? Promise.resolve([] as string[])));
+         const via = au.producer === 'launcher' ? undefined : 'claude' as const;
+         genRunning.current = gs?.state === 'running';
+-        const d = decide(s, now, { uploadBusy: up?.state === 'running', canGen: !!bb.genStart, canUpload: !!bb.autoUploadBatch, genReady: ready, skip: skip.current });
++        const d = decide(s, now, { canGen: !!bb.genStart, genReady: ready });
+ 
+         // 1. announce new viral videos (once)
+         const seen = au.hotSeen ?? {}; const fresh = d.scores.filter((x) => x.status === 'hot' && !seen[x.link]);
+@@ -109,23 +97,10 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
+         }
+         // 5. concepts that need Claude (hot or winning, no automatic recipe)
+         for (const c of d.claude) await alert({ id: `claude-${c.cid}`, kind: 'stock', title: `${c.cid} needs a Gen round with Claude`, sub: `${c.why}. Make ${c.need} more: Gen x${c.need} ${c.cid} (Control Room > copy).` });
+-        // 6. put the next video into TikTok (quiet Chrome, just in time)
++        // 6. nothing approved for the next slot? (Mo posts by hand since 2026-11-24, the launcher no longer uploads)
+         if (!d.noVideo) clear('stock-slot');
+         for (const x of autoOf(ref.current.state).alerts) if (!x.resolved && x.id.startsWith('claude-') && x.kind === 'stock' && !d.claude.some((c) => `claude-${c.cid}` === x.id)) clear(x.id);
+         if (d.noVideo && (Date.parse(d.noVideo.slotIso) - Date.now() <= 22 * 60e3 || !au.genJobs.some((j) => j.state === 'queued' || j.state === 'running'))) await alert({ id: 'stock-slot', kind: 'stock', title: 'No approved video for the next slot', sub: `${new Date(d.noVideo.slotIso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} has nothing approved. ${d.noVideo.waiting} video${d.noVideo.waiting === 1 ? '' : 's'} wait for your review in the Control Room.` });
+-        if (d.schedule && fails.current.slots >= 3 && Date.now() - lastGive > 60 * 60e3) { fails.current.slots = 2; skip.current.clear(); }   // scheduling as soon as possible must not burn through every slot while TikTok is broken: pause, then try again after an hour
+-        if (d.schedule && fails.current.slots < 3) {
+-          const key = d.schedule.slotIso, t = tries.current[key];
+-          if (!t || (t.n < 4 && Date.now() - t.at > 4 * 60e3)) {
+-            tries.current[key] = { n: (t?.n ?? 0) + 1, at: Date.now() };
+-            await note(`Scheduling #${d.schedule.num} (${d.schedule.cid}) for the ${hmz(key)} slot: ${d.schedule.reason}. Try ${(t?.n ?? 0) + 1} of 4.`, 'upload');
+-            const r = await bb.autoUploadBatch!([{ num: d.schedule.num, slotIso: d.schedule.slotIso }], 'schedule', true);
+-            if (r && !r.ok) { if (t) tries.current[key] = t; else delete tries.current[key]; }   // refused because another upload runs: that is not a failed try
+-          } else if (t.n >= 4 && !skip.current.has(key)) {
+-            skip.current.add(key); fails.current.slots++; lastGive = Date.now(); await note(`Gave up on the ${hmz(key)} slot after 4 tries. The video goes into the next free slot.`, 'warn');                                         // this slot is lost: the video goes into the next free slot at the next tick
+-            if (fails.current.slots >= 2) await alert({ id: 'upload-giveup', kind: 'upload', title: 'Uploads keep failing', sub: `${fails.current.slots} slots in a row could not be filled after 4 tries each (the last one: ${new Date(key).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}). TikTok Studio probably changed or the login ran out. Post by hand and tell Claude.` });
+-          }
+-        }
+       } catch (e) { console.error('autopilot tick', e); }
+       finally { busy.current = false; }
+     };
+diff --git a/src/actions.ts b/src/actions.ts
+index 93070fb..765810c 100644
+--- a/src/actions.ts
++++ b/src/actions.ts
+@@ -13,24 +13,6 @@ export function pickAutoSlot(snap: Snapshot) {
+   const now = new Date(snap.now), min = now.getTime() + 20 * 60000;
+   return buildPlan(snap, now, 10).find((s) => !s.uploaded && s.state !== 'missed' && s.when.getTime() >= min) ?? null;
+ }
+-/** Starts Mo's bb_upload.py for one video: 'schedule' = schedules it in TikTok Studio, 'test' = all but the last click. */
+-export async function doAutoUpload(snap: Snapshot, num: number, mode: 'schedule' | 'test', toast: (m: string) => void) {
+-  if (!bb.autoUpload) { toast('Auto upload only works in the Windows app'); return; }
+-  const slot = pickAutoSlot(snap);
+-  if (!slot) { toast('No free slot at least 20 min away in the next 10 days'); return; }
+-  const r = await bb.autoUpload(num, slot.when.toISOString(), mode);
+-  if (!r.ok) toast(r.error ?? 'Could not start the upload script');
+-  else toast(`#${vn(num)}: ${mode === 'test' ? 'test run' : 'scheduling'} for ${slot.when.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })} ${slot.time} started, a Chrome window opens`);
+-}
+-/** All ready videos into the next free slots (>= 20 min away, within 10 days), in one sequential run. */
+-export async function doAutoAll(snap: Snapshot, mode: 'schedule' | 'test', toast: (m: string) => void) {
+-  if (!bb.autoUploadBatch) { toast('Auto upload only works in the Windows app'); return; }
+-  const now = new Date(snap.now), min = now.getTime() + 20 * 60000;
+-  const items = buildPlan(snap, now, 10).filter((s) => s.video && !s.uploaded && s.state !== 'missed' && s.when.getTime() >= min).map((s) => ({ num: s.video!.num, slotIso: s.when.toISOString() }));
+-  if (!items.length) { toast('No ready video has a free slot at least 20 min away'); return; }
+-  const r = await bb.autoUploadBatch(items, mode);
+-  toast(r.ok ? `${items.length} video${items.length > 1 ? 's' : ''}: ${mode === 'test' ? 'test run' : 'scheduling'} started, one after another` : r.error ?? 'Could not start');
+-}
+ /** Marks a video uploaded. It fills the oldest free slot (Mo 2026-11-14), no matter when it is posted. */
+ export function markUploaded(snap: Snapshot, num: number) {
+   const now = new Date(snap.now);
+diff --git a/src/autoDecide.ts b/src/autoDecide.ts
+index 9b360ee..76dcf5f 100644
+--- a/src/autoDecide.ts
++++ b/src/autoDecide.ts
+@@ -13,11 +13,10 @@ export interface Decision {
+   enqueue: { cid: string; reason: string; deadline?: string }[];                             // videos to render now
+   claude: { cid: string; need: number; why: string }[];                   // concepts that need a Gen round with Claude
+   paused: string | null;                                                  // renders are on hold after repeated failures
+-  schedule: { num: number; slotIso: string; cid: string; reason: string } | null;   // video to put into TikTok now
+-  noVideo: { slotIso: string; waiting: number } | null;                   // a slot is due but nothing is approved
++  noVideo: { slotIso: string; waiting: number } | null;                   // a slot is close but nothing is approved
+ }
+ 
+-export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canGen: boolean; canUpload: boolean; genReady?: Set<string>; skip?: Set<string> }): Decision {
++export function decide(snap: Snapshot, now: Date, o: { canGen: boolean; genReady?: Set<string> }): Decision {
+   const st = snap.state, au = autoOf(st), day1 = st.settings.day1, skip = st.settings.skipSlots;
+   const lead = Math.max(20, au.leadMin ?? LEAD_MIN) * 60e3;
+   const scores = scorePosts(snap);
+@@ -37,7 +36,7 @@ export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canG
+     for (const when of list) slots.push({ iso: when.toISOString(), when, taken: taken.has(when.toISOString()), inWindow: !!first && first.getTime() - GEN_LEAD_H * 3600e3 <= now.getTime() });
+   }
+   slots.sort((a, b) => a.when.getTime() - b.when.getTime());
+-  const open = slots.filter((s) => s.when.getTime() > now.getTime() && !s.taken && !o.skip?.has(s.iso));   // skip = slots the autopilot already gave up on (the video goes into the next one)
++  const open = slots.filter((s) => s.when.getTime() > now.getTime() && !s.taken);
+   const win = open.filter((s) => s.inWindow);
+ 
+   // concepts of the posted + scheduled videos in slot order
+@@ -71,19 +70,12 @@ export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canG
+     }
+   }
+ 
+-  // as soon as possible (Mo 2026-11-24): any approved video goes into the next open slot right away (TikTok needs >= 16 min ahead); 'no video' is only reported once the slot is close
+-  let schedule: Decision['schedule'] = null, noVideo: Decision['noVideo'] = null;
++  // the launcher no longer uploads (Mo 2026-11-24): it only tells you when the next slot is close and nothing is approved
++  let noVideo: Decision['noVideo'] = null;
+   const cand = open.find((s) => s.when.getTime() - now.getTime() >= 18 * 60e3);
+-  if (au.enabled && o.canUpload && cand) {
+-    const soon = cand.when.getTime() - now.getTime() <= lead;
+-    const appr = [...stock.approved, ...(au.autoApprove ? stock.pending.filter((v) => v.hasVideo && v.hasThumb && v.hasDesc && v.hasNotes && v.durationSec != null && v.durationSec >= 60 && v.durationSec <= 75) : [])].sort((a, b) => a.num - b.num);
+-    if (!appr.length) { if (soon) noVideo = { slotIso: cand.iso, waiting: stock.pending.length }; }
+-    else if (!o.uploadBusy) {
+-      const have = new Set(appr.map((v) => cidOf(v)).filter(Boolean) as string[]);
+-      const p = pickConcept(seq, stats, (c) => have.has(c));
+-      const v: Video = appr.find((x) => cidOf(x) === p.cid) ?? appr[0];
+-      schedule = { num: v.num, slotIso: cand.iso, cid: cidOf(v) ?? p.cid, reason: p.reason };
+-    }
++  if (au.enabled && cand && cand.when.getTime() - now.getTime() <= lead) {
++    const appr = [...stock.approved, ...(au.autoApprove ? stock.pending.filter((v) => v.hasVideo && v.hasThumb && v.hasDesc && v.hasNotes && v.durationSec != null && v.durationSec >= 60 && v.durationSec <= 75) : [])];
++    if (!appr.length) noVideo = { slotIso: cand.iso, waiting: stock.pending.length };
+   }
+-  return { scores, stats, slots, rows, enqueue, claude, paused, schedule, noVideo };
++  return { scores, stats, slots, rows, enqueue, claude, paused, noVideo };
+ }
+diff --git a/src/bridge.ts b/src/bridge.ts
+index 3569286..c09d95d 100644
+--- a/src/bridge.ts
++++ b/src/bridge.ts
+@@ -8,8 +8,6 @@ export interface BB {
+   saveState(state: AppState): Promise<void>;
+   onChange(cb: () => void): () => void;
+   uploadPack(num: number): Promise<{ ok: boolean; folder?: string; error?: string }>;
+-  autoUpload?(num: number, slotIso: string, mode: 'schedule' | 'test'): Promise<{ ok: boolean; error?: string }>;
+-  autoUploadBatch?(items: { num: number; slotIso: string }[], mode: 'schedule' | 'test', quiet?: boolean): Promise<{ ok: boolean; error?: string }>;
+   genStart?(job: { cid: string; num: number; via?: 'claude' | 'launcher'; reason?: string; deadline?: string; model?: string }): Promise<{ ok: boolean; error?: string }>;
+   genQueueWrite?(jobs: unknown[]): Promise<boolean>;
+   genStatus?(): Promise<GenStatus>;
+@@ -17,8 +15,6 @@ export interface BB {
+   genStop?(): Promise<boolean>;
+   autoPatch?(op: { type: 'enabled' | 'autoApprove'; value: boolean } | { type: 'approve'; nums: number[] } | { type: 'dismiss'; id: string }): Promise<boolean>;
+   onGenStatus?(cb: (s: GenStatus) => void): () => void;
+-  uploadStatus?(): Promise<UploadStatus>;
+-  onUploadStatus?(cb: (s: UploadStatus) => void): () => void;
+   copyText(text: string): Promise<void>;
+   openUrl(url: string): Promise<void>;
+   openPath(p: string): Promise<void>;
+diff --git a/src/homeData.ts b/src/homeData.ts
+index 8c1a66d..1385c6f 100644
+--- a/src/homeData.ts
++++ b/src/homeData.ts
+@@ -9,7 +9,6 @@ export interface HomeData {
+   now: Date; dayNo: number; phase: string;
+   enabled: boolean; autoApprove: boolean; headline: string; rendering: string | null; queued: number; paused: string | null;
+   nextSlot: { time: string; when: Date; cid: string | null; name: string; why: string; actionAt: Date } | null;
+-  scheduled: number;
+   errors: { title: string; sub: string }[];   // real failures only (red screen)
+   pending: number; approved: number; problems: { title: string; sub: string }[];
+   slots: { time: string; when: Date; state: string; num: number | null; auto: boolean }[];   // today and tomorrow
+@@ -27,7 +26,7 @@ export interface HomeData {
+ 
+ export function homeData(snap: Snapshot, ready: Set<string>, gen: { state?: string; cid?: string; num?: number }): HomeData {
+   const now = new Date(snap.now), st = snap.state, au = autoOf(st), stock = stockOf(snap);
+-  const dec = decide(snap, now, { uploadBusy: false, canGen: true, canUpload: true, genReady: ready });
++  const dec = decide(snap, now, { canGen: true, genReady: ready });
+   const problems = au.alerts.filter((a) => !a.resolved && a.kind !== 'hot').map((a) => ({ title: a.title, sub: a.sub }));
+   const queued = au.genJobs.filter((j) => j.state === 'queued').length;
+   const rendering = gen.state === 'running' ? `${gen.cid} #${gen.num}` : null;
+@@ -62,7 +61,6 @@ export function homeData(snap: Snapshot, ready: Set<string>, gen: { state?: stri
+     now, dayNo: dayNumber(now, st.settings.day1), phase: phaseLabel(dayNumber(now, st.settings.day1), now),
+     enabled: au.enabled, autoApprove: !!au.autoApprove, headline, rendering, queued, paused: dec.paused,
+     nextSlot: ns ? { time: hm(ns.when), when: ns.when, cid: row?.cid ?? null, name: row ? CID_NAME[row.cid] : 'not planned yet', why: row?.reason ?? 'planning starts 3 h before the first slot of the day', actionAt: stock.approved.length || au.autoApprove && stock.pending.length ? now : new Date(ns.when.getTime() - lead * 60e3) } : null,
+-    scheduled: Object.values(st.uploads).filter((u) => u.scheduled && new Date(u.slot ?? u.at).getTime() > now.getTime()).length,
+     errors: [...au.alerts.filter((a) => !a.resolved && ['stats', 'upload', 'gen', 'studio'].includes(a.kind)).map((a) => ({ title: a.title, sub: a.sub })), ...(dec.paused && !au.alerts.some((a) => a.id === 'gen-paused' && !a.resolved) ? [{ title: 'Rendering paused', sub: dec.paused }] : [])],
+     pending: stock.pending.length, approved: stock.approved.length, problems, slots,
+     hit: hotP ? { label: `${hotP.cid ?? 'Video'}${hotP.num != null ? ` #${hotP.num}` : ''}`, views: hotP.views, ratio: hotP.ratio, score: hotP.score, ageH: hotP.ageH } : null,
+diff --git a/src/homeWidgets.tsx b/src/homeWidgets.tsx
+index db31231..e316798 100644
+--- a/src/homeWidgets.tsx
++++ b/src/homeWidgets.tsx
+@@ -22,7 +22,7 @@ export function Timeline({ d }: { d: HomeData }) {
+     <span className="hm-tl-now" style={{ left: `${pos(d.now.getTime())}%` }}><i /></span>
+     {items.map((s) => <span key={s.when.toISOString()} className={`hm-tl-slot ${s.state}`} style={{ left: `${pos(s.when.getTime())}%`, ['--c' as string]: SC[s.state] ?? '#AAC3F0' }}>
+       <i />{s.state === 'uploaded' ? <Icon name="check" size={11} color="currentColor" sw={3} /> : null}
+-      <b className="num">{s.time}</b><small>{s.state === 'uploaded' ? (s.auto ? 'auto' : 'posted') : s.num != null ? `#${s.num}` : '–'}</small>
++      <b className="num">{s.time}</b><small>{s.state === 'uploaded' ? 'posted' : s.num != null ? `#${s.num}` : '–'}</small>
+     </span>)}
+   </div>;
+ }
+diff --git a/src/island.tsx b/src/island.tsx
+index 43dc4b7..d7503e0 100644
+--- a/src/island.tsx
++++ b/src/island.tsx
+@@ -69,7 +69,7 @@ function Island() {
+   if (!snap || !snap.state.settings.islandEnabled) return null;
+   const now = new Date(snap.now);
+   const au = autoOf(snap.state), stock = stockOf(snap);
+-  const dec = decide(snap, now, { uploadBusy: false, canGen: true, canUpload: true, genReady: ready });
++  const dec = decide(snap, now, { canGen: true, genReady: ready });
+   const problems = au.alerts.filter((x) => !x.resolved && x.kind !== 'hot');
+   const hotNow = dec.scores.filter((x) => x.status === 'hot' && x.ageH <= 120).sort((x, y) => y.score - x.score)[0];
+   const st = islandStatus(snap);
+diff --git a/src/main.tsx b/src/main.tsx
+index 3f991f0..b64c25a 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -210,7 +210,7 @@ function notifications(snap: Snapshot, o: { due: boolean; buf: ReturnType<typeof
+   if (snap.mail?.unread) out.push({ kind: 'mail', key: 'mail', icon: 'mail', title: `${snap.mail.unread} unread email${snap.mail.unread > 1 ? 's' : ''}`, sub: snap.mail.items.find((m) => m.unread)?.subject ?? '' });
+   const au = autoOf(snap.state), pend = stockOf(snap).pending.length;
+   for (const a of au.alerts.filter((x) => !x.resolved && !x.read).slice(0, 5)) out.push({ kind: 'control', key: `auto:${a.id}`, icon: a.kind === 'hot' ? 'sparkle' : 'bell', y: a.kind !== 'hot', title: a.title, sub: a.sub });
+-  if (au.enabled && pend) out.push({ kind: 'control', key: 'review', icon: 'radar', title: `${pend} video${pend > 1 ? 's' : ''} wait for your review`, sub: 'Approve them in the Control Room so they can be scheduled' });
++  if (au.enabled && pend) out.push({ kind: 'control', key: 'review', icon: 'radar', title: `${pend} video${pend > 1 ? 's' : ''} wait for your review`, sub: 'Approve the ones you want to post in the Control Room' });
+   if (snap.update?.ready) out.push({ kind: 'update', key: 'upd', icon: 'sparkle', y: true, title: `Update ${snap.update.ready} is ready`, sub: 'Restarts the launcher' });
+   return out;
+ }
+diff --git a/src/pages/Control.tsx b/src/pages/Control.tsx
+index 02e240b..9cb5797 100644
+--- a/src/pages/Control.tsx
++++ b/src/pages/Control.tsx
+@@ -1,4 +1,4 @@
+-/* Control Room: review the auto-made videos before they are scheduled, see which videos can go viral, which Konzepte win or fail,
++/* Control Room: review the auto-made videos, see which videos can go viral, which Konzepte win or fail,
+    what the autopilot plans for the next slots, and what needs you. Logic lives in autopilot.ts / autoDecide.ts / AutoDriver.tsx. */
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { useApp } from '../ctx';
+@@ -28,7 +28,7 @@ export default function Control() {
+   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30e3); return () => clearInterval(t); }, []);
+   useEffect(() => { bb.genStatus?.().then(setGen); bb.genReady?.().then((r) => setReady(new Set(r))); return bb.onGenStatus?.(setGen); }, []);
+   const set = (f: (a: AutoState) => AutoState) => update((st: AppState) => ({ ...st, auto: f(autoOf(st)) }));
+-  const d = useMemo(() => decide(snap, now, { uploadBusy: false, canGen: isDesktop, canUpload: isDesktop, genReady: ready }), [snap, now, ready]);
++  const d = useMemo(() => decide(snap, now, { canGen: isDesktop, genReady: ready }), [snap, now, ready]);
+   const viaClaude = au.producer !== 'launcher';
+   const stock = stockOf(snap);
+   const byNum = new Map(snap.videos.map((v) => [v.num, v] as const));
+@@ -41,20 +41,14 @@ export default function Control() {
+   const queueNow = (cid: string) => { if (!bb.genStart) return; set((a) => ({ ...a, genJobs: [...a.genJobs, { id: `${Date.now()}`, cid, num: Math.max(0, ...snap.videos.map((v) => Math.floor(v.num)), ...a.genJobs.map((j) => j.num)) + 1, state: 'queued' as const, at: new Date().toISOString(), reason: 'you asked' }] })); toast(`${cid} is queued for rendering`); };
+   const copyGen = async (cid: string, n: number) => { await bb.copyText(`Gen x${n} ${cid}`); toast(`Copied "Gen x${n} ${cid}", paste it in the project chat`); };
+   const nextRow = d.rows[0];
+-  const scheduleNext = async (num: number) => {
+-    const slot = d.slots.find((x) => x.when.getTime() - now.getTime() >= 20 * 60e3 && !x.taken);
+-    if (!slot || !bb.autoUploadBatch) { toast('No free slot found (or not the desktop app)'); return; }
+-    const r = await bb.autoUploadBatch([{ num, slotIso: slot.iso }], 'schedule', true);
+-    toast(r?.ok ? `#${vn(num)} goes into TikTok for ${hm(slot.when)}, a Chrome window works in the background` : `Not started: ${r?.error ?? 'unknown error'}`);
+-  };
+   const nextSlot = d.slots.find((s) => s.when.getTime() > now.getTime() && !s.taken);
+ 
+   return <>
+     <Header title="Control Room" sub="Review what the autopilot made, watch what is going viral, and see what it plans next." right={<>
+-      <button className={`btn ${au.enabled ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, enabled: !a.enabled }))} title="When on: renders videos 3 h before the day's first slot, schedules approved videos shortly before each slot, reacts to viral videos">
++      <button className={`btn ${au.enabled ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, enabled: !a.enabled }))} title="When on: renders videos 3 h before the day's first slot and reacts to viral videos. You upload by hand.">
+         <Icon name="sparkle" size={15} /> Autopilot {au.enabled ? 'ON' : 'OFF'}</button>
+       <button className="btn" onClick={() => set((a) => ({ ...a, producer: viaClaude ? 'launcher' : 'claude' }))} title="Who renders the videos"><Icon name="film" size={15} /> Rendered by {viaClaude ? 'Claude' : 'launcher (K6b, K9 only)'}</button>
+-      <button className={`btn ${au.autoApprove ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, autoApprove: !a.autoApprove }))} title="ON (always): a new video counts as approved and is scheduled without your review, but only if it is 60-75 s long and has all 4 files (video, thumbnail, description, notes). A video without notes never fails anything, it just waits for your review. Everything else waits for you. OFF: only videos you approve are scheduled; if none is approved when a slot is due, the slot stays empty and you get an alert.">Auto-approve {au.autoApprove ? 'ON' : 'OFF'}</button>
++      <button className={`btn ${au.autoApprove ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, autoApprove: !a.autoApprove }))} title="ON (always): a new video counts as approved without your review, but only if it is 60-75 s long and has all 4 files (video, thumbnail, description, notes). A video without notes never fails anything, it just waits for your review. OFF: only videos you approve count as approved; if none is approved when a slot is close, you get an alert.">Auto-approve {au.autoApprove ? 'ON' : 'OFF'}</button>
+       {viaClaude && <button className="btn" onClick={() => set((a) => ({ ...a, model: ({ sonnet: 'haiku', haiku: 'opus', opus: 'sonnet' } as const)[a.model ?? 'sonnet'] }))} title="Which Claude model renders the videos (click to change). Sonnet is the safe default, Haiku is cheapest, Opus is the strongest.">Model: {au.model ?? 'sonnet'}</button>}
+       {isDesktop && <button className="btn" onClick={() => bb.statsFetch?.()}><Icon name="update" size={15} /> Pull data now</button>}
+     </>} />
+@@ -84,11 +78,11 @@ export default function Control() {
+     <section className="glass card">
+       <div className="between"><h2>Review queue <span className="chip">{stock.pending.length} new</span></h2>
+         {stock.pending.length > 0 && <button className="btn sm primary" onClick={approveAll}><Icon name="check" size={14} /> Approve all</button>}</div>
+-      {!stock.pending.length && !stock.approved.length && <div className="empty">Nothing waiting. New videos appear here the moment they are rendered; nothing is scheduled before you approve it.</div>}
++      {!stock.pending.length && !stock.approved.length && <div className="empty">Nothing waiting. New videos appear here the moment they are rendered; approve the ones you want to post.</div>}
+       <div className="cr-queue">
+-        {[...stock.pending, ...stock.approved].map((v) => <ReviewCard key={v.num} v={v} approved={au.approvals[String(v.num)] === 'ok'} onDecide={decide1} onNext={scheduleNext} planned={d.rows.find((r) => r.cid === cidOf(v))} />)}
++        {[...stock.pending, ...stock.approved].map((v) => <ReviewCard key={v.num} v={v} approved={au.approvals[String(v.num)] === 'ok'} onDecide={decide1} planned={d.rows.find((r) => r.cid === cidOf(v))} />)}
+       </div>
+-      {stock.rejected.length > 0 && <p className="small dim">{stock.rejected.length} rejected video{stock.rejected.length > 1 ? 's' : ''} stay in Results and are never scheduled. <button className="chip chip-btn" onClick={() => stock.rejected.forEach((v) => decide1(v.num, null))}>Undo all</button></p>}
++      {stock.rejected.length > 0 && <p className="small dim">{stock.rejected.length} rejected video{stock.rejected.length > 1 ? 's' : ''} stay in Results and are never offered for upload. <button className="chip chip-btn" onClick={() => stock.rejected.forEach((v) => decide1(v.num, null))}>Undo all</button></p>}
+     </section>
+ 
+     <section className="glass card">
+@@ -115,7 +109,7 @@ export default function Control() {
+             const v = u ? byNum.get(+u[0]) : null;
+             return <tr key={s.iso}>
+               <td className="num">{s.when.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })} {hm(s.when)}</td>
+-              <td>{u ? <span><b style={{ color: 'var(--green)' }}>Scheduled</b> #{vn(+u[0])} {cidOf(v) ?? ''}</span> : r ? <span title={r.reason}><span className="dot" style={{ background: cidColor(r.cid), display: 'inline-block', marginRight: 6 }} /><b>{r.cid}</b> {CID_NAME[r.cid]} <span className="small dim">· {r.kind}</span></span> : <span className="small dim">{s.inWindow ? '–' : 'planned 3 h before the first slot of its day'}</span>}</td>
++              <td>{u ? <span><b style={{ color: 'var(--green)' }}>Posted</b> #{vn(+u[0])} {cidOf(v) ?? ''}</span> : r ? <span title={r.reason}><span className="dot" style={{ background: cidColor(r.cid), display: 'inline-block', marginRight: 6 }} /><b>{r.cid}</b> {CID_NAME[r.cid]} <span className="small dim">· {r.kind}</span></span> : <span className="small dim">{s.inWindow ? '–' : 'planned 3 h before the first slot of its day'}</span>}</td>
+             </tr>;
+           })}</tbody></table>;
+         })()}
+@@ -133,11 +127,11 @@ export default function Control() {
+         </>}
+       </section>
+     </div>
+-    <p className="small dim">Rules in force: one day at a time (renders start 3 h before the day's first slot), each approved video is scheduled into the next free slot as soon as it is ready, at most 5 of the same concept in a row then one other, a hot concept gets the next slots and follow-ups. <button className="chip chip-btn" onClick={() => go('upload')}>Upload page</button></p>
++    <p className="small dim">Rules in force: one day at a time (renders start 3 h before the day's first slot), you upload by hand (the launcher no longer uploads), at most 5 of the same concept in a row then one other, a hot concept gets the next slots and follow-ups. <button className="chip chip-btn" onClick={() => go('upload')}>Upload page</button></p>
+   </>;
+ }
+ 
+-function ReviewCard({ v, approved, onDecide, onNext, planned }: { v: Video; approved: boolean; onDecide: (n: number, d: 'ok' | 'no' | null) => void; onNext: (n: number) => void; planned?: { cid: string } }) {
++function ReviewCard({ v, approved, onDecide, planned }: { v: Video; approved: boolean; onDecide: (n: number, d: 'ok' | 'no' | null) => void; planned?: { cid: string } }) {
+   const [play, setPlay] = useState(false);
+   const cid = cidOf(v);
+   return <div className={`cr-card ${approved ? 'ok' : ''}`}>
+@@ -150,7 +144,6 @@ function ReviewCard({ v, approved, onDecide, onNext, planned }: { v: Video; appr
+       <div className="small dim">{v.durationSec ? `${Math.round(v.durationSec)} s` : ''}{v.durationSec && (v.durationSec < 60 || v.durationSec > 70) ? ' · outside 60-70 s' : ''}</div>
+       <div className="row cr-actions" style={{ gap: 6, flexWrap: 'wrap' }}>
+         {approved ? <button className="btn sm" onClick={() => onDecide(v.num, null)}>Undo</button> : <button className="btn sm primary" onClick={() => onDecide(v.num, 'ok')}><Icon name="check" size={13} /> Approve</button>}
+-        <button className="btn sm" title="Puts this video into the next free TikTok slot right now" onClick={() => onNext(v.num)}>Next slot</button>
+         <button className="btn sm danger" onClick={() => onDecide(v.num, 'no')}>Reject</button>
+         <button className="btn sm icon" title="Open folder" onClick={() => bb.openPath(v.folder)}><Icon name="folder" size={13} /></button>
+       </div>
+@@ -190,18 +183,16 @@ function Overview({ d, au, now, gen, stock, uploads }: { d: ReturnType<typeof de
+   const nextUp = upcoming.find((s) => !s.taken);
+   // headline: what is happening right now and what comes next
+   let headline: string;
+-  if (!au.enabled) headline = 'The autopilot is OFF: nothing is rendered or scheduled by itself. Press "Autopilot OFF" at the top to start it.';
++  if (!au.enabled) headline = 'The autopilot is OFF: nothing is rendered by itself. Press "Autopilot OFF" at the top to start it.';
+   else if (gen.state === 'running' || running) headline = `Rendering ${gen.cid ?? running?.cid} #${gen.num ?? running?.num} now. ${queued.length ? `${queued.length} more waiting in the queue.` : 'Nothing else is queued.'}`;
+   else if (queued.length) headline = `${queued.length} render${queued.length > 1 ? 's are' : ' is'} queued and starts within a minute.`;
+   else headline = 'Idle: nothing to render right now.';
+-  const nextAct = au.enabled && nextUp ? `Next upload action: about ${hm(new Date(nextUp.when.getTime() - lead * 60e3))} the best approved video goes into the ${hm(nextUp.when)} slot.` : '';
+   const dayStart = (iso: string) => { const day = ymd(new Date(iso)); const first = d.slots.find((x) => ymd(x.when) === day); return first ? hm(new Date(first.when.getTime() - 3 * 3600e3)) : '–'; };
+   const log = [...(au.log ?? [])].reverse().slice(0, 14);
+   const dot = { plan: 'var(--yellow)', render: 'var(--blue, #6aa9ff)', upload: 'var(--green)', warn: 'var(--red)', info: 'var(--dim)' } as const;
+   return <section className="glass card">
+     <h2><Icon name="radar" size={16} /> Autopilot overview</h2>
+     <p style={{ margin: '0 0 4px' }}><b>{headline}</b></p>
+-    {nextAct && <p className="small muted" style={{ margin: 0 }}>{nextAct}</p>}
+     <div className="grid g-auto" style={{ marginTop: 12 }}>
+       <div>
+         <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Next 30 hours: what goes where, and why</h3>
+@@ -210,12 +201,12 @@ function Overview({ d, au, now, gen, stock, uploads }: { d: ReturnType<typeof de
+           const row = d.rows.find((r) => r.slotIso === s.iso);
+           const day = ymd(s.when) === ymd(now) ? 'Today' : s.when.toLocaleDateString('en-GB', { weekday: 'short' });
+           let what: React.ReactNode, why = '', color = 'var(--muted)';
+-          if (up) { what = <>#{vn(+up[0])} is scheduled in TikTok</>; why = up[1].scheduled ? 'put there by the launcher' : 'marked as uploaded by hand'; color = 'var(--green)'; }
++          if (up) { what = <>#{vn(+up[0])} is posted</>; why = 'marked as uploaded by hand'; color = 'var(--green)'; }
+           else if (row) {
+             const ready = stock.approved.find((v) => cidOf(v) === row.cid);
+             const job = au.genJobs.find((j) => j.cid === row.cid && (j.state === 'queued' || j.state === 'running'));
+             what = <><span className="dot" style={{ background: cidColor(row.cid) }} /> {row.cid} {CID_NAME[row.cid]}</>;
+-            why = `${row.reason}. ${ready ? `Video #${ready.num} is ready and goes in at about ${hm(new Date(s.when.getTime() - lead * 60e3))}.` : job ? `Its video is ${job.state === 'running' ? 'rendering now' : 'queued for rendering'}.` : 'No video yet, a render will be queued.'}`;
++            why = `${row.reason}. ${ready ? `Video #${ready.num} is ready to post.` : job ? `Its video is ${job.state === 'running' ? 'rendering now' : 'queued for rendering'}.` : 'No video yet, a render will be queued.'}`;
+           } else { what = <span className="dim">Not planned yet</span>; why = `Planning for this day starts at ${dayStart(s.iso)} (3 h before its first slot).`; }
+           return <div key={s.iso} className="cr-ov-row"><b className="num" style={{ minWidth: 70 }}>{day} {hm(s.when)}</b><div style={{ minWidth: 0 }}><div style={{ color }}>{what}</div><div className="small dim">{why}</div></div></div>;
+         }) : <div className="empty">No slots in the next 30 hours.</div>}
+diff --git a/src/pages/Schedule.tsx b/src/pages/Schedule.tsx
+index db96216..80d322e 100644
+--- a/src/pages/Schedule.tsx
++++ b/src/pages/Schedule.tsx
+@@ -4,7 +4,7 @@ import { bb } from '../bridge';
+ import { Icon, Tick } from '../ui';
+ import { useApp } from '../ctx';
+ import { addDays, dayDiff, buildPlan, dayNumber, parseYmd, phaseLabel, ymd, kColor, KONZEPTE, postsForDay, ROTATION, vn } from '../logic';
+-import { Header, BufferMeter, AutoUpload } from './parts';
++import { Header, BufferMeter } from './parts';
+ 
+ export default function Schedule() {
+   const { snap, update, toast } = useApp();
+@@ -49,7 +49,6 @@ export default function Schedule() {
+               : <div className="small muted">No video yet</div>}
+             {!x.uploaded && x.state !== 'missed' && <div className="row" style={{ gap: 8 }}>
+               {x.video ? <>
+-                <AutoUpload num={x.video!.num} />
+                 <button className="btn sm" onClick={() => doUploadPack(x.video!.num, toast)}><Icon name="upload" size={13} /> Upload pack</button>
+                 <button className="btn sm" onClick={async () => { await update(markUploaded(snap, x.video!.num)); toast(`#${vn(x.video!.num)} marked uploaded`); }}><Tick size={11} color="currentColor" /> Done</button>
+               </> : <button className="btn sm" onClick={() => { bb.runGen(1); toast('"Gen" copied'); }}><Icon name="play" size={12} /> Gen</button>}
+diff --git a/src/pages/Upload.tsx b/src/pages/Upload.tsx
+index 37c2527..5e5b278 100644
+--- a/src/pages/Upload.tsx
++++ b/src/pages/Upload.tsx
+@@ -1,61 +1,24 @@
+-import React, { useEffect, useState } from 'react';
++import React, { useState } from 'react';
+ import { useApp } from '../ctx';
+ import { buildPlan, kColor, KONZEPTE, ymd, vn } from '../logic';
+-import { doAutoAll, doUploadPack, markUploaded, setLink, unmarkUploaded } from '../actions';
+-import { AutoUpload, Header, NextUpload, Thumb } from './parts';
++import { doUploadPack, markUploaded, setLink, unmarkUploaded } from '../actions';
++import { Header, NextUpload, Thumb } from './parts';
+ import { Icon } from '../ui';
+ import { bb } from '../bridge';
+-import type { UploadStatus } from '../bridge';
+-import { autoOf } from '../autopilot';
+ 
+ const STEPS = ['Upload pack: video + thumbnail land in Downloads\\Badbounce upload, description is copied', 'TikTok Studio · Upload: pick the video', 'Paste the description (Ctrl+V)', 'Cover: upload the thumbnail or pick the matching frame', 'Post, then tick "Mark uploaded" here and paste the post link'];
+ 
+-/** Two categories: AUTOMATIC (the launcher puts the video into TikTok Studio itself) and MANUAL (you post by hand). */
+-function Cat({ icon, title, sub, right }: { icon: string; title: string; sub: string; right?: React.ReactNode }) {
+-  return <div className="cat-head"><span className="cat-ico"><Icon name={icon as never} size={18} /></span><div style={{ flex: 1, minWidth: 0 }}><h2 style={{ margin: 0 }}>{title}</h2><div className="small muted">{sub}</div></div>{right}</div>;
+-}
+-
+ export default function Upload() {
+   const { snap, update, toast } = useApp();
+   const now = new Date(snap.now);
+-  const au = autoOf(snap.state);
+   const plan = buildPlan(snap, now, 4).filter((s) => !s.uploaded && s.state !== 'missed' && s.video);
+-  const [filter, setFilter] = useState<'all' | 'auto' | 'manual'>('all');
+   const all = Object.entries(snap.state.uploads).sort((a, b) => b[1].at.localeCompare(a[1].at));
+-  const recent = all.filter(([, u]) => filter === 'all' || (filter === 'auto') === !!u.scheduled).slice(0, 8);
+-  const scheduled = all.filter(([, u]) => u.scheduled && new Date(u.slot ?? u.at).getTime() > now.getTime()).sort((a, b) => (a[1].slot ?? a[1].at).localeCompare(b[1].slot ?? b[1].at));
++  const recent = all.slice(0, 8);
+   const [edit, setEdit] = useState<Record<string, string>>({});
+-  const [st, setSt] = useState<UploadStatus>({ state: 'idle' });
+-  useEffect(() => { if (!bb.onUploadStatus) return; bb.uploadStatus?.().then(setSt); return bb.onUploadStatus(setSt); }, []);
+-  const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+   const label = (v: { konzept: number | null } | undefined) => v ? `K${v.konzept ?? '?'} ${KONZEPTE[v.konzept ?? 0]?.name ?? ''}` : '';
+   return <>
+-    <Header title="Upload" sub="Automatic: the launcher puts videos into TikTok Studio. Manual: you post by hand." right={<button className="btn" onClick={() => bb.openUrl('https://www.tiktok.com/tiktokstudio/upload')}><Icon name="upload" size={15} /> Open TikTok Studio</button>} />
+-
+-    <Cat icon="radar" title="Automatic upload" sub="The launcher opens Chrome in the background and schedules the post in TikTok Studio."
+-      right={<><span className="chip" style={{ color: au.enabled ? 'var(--green)' : 'var(--muted)' }}>Autopilot {au.enabled ? 'ON' : 'OFF'}</span>
+-        <button className="btn primary" onClick={() => doAutoAll(snap, 'schedule', toast)} title="Puts every ready video into the next free slots, one after another"><Icon name="upload" size={15} /> Schedule all ready</button>
+-        <button className="btn" onClick={() => doAutoAll(snap, 'test', toast)} title="Everything except the final click, nothing is published">Test all</button></>} />
+-    <section className="grid g-auto">
+-      <div className="glass card">
+-        <h2>Scheduled by the launcher</h2>
+-        <p className="sub" style={{ marginTop: -10 }}>Waiting in TikTok Studio for their time.</p>
+-        {st.state !== 'idle' && <p className="small" style={{ color: st.state === 'error' ? 'var(--red)' : st.state === 'ok' ? 'var(--green)' : 'var(--muted)' }}>{st.state === 'running' ? 'Working on #' + st.key + ': ' : 'Last run: '}{st.msg}</p>}
+-        {scheduled.length ? scheduled.map(([n, u]) => { const v = snap.videos.find((x) => x.num === +n); return <div key={n} className="row" style={{ borderTop: '1px solid rgba(var(--wrgb),.07)', paddingTop: 8 }}>
+-          <Thumb v={v} w={30} h={53} /><div style={{ flex: 1 }}><b>#{vn(+n)}</b> <span className="small muted">{label(v)}</span></div><span className="chip" style={{ color: 'var(--green)' }}>{when(u.slot ?? u.at)}</span></div>; }) : <div className="empty">Nothing scheduled by the launcher right now.</div>}
+-      </div>
+-      <div className="glass card">
+-        <h2>Ready for automatic upload</h2>
+-        <p className="sub" style={{ marginTop: -10 }}>Next 4 days. {au.enabled ? 'The autopilot also fills these by itself.' : 'Autopilot is off: press Auto yourself.'}</p>
+-        {plan.length ? <table className="t"><tbody>{plan.map((s) => <tr key={s.when.toISOString()}>
+-          <td className="num">{s.date === ymd(now) ? 'Today' : s.when.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })} {s.time}</td>
+-          <td>#{vn(s.video!.num)}</td>
+-          <td style={{ textAlign: 'right' }}><div className="row" style={{ justifyContent: 'flex-end' }}><AutoUpload num={s.video!.num} /></div></td>
+-        </tr>)}</tbody></table> : <div className="empty">No ready videos in the queue.</div>}
+-      </div>
+-    </section>
++    <Header title="Upload" sub="You post in TikTok Studio yourself: upload pack, paste, post, then tick Done." right={<button className="btn" onClick={() => bb.openUrl('https://www.tiktok.com/tiktokstudio/upload')}><Icon name="upload" size={15} /> Open TikTok Studio</button>} />
+ 
+-    <Cat icon="upload" title="Manual upload" sub="You post in TikTok Studio yourself: upload pack, paste, post, then tick Done." />
+     <section className="grid g-auto">
+       <div className="glass card"><h2>Up next</h2><NextUpload manual /></div>
+       <div className="glass card"><h2>Steps</h2><ol style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 8 }} className="muted">{STEPS.map((s) => <li key={s}>{s}</li>)}</ol></div>
+@@ -76,14 +39,13 @@ export default function Upload() {
+     </section>
+ 
+     <section className="glass card">
+-      <div className="between"><h2>Recently uploaded</h2>
+-        <div className="row" style={{ gap: 6 }}>{(['all', 'auto', 'manual'] as const).map((f) => <button key={f} className={`btn sm ${filter === f ? 'primary' : ''}`} onClick={() => setFilter(f)}>{f === 'all' ? 'All' : f === 'auto' ? 'Automatic' : 'Manual'}</button>)}</div></div>
++      <div className="between"><h2>Recently uploaded</h2></div>
+       <p className="sub" style={{ marginTop: -10 }}>Paste the TikTok link so the weekly CSV can be matched to each video.</p>
+       {recent.length ? recent.map(([n, u]) => {
+         const v = snap.videos.find((x) => x.num === +n);
+         return <div key={n} className="row" style={{ borderTop: '1px solid rgba(var(--wrgb),.07)', paddingTop: 10, flexWrap: 'wrap' }}>
+           <Thumb v={v} w={36} h={64} />
+-          <div style={{ flex: '1 1 160px' }}><b>#{n}</b> <span className="chip" style={{ color: u.scheduled ? 'var(--green)' : 'var(--muted)' }}>{u.scheduled ? 'Automatic' : 'Manual'}</span> <span className="muted small">· {new Date(u.at).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</span>{v && <div className="small muted">{label(v)}</div>}</div>
++          <div style={{ flex: '1 1 160px' }}><b>#{n}</b> <span className="muted small">· {new Date(u.at).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</span>{v && <div className="small muted">{label(v)}</div>}</div>
+           <input className="in" style={{ flex: '2 1 260px' }} placeholder="TikTok post link" value={edit[n] ?? u.link ?? ''} onChange={(e) => setEdit({ ...edit, [n]: e.target.value })} onBlur={() => edit[n] != null && update(setLink(+n, edit[n]))} />
+           {u.link && <button className="btn sm" onClick={() => bb.openUrl(u.link!)}><Icon name="link" size={14} /> Open</button>}
+           <button className="btn sm" onClick={() => update(unmarkUploaded(+n))}>Undo</button>
+diff --git a/src/pages/parts.tsx b/src/pages/parts.tsx
+index 99a0550..0a30a3b 100644
+--- a/src/pages/parts.tsx
++++ b/src/pages/parts.tsx
+@@ -6,7 +6,7 @@ import { Icon, KChip, Tick } from '../ui';
+ import { buildPlan, fmtIn, fmtLate, KONZEPTE, minsUntil, setTaskCol, kColor, ymd, bufferInfo, dayDiff, parseYmd, vn } from '../logic';
+ import { TikTokLogo } from '../logos';
+ import { sfx } from '../sfx';
+-import { doAutoUpload, doUploadPack, markUploaded, setLink, unmarkUploaded } from '../actions';
++import { doUploadPack, markUploaded, setLink, unmarkUploaded } from '../actions';
+ import type { Task, Video } from '../types';
+ 
+ export function Header({ title, sub, right, center }: { title: string; sub?: React.ReactNode; right?: React.ReactNode; center?: React.ReactNode }) {
+@@ -18,25 +18,6 @@ export function Thumb({ v, w = 64, h = 112 }: { v: Video | null | undefined; w?:
+   return <div className="thumb" style={{ width: w, height: h, backgroundImage: url ? `url("${url}")` : undefined }} aria-hidden="true">{!url && <div className="ball" />}</div>;
+ }
+ 
+-/** Auto / Test buttons for Mo's bb_upload.py (desktop app only). Shows live status of the single running upload. */
+-export function AutoUpload({ num }: { num: number }) {
+-  const { snap, toast } = useApp();
+-  const [st, setSt] = useState<UploadStatus>({ state: 'idle' });
+-  useEffect(() => {
+-    if (!bb.onUploadStatus) return;
+-    bb.uploadStatus?.().then(setSt);
+-    return bb.onUploadStatus(setSt);
+-  }, []);
+-  if (!bb.autoUpload) return null;
+-  const busy = st.state === 'running';
+-  const mine = st.key === vn(num);
+-  return <>
+-    <button className="btn sm primary" disabled={busy} onClick={() => doAutoUpload(snap, num, 'schedule', toast)} title="Schedules this video in TikTok Studio at the next free slot (script: Engine\\Upload\\bb_upload.py)"><Icon name="upload" size={14} /> Auto</button>
+-    <button className="btn sm" disabled={busy} onClick={() => doAutoUpload(snap, num, 'test', toast)} title="Everything except the final Schedule click">Test</button>
+-    {mine && st.state !== 'idle' && <span className="small" style={{ color: st.state === 'error' ? 'var(--red)' : st.state === 'ok' ? 'var(--green)' : 'var(--muted)' }}>{st.state === 'running' ? '… ' : ''}{st.msg}</span>}
+-  </>;
+-}
+-
+ /** The "Up next" card with the one-click upload button. */
+ export function NextUpload({ compact = false, manual = false }: { compact?: boolean; manual?: boolean }) {
+   const { snap, update, toast } = useApp();
+@@ -71,7 +52,6 @@ export function NextUpload({ compact = false, manual = false }: { compact?: bool
+         <span className="row small" style={{ color: 'var(--muted)', gap: 6 }}><span className="dot" style={{ background: kColor(v.konzept) }} />Konzept {v.konzept ?? '?'} · {KONZEPTE[v.konzept ?? 0]?.name ?? v.title}</span>
+         <div className="row" style={{ marginTop: 6, gap: 8 }}>
+           <button className="btn primary sm" onClick={() => doUploadPack(v.num, toast)}><Icon name="upload" size={15} /> Upload pack</button>
+-          {!manual && <AutoUpload num={v.num} />}
+           <button className="btn sm" onClick={async () => { await update(markUploaded(snap, v.num)); setLinkFor(v.num); }} title="Mark uploaded"><Tick size={12} color="currentColor" /> Done</button>
+           <button className="btn sm icon" onClick={() => bb.openUrl('https://www.tiktok.com/tiktokstudio/upload')} title="Open TikTok Studio upload" aria-label="Open TikTok Studio upload"><TikTokLogo size={16} /></button>
+         </div>

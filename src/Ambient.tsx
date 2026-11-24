@@ -38,7 +38,6 @@ function Pipeline({ d }: { d: HomeData }) {
     { k: 'render', icon: 'film', n: d.rendering ? 1 : 0, label: 'Rendering' },
     { k: 'review', icon: 'sparkle', n: d.pending, label: 'Review' },
     { k: 'ready', icon: 'check', n: d.approved, label: 'Approved' },
-    { k: 'tiktok', icon: 'upload', n: d.scheduled, label: 'In TikTok' },
   ];
   const n = d.nextSlot, mins = n ? minsUntil(n.when, d.now) : 0;
   return <div className="ax-p ax-pipe">
@@ -54,7 +53,7 @@ function Pipeline({ d }: { d: HomeData }) {
       <div><small>Next slot</small><b className="num">{n?.time ?? '–'}</b></div>
       <div><small>Concept</small><b><span className="dot" style={{ background: kColor(n?.cid ? parseInt(n.cid.slice(1), 10) : null) }} />{n ? (n.cid ?? 'not planned') : '–'}</b></div>
       <div><small>In</small><b className="num">{n ? fmtIn(mins).replace(/^in /, '') : '–'}</b></div>
-      <div><small>Upload starts</small><b className="num">{n && d.enabled ? hh(n.actionAt) : '–'}</b></div>
+      <div><small>Post by</small><b className="num">{n ? hh(n.when) : '–'}</b></div>
     </div>
   </div>;
 }
@@ -67,7 +66,7 @@ function Slots({ d }: { d: HomeData }) {
     <div className="ax-sl">{list.map((s) => <div key={s.when.toISOString()} className={`ax-slot ${s.state}`}>
       <b className="num">{s.time}</b>
       <span className="ax-slot-ico">{s.state === 'uploaded' ? <Icon name="check" size={16} color="currentColor" sw={3} /> : s.num != null ? <Icon name="film" size={16} color="currentColor" /> : <Icon name="bell" size={16} color="currentColor" />}</span>
-      <small>{s.num != null ? `#${s.num}` : 'no video'}{s.auto ? ' · auto' : ''}</small>
+      <small>{s.num != null ? `#${s.num}` : 'no video'}</small>
     </div>)}</div>
   </div>;
 }

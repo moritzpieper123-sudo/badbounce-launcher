@@ -13,11 +13,10 @@ export interface Decision {
   enqueue: { cid: string; reason: string; deadline?: string }[];                             // videos to render now
   claude: { cid: string; need: number; why: string }[];                   // concepts that need a Gen round with Claude
   paused: string | null;                                                  // renders are on hold after repeated failures
-  schedule: { num: number; slotIso: string; cid: string; reason: string } | null;   // video to put into TikTok now
-  noVideo: { slotIso: string; waiting: number } | null;                   // a slot is due but nothing is approved
+  noVideo: { slotIso: string; waiting: number } | null;                   // a slot is close but nothing is approved
 }
 
-export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canGen: boolean; canUpload: boolean; genReady?: Set<string>; skip?: Set<string> }): Decision {
+export function decide(snap: Snapshot, now: Date, o: { canGen: boolean; genReady?: Set<string> }): Decision {
   const st = snap.state, au = autoOf(st), day1 = st.settings.day1, skip = st.settings.skipSlots;
   const lead = Math.max(20, au.leadMin ?? LEAD_MIN) * 60e3;
   const scores = scorePosts(snap);
@@ -37,7 +36,7 @@ export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canG
     for (const when of list) slots.push({ iso: when.toISOString(), when, taken: taken.has(when.toISOString()), inWindow: !!first && first.getTime() - GEN_LEAD_H * 3600e3 <= now.getTime() });
   }
   slots.sort((a, b) => a.when.getTime() - b.when.getTime());
-  const open = slots.filter((s) => s.when.getTime() > now.getTime() && !s.taken && !o.skip?.has(s.iso));   // skip = slots the autopilot already gave up on (the video goes into the next one)
+  const open = slots.filter((s) => s.when.getTime() > now.getTime() && !s.taken);
   const win = open.filter((s) => s.inWindow);
 
   // concepts of the posted + scheduled videos in slot order
@@ -71,19 +70,12 @@ export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canG
     }
   }
 
-  // as soon as possible (Mo 2026-11-24): any approved video goes into the next open slot right away (TikTok needs >= 16 min ahead); 'no video' is only reported once the slot is close
-  let schedule: Decision['schedule'] = null, noVideo: Decision['noVideo'] = null;
+  // the launcher no longer uploads (Mo 2026-11-24): it only tells you when the next slot is close and nothing is approved
+  let noVideo: Decision['noVideo'] = null;
   const cand = open.find((s) => s.when.getTime() - now.getTime() >= 18 * 60e3);
-  if (au.enabled && o.canUpload && cand) {
-    const soon = cand.when.getTime() - now.getTime() <= lead;
-    const appr = [...stock.approved, ...(au.autoApprove ? stock.pending.filter((v) => v.hasVideo && v.hasThumb && v.hasDesc && v.hasNotes && v.durationSec != null && v.durationSec >= 60 && v.durationSec <= 75) : [])].sort((a, b) => a.num - b.num);
-    if (!appr.length) { if (soon) noVideo = { slotIso: cand.iso, waiting: stock.pending.length }; }
-    else if (!o.uploadBusy) {
-      const have = new Set(appr.map((v) => cidOf(v)).filter(Boolean) as string[]);
-      const p = pickConcept(seq, stats, (c) => have.has(c));
-      const v: Video = appr.find((x) => cidOf(x) === p.cid) ?? appr[0];
-      schedule = { num: v.num, slotIso: cand.iso, cid: cidOf(v) ?? p.cid, reason: p.reason };
-    }
+  if (au.enabled && cand && cand.when.getTime() - now.getTime() <= lead) {
+    const appr = [...stock.approved, ...(au.autoApprove ? stock.pending.filter((v) => v.hasVideo && v.hasThumb && v.hasDesc && v.hasNotes && v.durationSec != null && v.durationSec >= 60 && v.durationSec <= 75) : [])];
+    if (!appr.length) noVideo = { slotIso: cand.iso, waiting: stock.pending.length };
   }
-  return { scores, stats, slots, rows, enqueue, claude, paused, schedule, noVideo };
+  return { scores, stats, slots, rows, enqueue, claude, paused, noVideo };
 }

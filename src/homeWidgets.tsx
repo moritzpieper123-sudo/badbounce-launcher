@@ -22,7 +22,7 @@ export function Timeline({ d }: { d: HomeData }) {
     <span className="hm-tl-now" style={{ left: `${pos(d.now.getTime())}%` }}><i /></span>
     {items.map((s) => <span key={s.when.toISOString()} className={`hm-tl-slot ${s.state}`} style={{ left: `${pos(s.when.getTime())}%`, ['--c' as string]: SC[s.state] ?? '#AAC3F0' }}>
       <i />{s.state === 'uploaded' ? <Icon name="check" size={11} color="currentColor" sw={3} /> : null}
-      <b className="num">{s.time}</b><small>{s.state === 'uploaded' ? (s.auto ? 'auto' : 'posted') : s.num != null ? `#${s.num}` : '–'}</small>
+      <b className="num">{s.time}</b><small>{s.state === 'uploaded' ? 'posted' : s.num != null ? `#${s.num}` : '–'}</small>
     </span>)}
   </div>;
 }

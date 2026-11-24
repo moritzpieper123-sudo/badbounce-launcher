@@ -210,7 +210,7 @@ function notifications(snap: Snapshot, o: { due: boolean; buf: ReturnType<typeof
   if (snap.mail?.unread) out.push({ kind: 'mail', key: 'mail', icon: 'mail', title: `${snap.mail.unread} unread email${snap.mail.unread > 1 ? 's' : ''}`, sub: snap.mail.items.find((m) => m.unread)?.subject ?? '' });
   const au = autoOf(snap.state), pend = stockOf(snap).pending.length;
   for (const a of au.alerts.filter((x) => !x.resolved && !x.read).slice(0, 5)) out.push({ kind: 'control', key: `auto:${a.id}`, icon: a.kind === 'hot' ? 'sparkle' : 'bell', y: a.kind !== 'hot', title: a.title, sub: a.sub });
-  if (au.enabled && pend) out.push({ kind: 'control', key: 'review', icon: 'radar', title: `${pend} video${pend > 1 ? 's' : ''} wait for your review`, sub: 'Approve them in the Control Room so they can be scheduled' });
+  if (au.enabled && pend) out.push({ kind: 'control', key: 'review', icon: 'radar', title: `${pend} video${pend > 1 ? 's' : ''} wait for your review`, sub: 'Approve the ones you want to post in the Control Room' });
   if (snap.update?.ready) out.push({ kind: 'update', key: 'upd', icon: 'sparkle', y: true, title: `Update ${snap.update.ready} is ready`, sub: 'Restarts the launcher' });
   return out;
 }

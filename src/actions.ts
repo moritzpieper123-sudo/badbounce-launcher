@@ -13,24 +13,6 @@ export function pickAutoSlot(snap: Snapshot) {
   const now = new Date(snap.now), min = now.getTime() + 20 * 60000;
   return buildPlan(snap, now, 10).find((s) => !s.uploaded && s.state !== 'missed' && s.when.getTime() >= min) ?? null;
 }
-/** Starts Mo's bb_upload.py for one video: 'schedule' = schedules it in TikTok Studio, 'test' = all but the last click. */
-export async function doAutoUpload(snap: Snapshot, num: number, mode: 'schedule' | 'test', toast: (m: string) => void) {
-  if (!bb.autoUpload) { toast('Auto upload only works in the Windows app'); return; }
-  const slot = pickAutoSlot(snap);
-  if (!slot) { toast('No free slot at least 20 min away in the next 10 days'); return; }
-  const r = await bb.autoUpload(num, slot.when.toISOString(), mode);
-  if (!r.ok) toast(r.error ?? 'Could not start the upload script');
-  else toast(`#${vn(num)}: ${mode === 'test' ? 'test run' : 'scheduling'} for ${slot.when.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })} ${slot.time} started, a Chrome window opens`);
-}
-/** All ready videos into the next free slots (>= 20 min away, within 10 days), in one sequential run. */
-export async function doAutoAll(snap: Snapshot, mode: 'schedule' | 'test', toast: (m: string) => void) {
-  if (!bb.autoUploadBatch) { toast('Auto upload only works in the Windows app'); return; }
-  const now = new Date(snap.now), min = now.getTime() + 20 * 60000;
-  const items = buildPlan(snap, now, 10).filter((s) => s.video && !s.uploaded && s.state !== 'missed' && s.when.getTime() >= min).map((s) => ({ num: s.video!.num, slotIso: s.when.toISOString() }));
-  if (!items.length) { toast('No ready video has a free slot at least 20 min away'); return; }
-  const r = await bb.autoUploadBatch(items, mode);
-  toast(r.ok ? `${items.length} video${items.length > 1 ? 's' : ''}: ${mode === 'test' ? 'test run' : 'scheduling'} started, one after another` : r.error ?? 'Could not start');
-}
 /** Marks a video uploaded. It fills the oldest free slot (Mo 2026-11-14), no matter when it is posted. */
 export function markUploaded(snap: Snapshot, num: number) {
   const now = new Date(snap.now);
