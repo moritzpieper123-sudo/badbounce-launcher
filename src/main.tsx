@@ -34,6 +34,8 @@ import Tools from './pages/Tools';
 import Settings from './pages/Settings';
 import Mail from './pages/Mail';
 import { installClickSfx } from './sfx';
+import Ambient from './Ambient';
+import { useIdle, exitAmbient } from './idle';
 
 const PAGES = [
   { id: 'today', label: 'Today', short: 'Today', icon: 'home' },
@@ -70,6 +72,11 @@ function App() {
   useEffect(() => bb.onNavigate((p) => go(p)), [go]);
   useEffect(() => { const h = () => { const p = location.hash.slice(1); if (p) setPage(p); }; addEventListener('hashchange', h); return () => removeEventListener('hashchange', h); }, []);
   const toast = useCallback((m: string) => setMsg(m), []);
+  const pageRef = useRef(page); pageRef.current = page;
+  const before = useRef<string | null>(null);
+  const onIdle = useCallback(() => { if (pageRef.current !== 'today') { before.current = pageRef.current; go('today'); } else before.current = null; }, [go]);
+  const idle = useIdle(onIdle);
+  useEffect(() => { if (!idle.ambient && before.current) { const p = before.current; before.current = null; go(p); } }, [idle.ambient, go]);
   // background CSV fetch: status + the files it brings back
   const updRef = useRef(update); updRef.current = update;
   useEffect(() => bb.onCsvStatus?.((st) => { setCsv(st); if (st.state === 'error' || st.state === 'login' || st.state === 'needs-you') setMsg(st.msg); }), []);
@@ -186,6 +193,7 @@ function App() {
         </main>
       </div>
       <Toast msg={msg} onDone={() => setMsg(null)} />
+      {isDesktop && idle.ambient && <div onClick={exitAmbient}><Ambient /></div>}
       {isDesktop && <AutoDriver snap={snap} update={update} />}
       {!isDesktop && <ShareSheet />}
     </AppCtx.Provider>
