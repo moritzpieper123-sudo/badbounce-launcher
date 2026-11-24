@@ -70,7 +70,7 @@ export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canG
   let schedule: Decision['schedule'] = null, noVideo: Decision['noVideo'] = null;
   const cand = open.find((s) => s.when.getTime() - now.getTime() >= 18 * 60e3);
   if (au.enabled && o.canUpload && cand && cand.when.getTime() - now.getTime() <= lead) {
-    const appr = [...stock.approved, ...(au.autoApprove ? stock.pending.filter((v) => v.hasVideo && v.hasThumb && v.hasDesc && v.durationSec != null && v.durationSec >= 60 && v.durationSec <= 75) : [])].sort((a, b) => a.num - b.num);
+    const appr = [...stock.approved, ...(au.autoApprove ? stock.pending.filter((v) => v.hasVideo && v.hasThumb && v.hasDesc && v.hasNotes && v.durationSec != null && v.durationSec >= 60 && v.durationSec <= 75) : [])].sort((a, b) => a.num - b.num);
     if (!appr.length) noVideo = { slotIso: cand.iso, waiting: stock.pending.length };
     else if (!o.uploadBusy) {
       const have = new Set(appr.map((v) => cidOf(v)).filter(Boolean) as string[]);
