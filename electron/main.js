@@ -479,6 +479,8 @@ ipcMain.handle('genStart', (_e, job) => generator.start({ vault: vault(), cid: S
 ipcMain.handle('renderSave', (_e, num, files) => { try { generator.saveCloud(vault(), +num, files); return { ok: true }; } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 200) }; } });
 ipcMain.handle('cleanBuilding', (_e, keep) => { try { return generator.cleanBuilding(vault(), keep || []); } catch { return 0; } });
 ipcMain.handle('checkVideo', async (_e, num, dur) => { try { return await checks.checkVideo(path.join(vault(), 'Results', `#${+num}`), +num, dur); } catch (e) { return { ok: false, fails: ['check crashed: ' + String(e.message || e).slice(0, 100)], notes: [] }; } });
+ipcMain.handle('engineParts', () => generator.engineParts(vault()));
+ipcMain.handle('engineZip', (_e, part, known) => generator.engineZip(vault(), String(part), known));
 ipcMain.handle('genStatus', () => generator.status());
 ipcMain.handle('genStop', () => generator.cancel());
 /* small atomic changes of the autopilot state from the island window (it must not save a whole stale copy of the state) */

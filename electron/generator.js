@@ -222,4 +222,22 @@ function cleanBuilding(vault, keepNums = []) {
   for (const d of safeLs(root)) { const f = path.join(root, d); try { if (!keepNums.includes(+d.replace('#', '')) && Date.now() - fs.statSync(f).mtimeMs > 3 * 3600e3) { fs.rmSync(f, { recursive: true, force: true }); n++; } } catch { /* */ } }
   return n;
 }
-module.exports = { saveCloud, cleanBuilding, publish, start, stop, cancel, status, ready, finalDescription, usedNumbers, RECIPES };
+/** Engine folders for the cloud: one zip per Konzept (K1..K11) and one "common" zip (assets, fonts, Variants, Libraries), without __pycache__ and logs.
+ *  Returns the signature (changes when any file changes) and, only when it differs from `known`, the zip bytes. */
+const ENGINE_COMMON = ['assets', 'fonts', 'Variants', 'Libraries', 'Engine.md'];
+function engineParts(vault) { const d = path.join(vault, 'Engine'); return ['common', 'konzepte', ...safeLs(d).filter((n) => /^K\d+[a-z]?$/.test(n) && fs.statSync(path.join(d, n)).isDirectory())]; }
+function engineSig(root, names) {
+  let h = 0, n = 0; const walk = (f) => { let st; try { st = fs.statSync(f); } catch { return; } if (st.isDirectory()) { if (/__pycache__$/.test(f)) return; for (const c of safeLs(f)) walk(path.join(f, c)); } else if (!/\.wav$/i.test(f)) { n++; h = (h * 31 + st.size + Math.floor(st.mtimeMs / 1000)) % 2147483647; } };
+  for (const x of names) walk(path.join(root, x)); return `${n}-${h}`;
+}
+function engineZip(vault, part, known) {
+  return new Promise((resolve) => {
+    const root = part === 'konzepte' ? vault : path.join(vault, 'Engine'), names = part === 'common' ? ENGINE_COMMON.filter((x) => fs.existsSync(path.join(root, x))) : part === 'konzepte' ? ['Konzepte', path.join('Branding')].filter((x) => fs.existsSync(path.join(root, x))) : [part];
+    const sig = engineSig(root, names); if (sig === known) return resolve({ ok: true, sig, data: null });
+    const out = path.join(os.tmpdir(), `bb-engine-${part}.zip`); try { fs.rmSync(out, { force: true }); } catch { /* */ }
+    const p = spawn('tar', ['-a', '-c', '-f', out, '--exclude=__pycache__', '--exclude=*.wav', ...(part === 'konzepte' ? ['--exclude=*.mp4', '--exclude=References', '--exclude=Drafts'] : []), '-C', root, ...names], { windowsHide: true });
+    p.on('error', (e) => resolve({ ok: false, error: 'tar missing: ' + e.message }));
+    p.on('close', (c) => { if (c !== 0) return resolve({ ok: false, error: 'tar exit ' + c }); try { const b = fs.readFileSync(out); fs.rmSync(out, { force: true }); resolve({ ok: true, sig, data: b }); } catch (e) { resolve({ ok: false, error: e.message }); } });
+  });
+}
+module.exports = { engineParts, engineZip, saveCloud, cleanBuilding, publish, start, stop, cancel, status, ready, finalDescription, usedNumbers, RECIPES };

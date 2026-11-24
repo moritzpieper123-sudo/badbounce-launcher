@@ -50,3 +50,22 @@ export async function fetchOne(num: number): Promise<string | null> {
   await bucket.remove([...FILES(num), 'done.json'].map((n) => `${R}/${num}/${n}`));   // only after the files are safely in Results
   return null;
 }
+
+/** Engine mirror: one zip per Konzept + "common" in renders/engine/, uploaded only when something changed. The cloud tasks unzip what they need. */
+export async function syncEngines(): Promise<string | null> {
+  if (!sb || !bb.engineParts || !bb.engineZip || !(await session())) return null;
+  const bucket = sb.storage.from(B), mp = `${R}/engine/manifest.json`;
+  let man: { zips: Record<string, { sig: string; bytes: number }> } = { zips: {} };
+  const cur = await bucket.download(mp); if (cur.data) { try { man = JSON.parse(await cur.data.text()); } catch { /* start fresh */ } }
+  let changed = false;
+  for (const part of await bb.engineParts()) {
+    const r = await bb.engineZip(part, man.zips[part]?.sig); if (!r.ok) return `engine ${part}: ${r.error}`;
+    if (!r.data || !r.sig) continue;
+    if (r.data.byteLength > 49e6) return `engine ${part} zip is ${(r.data.byteLength / 1e6).toFixed(0)} MB, over the 50 MB free-plan limit`;
+    const up = await bucket.upload(`${R}/engine/${part}.zip`, new Blob([r.data], { type: 'application/zip' }), { upsert: true, contentType: 'application/zip' });
+    if (up.error) return `engine ${part}: ${up.error.message}`;
+    man.zips[part] = { sig: r.sig, bytes: r.data.byteLength }; changed = true;
+  }
+  if (changed) { const up = await bucket.upload(mp, new Blob([JSON.stringify({ ...man, updated: new Date().toISOString() }, null, 1)], { type: 'application/json' }), { upsert: true, contentType: 'application/json' }); if (up.error) return up.error.message; }
+  return null;
+}

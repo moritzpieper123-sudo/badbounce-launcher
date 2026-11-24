@@ -4,7 +4,7 @@ import type { Snapshot } from '../types';
 import { autoOf, cidOf, type AutoState } from '../autopilot';
 import { armKey, planDay, planTarget } from '../dayPlan';
 import { ymd } from '../logic';
-import { fetchOne, publishPlan, scan, type CloudPlan } from './renders';
+import { fetchOne, publishPlan, syncEngines, scan, type CloudPlan } from './renders';
 
 export const PLAN_HOUR = 18;       // the plan for tomorrow is made from 18:00
 export const CHECK_HOUR = 22;      // at 22:00 the launcher warns about videos that did not arrive
@@ -26,6 +26,9 @@ export async function dayTick(c: Ctx) {
     let n = Math.max(0, ...snap.videos.map((v) => Math.floor(v.num)));   // failed numbers are reused: only delivered videos count
     const items = r.items.map((i) => ({ ...i, num: ++n }));
     const plan: CloudPlan = { date, made: now.toISOString(), items };
+    const eerr = await syncEngines();   // the cloud renders with the engines of this PC
+    if (eerr) { c.alert({ id: 'cloud-engine', kind: 'gen', title: 'Engines could not be copied to the cloud', sub: eerr }); return; }
+    c.clear('cloud-engine');
     const err = await publishPlan(plan);
     if (err) { c.alert({ id: 'cloud-plan', kind: 'gen', title: 'Could not hand tomorrow\'s plan to the cloud', sub: err }); return; }
     c.clear('cloud-plan');
