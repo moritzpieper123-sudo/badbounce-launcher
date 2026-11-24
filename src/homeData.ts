@@ -61,7 +61,7 @@ export function homeData(snap: Snapshot, ready: Set<string>, gen: { state?: stri
     today: { made: tp.filter((x) => x.uploaded || (x.video && isReady(x.video))).length, uploaded: tp.filter((x) => x.uploaded).length, total: tp.length },
     now, dayNo: dayNumber(now, st.settings.day1), phase: phaseLabel(dayNumber(now, st.settings.day1), now),
     enabled: au.enabled, autoApprove: !!au.autoApprove, headline, rendering, queued, paused: dec.paused,
-    nextSlot: ns ? { time: hm(ns.when), when: ns.when, cid: row?.cid ?? null, name: row ? CID_NAME[row.cid] : 'not planned yet', why: row?.reason ?? 'planning starts 3 h before the first slot of the day', actionAt: new Date(ns.when.getTime() - lead * 60e3) } : null,
+    nextSlot: ns ? { time: hm(ns.when), when: ns.when, cid: row?.cid ?? null, name: row ? CID_NAME[row.cid] : 'not planned yet', why: row?.reason ?? 'planning starts 3 h before the first slot of the day', actionAt: stock.approved.length || au.autoApprove && stock.pending.length ? now : new Date(ns.when.getTime() - lead * 60e3) } : null,
     scheduled: Object.values(st.uploads).filter((u) => u.scheduled && new Date(u.slot ?? u.at).getTime() > now.getTime()).length,
     errors: [...au.alerts.filter((a) => !a.resolved && ['stats', 'upload', 'gen', 'studio'].includes(a.kind)).map((a) => ({ title: a.title, sub: a.sub })), ...(dec.paused && !au.alerts.some((a) => a.id === 'gen-paused' && !a.resolved) ? [{ title: 'Rendering paused', sub: dec.paused }] : [])],
     pending: stock.pending.length, approved: stock.approved.length, problems, slots,

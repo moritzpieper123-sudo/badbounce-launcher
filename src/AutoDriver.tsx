@@ -10,6 +10,7 @@ import { vn } from './logic';
 type Update = (fn: (st: AppState) => AppState) => Promise<void>;
 const patch = (st: AppState, f: (a: AutoState) => AutoState): AppState => ({ ...st, auto: f(autoOf(st)) });
 
+let lastGive = 0;
 export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update }) {
   const ref = useRef(snap); ref.current = snap;
   const upd = useRef(update); upd.current = update;
@@ -112,7 +113,8 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
         if (!d.noVideo) clear('stock-slot');
         for (const x of autoOf(ref.current.state).alerts) if (!x.resolved && x.id.startsWith('claude-') && x.kind === 'stock' && !d.claude.some((c) => `claude-${c.cid}` === x.id)) clear(x.id);
         if (d.noVideo && (Date.parse(d.noVideo.slotIso) - Date.now() <= 22 * 60e3 || !au.genJobs.some((j) => j.state === 'queued' || j.state === 'running'))) await alert({ id: 'stock-slot', kind: 'stock', title: 'No approved video for the next slot', sub: `${new Date(d.noVideo.slotIso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} has nothing approved. ${d.noVideo.waiting} video${d.noVideo.waiting === 1 ? '' : 's'} wait for your review in the Control Room.` });
-        if (d.schedule) {
+        if (d.schedule && fails.current.slots >= 3 && Date.now() - lastGive > 60 * 60e3) { fails.current.slots = 2; skip.current.clear(); }   // scheduling as soon as possible must not burn through every slot while TikTok is broken: pause, then try again after an hour
+        if (d.schedule && fails.current.slots < 3) {
           const key = d.schedule.slotIso, t = tries.current[key];
           if (!t || (t.n < 4 && Date.now() - t.at > 4 * 60e3)) {
             tries.current[key] = { n: (t?.n ?? 0) + 1, at: Date.now() };
@@ -120,7 +122,7 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
             const r = await bb.autoUploadBatch!([{ num: d.schedule.num, slotIso: d.schedule.slotIso }], 'schedule', true);
             if (r && !r.ok) { if (t) tries.current[key] = t; else delete tries.current[key]; }   // refused because another upload runs: that is not a failed try
           } else if (t.n >= 4 && !skip.current.has(key)) {
-            skip.current.add(key); fails.current.slots++; await note(`Gave up on the ${hmz(key)} slot after 4 tries. The video goes into the next free slot.`, 'warn');                                         // this slot is lost: the video goes into the next free slot at the next tick
+            skip.current.add(key); fails.current.slots++; lastGive = Date.now(); await note(`Gave up on the ${hmz(key)} slot after 4 tries. The video goes into the next free slot.`, 'warn');                                         // this slot is lost: the video goes into the next free slot at the next tick
             if (fails.current.slots >= 2) await alert({ id: 'upload-giveup', kind: 'upload', title: 'Uploads keep failing', sub: `${fails.current.slots} slots in a row could not be filled after 4 tries each (the last one: ${new Date(key).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}). TikTok Studio probably changed or the login ran out. Post by hand and tell Claude.` });
           }
         }

@@ -133,7 +133,7 @@ export default function Control() {
         </>}
       </section>
     </div>
-    <p className="small dim">Rules in force: one day at a time (renders start 3 h before the day's first slot), each video is scheduled about {au.leadMin ?? 40} min before its slot, at most 5 of the same concept in a row then one other, a hot concept gets the next slots and follow-ups. <button className="chip chip-btn" onClick={() => go('upload')}>Upload page</button></p>
+    <p className="small dim">Rules in force: one day at a time (renders start 3 h before the day's first slot), each approved video is scheduled into the next free slot as soon as it is ready, at most 5 of the same concept in a row then one other, a hot concept gets the next slots and follow-ups. <button className="chip chip-btn" onClick={() => go('upload')}>Upload page</button></p>
   </>;
 }
 
