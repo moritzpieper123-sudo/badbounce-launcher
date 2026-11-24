@@ -11,6 +11,7 @@ import type { AppState, Video } from '../types';
 import { AUTO_GEN, CID_NAME, autoOf, cidOf, stockOf, type AutoState, type ConceptStat, type PostScore } from '../autopilot';
 import { decide } from '../autoDecide';
 import { VARIANTS, VARIANT_LABEL, variantOn } from '../variants';
+import { armLabel, armStats } from '../dayPlan';
 
 const ST_COL: Record<string, string> = { hot: '#FF7A59', rising: '#FFC63A', new: '#AAC3F0', ok: '#7FD9A8', weak: '#B8A2FF', flop: '#FF8F7A', winner: '#FFC63A', failing: '#FF8F7A' };
 const ST_TXT: Record<string, string> = { hot: 'HOT', rising: 'RISING', new: 'NEW', ok: 'OK', weak: 'WEAK', flop: 'FLOP', winner: 'WINNER', failing: 'FAILING' };
@@ -38,7 +39,11 @@ export default function Control() {
   const alerts = au.alerts.filter((a) => !a.resolved && a.kind !== 'hot').slice(0, 8);
   const lastPull = snap.state.stats.snaps?.[snap.state.stats.snaps.length - 1]?.t;
   const decide1 = (num: number, v: 'ok' | 'no' | null) => set((a) => { const n = { ...a.approvals }; if (v) n[String(num)] = v; else delete n[String(num)]; return { ...a, approvals: n }; });
-  const approveAll = () => set((a) => ({ ...a, approvals: { ...a.approvals, ...Object.fromEntries(stock.pending.map((v) => [String(v.num), 'ok' as const])) } }));
+  const tomorrow = au.dayPlan && au.dayPlan.date === ymd(new Date(now.getTime() + 864e5)) ? au.dayPlan : null;
+  const planNums = new Set((tomorrow?.items ?? []).map((i) => i.num));
+  const approveTomorrow = () => set((a) => ({ ...a, approvals: { ...a.approvals, ...Object.fromEntries(stock.pending.filter((v) => planNums.has(v.num)).map((v) => [String(v.num), 'ok' as const])) } }));
+  const arms = useMemo(() => armStats(snap, now), [snap, now]);
+  const VCOL: Record<string, string> = { testing: '#AAC3F0', keep: '#7FD9A8', winner: '#FFC63A', drop: '#FF8F7A', retest: '#B8A2FF' };
   const queueNow = (cid: string) => { if (!bb.genStart) return; set((a) => ({ ...a, genJobs: [...a.genJobs, { id: `${Date.now()}`, cid, num: Math.max(0, ...snap.videos.map((v) => Math.floor(v.num)), ...a.genJobs.map((j) => j.num)) + 1, state: 'queued' as const, at: new Date().toISOString(), reason: 'you asked' }] })); toast(`${cid} is queued for rendering`); };
   const copyGen = async (cid: string, n: number) => { await bb.copyText(`Gen x${n} ${cid}`); toast(`Copied "Gen x${n} ${cid}", paste it in the project chat`); };
   const nextRow = d.rows[0];
@@ -79,12 +84,24 @@ export default function Control() {
 
     <section className="glass card">
       <div className="between"><h2>Review queue <span className="chip">{stock.pending.length} new</span></h2>
-        {stock.pending.length > 0 && <button className="btn sm primary" onClick={approveAll}><Icon name="check" size={14} /> Approve all</button>}</div>
+        {!au.autoApprove && stock.pending.some((v) => planNums.has(v.num)) && <button className="btn sm primary" onClick={approveTomorrow}><Icon name="check" size={14} /> Approve tomorrow's {stock.pending.filter((v) => planNums.has(v.num)).length}</button>}</div>
       {!stock.pending.length && !stock.approved.length && <div className="empty">Nothing waiting. New videos appear here the moment they are rendered; approve the ones you want to post.</div>}
       <div className="cr-queue">
         {[...stock.pending, ...stock.approved].map((v) => <ReviewCard key={v.num} v={v} approved={au.approvals[String(v.num)] === 'ok'} onDecide={decide1} planned={d.rows.find((r) => r.cid === cidOf(v))} />)}
       </div>
       {stock.rejected.length > 0 && <p className="small dim">{stock.rejected.length} rejected video{stock.rejected.length > 1 ? 's' : ''} stay in Results and are never offered for upload. <button className="chip chip-btn" onClick={() => stock.rejected.forEach((v) => decide1(v.num, null))}>Undo all</button></p>}
+    </section>
+
+    {tomorrow && <section className="glass card">
+      <h2>Tomorrow's {tomorrow.items.length} videos <span className="small dim" style={{ fontWeight: 400 }}>· planned {ago(tomorrow.at)}, rendered in the cloud</span></h2>
+      {tomorrow.items.map((i) => { const got = snap.videos.some((v) => v.num === i.num && v.hasVideo); return <div key={i.num} className="cr-alert"><div><b>{hm(new Date(i.slotIso))}</b> · #{i.num} <span style={{ color: cidColor(i.cid) }}>{armLabel(`${i.cid}|${i.variant ?? 'plain'}`)}</span> <span className="chip">{i.kind === 'test' ? 'test' : 'best guess'}</span><div className="small dim">{i.reason}</div></div><span className="small" style={{ color: got ? 'var(--green)' : 'var(--dim)' }}>{got ? 'delivered' : 'rendering'}</span></div>; })}
+    </section>}
+
+    <section className="glass card">
+      <h2>Test board <span className="small dim" style={{ fontWeight: 400 }}>· every concept plain 3 posts, every variant 2 posts, then keep or drop</span></h2>
+      <table className="tbl"><thead><tr><th>Arm</th><th>Posts</th><th>Median views</th><th>Score</th><th>Verdict</th></tr></thead><tbody>
+        {arms.map((a) => <tr key={a.key}><td style={{ color: cidColor(a.cid) }}>{armLabel(a.key)}</td><td>{a.judged}/{a.target}{a.pending ? ` +${a.pending}` : ''}</td><td>{a.medianViews != null ? fmtNum(Math.round(a.medianViews)) : '–'}</td><td>{a.meanScore != null ? Math.round(a.meanScore) : '–'}</td><td title={a.why}><span className="cr-badge" style={{ ['--bc' as string]: VCOL[a.verdict] }}>{a.verdict.toUpperCase()}</span>{a.hot && ' 🔥'}</td></tr>)}
+      </tbody></table>
     </section>
 
     <section className="glass card">

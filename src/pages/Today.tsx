@@ -10,6 +10,7 @@ import { fmtNum, kpis, konzeptTable, KONZEPTE } from '../logic';
 import { useHomeData } from '../Ambient';
 import { enterAmbient, setIdleEnabled, useIdle } from '../idle';
 import { isDesktop } from '../bridge';
+import { briefing } from '../briefing';
 
 /** Home: the same overview the screen saver shows, plus a few buttons. */
 export default function Today() {
@@ -43,6 +44,7 @@ export default function Today() {
         <div className="v" style={{ fontSize: 24 }}>{kt[0] ? `K${kt[0].k} ${KONZEPTE[kt[0].k]?.name}` : '–'}</div>
         <div className="kfoot"><span className="small dim">{kt[0] ? `${fmtNum(Math.round(kt[0].avgViews))} avg views` : 'Needs matched posts'}</span></div></div>
     </section>
+    {(() => { const b = briefing(snap, now); return <section className="glass card" aria-label="Report"><h2>{b.title}</h2>{b.lines.map((l, i) => <p key={i} className="sub" style={{ margin: '6px 0' }}>{l}</p>)}</section>; })()}
     <section className="glass card"><h2>Next 24 hours</h2><Timeline d={d} /></section>
     <section className="hm-grid">
       <AutopilotPanel d={d} big g />
