@@ -17,7 +17,7 @@ export interface Decision {
   noVideo: { slotIso: string; waiting: number } | null;                   // a slot is due but nothing is approved
 }
 
-export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canGen: boolean; canUpload: boolean; genReady?: Set<string> }): Decision {
+export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canGen: boolean; canUpload: boolean; genReady?: Set<string>; skip?: Set<string> }): Decision {
   const st = snap.state, au = autoOf(st), day1 = st.settings.day1, skip = st.settings.skipSlots;
   const lead = Math.max(20, au.leadMin ?? LEAD_MIN) * 60e3;
   const scores = scorePosts(snap);
@@ -37,7 +37,7 @@ export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canG
     for (const when of list) slots.push({ iso: when.toISOString(), when, taken: taken.has(when.toISOString()), inWindow: !!first && first.getTime() - GEN_LEAD_H * 3600e3 <= now.getTime() });
   }
   slots.sort((a, b) => a.when.getTime() - b.when.getTime());
-  const open = slots.filter((s) => s.when.getTime() > now.getTime() && !s.taken);
+  const open = slots.filter((s) => s.when.getTime() > now.getTime() && !s.taken && !o.skip?.has(s.iso));   // skip = slots the autopilot already gave up on (the video goes into the next one)
   const win = open.filter((s) => s.inWindow);
 
   // concepts of the posted + scheduled videos in slot order
