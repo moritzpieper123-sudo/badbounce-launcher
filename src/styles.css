@@ -958,3 +958,6 @@ main.content > .grid > *:nth-child(4) { animation-delay: .22s; } main.content > 
 .cr-bar { height: 7px; border-radius: 4px; background: rgba(var(--wrgb),.08); overflow: hidden; }
 .cr-bar i { display: block; height: 100%; border-radius: 4px; }
 .between { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+.cr-actions .btn { flex: none; }
+.cr-actions .btn.icon { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }

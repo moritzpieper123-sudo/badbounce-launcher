@@ -140,7 +140,7 @@ function ReviewCard({ v, approved, onDecide, onNext, planned }: { v: Video; appr
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}><b>#{vn(v.num)}</b>{cid && <span className="chip" style={{ color: cidColor(cid) }}><span className="dot" style={{ background: cidColor(cid) }} />{cid} {CID_NAME[cid]}</span>}{approved && <span className="chip" style={{ color: 'var(--green)' }}>approved</span>}{planned && planned.cid === cid && <span className="chip">planned today</span>}</div>
       <div className="small muted cr-desc">{(v.description || '').split('\n').filter(Boolean).slice(0, 2).join(' ')}</div>
       <div className="small dim">{v.durationSec ? `${Math.round(v.durationSec)} s` : ''}{v.durationSec && (v.durationSec < 60 || v.durationSec > 70) ? ' · outside 60-70 s' : ''}</div>
-      <div className="row" style={{ gap: 6 }}>
+      <div className="row cr-actions" style={{ gap: 6, flexWrap: 'wrap' }}>
         {approved ? <button className="btn sm" onClick={() => onDecide(v.num, null)}>Undo</button> : <button className="btn sm primary" onClick={() => onDecide(v.num, 'ok')}><Icon name="check" size={13} /> Approve</button>}
         <button className="btn sm" title="Puts this video into the next free TikTok slot right now" onClick={() => onNext(v.num)}>Next slot</button>
         <button className="btn sm danger" onClick={() => onDecide(v.num, 'no')}>Reject</button>

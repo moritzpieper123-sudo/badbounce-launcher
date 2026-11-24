@@ -435,7 +435,12 @@ function toggleFull() { if (!mainWin) return; const full = !mainWin.isFullScreen
 ipcMain.on('win', (_e, a) => { if (!mainWin) return; if (a === 'min') { if (mainWin.isFullScreen()) mainWin.minimize(); else mainWin.minimize(); } else if (a === 'close') mainWin.hide(); else if (a === 'full') toggleFull(); });
 ipcMain.handle('checkUpdate', () => { const st = updater.check(vault()); broadcast(); return st; });
 ipcMain.handle('mailRefresh', async () => { await gmail.refresh(); broadcast(); });
-ipcMain.handle('save', (_e, st) => { saveState(st); broadcast(); });
+/* an upload that was just scheduled must survive a stale save from the window (race: the window saves its old copy right after the status event) */
+const freshMarks = {};
+ipcMain.handle('save', (_e, st) => {
+  try { const now = Date.now(); for (const [n, m] of Object.entries(freshMarks)) { if (now - m.t > 120000) delete freshMarks[n]; else if (st && st.uploads && !st.uploads[n]) st.uploads[n] = m.e; } } catch { /* */ }
+  saveState(st); broadcast();
+});
 ipcMain.handle('copy', (_e, t) => clipboard.writeText(String(t)));
 // claude.ai links open in the Claude desktop app when it is installed (claude:// protocol), else in the browser
 function openLink(u) {
@@ -452,6 +457,7 @@ let batchBusy = false;
 function markScheduled(num, slotIso) {
   const st = loadState(); st.uploads = st.uploads || {};
   st.uploads[String(num)] = { at: slotIso, realAt: new Date().toISOString(), slot: slotIso, scheduled: true };
+  freshMarks[String(num)] = { t: Date.now(), e: st.uploads[String(num)] };
   saveState(st); broadcast();
 }
 const runOne = (num, slotIso, mode, extra, quiet) => new Promise((resolve) => {
