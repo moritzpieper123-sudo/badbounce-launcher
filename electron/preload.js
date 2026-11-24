@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('bb', {
   onChange: (cb) => on('changed', cb),
   genStart: (job) => ipcRenderer.invoke('genStart', job),
   renderSave: (num, files) => ipcRenderer.invoke('renderSave', num, files),
+  dayPlanWrite: (plan) => ipcRenderer.invoke('dayPlanWrite', plan),
   cleanBuilding: (keep) => ipcRenderer.invoke('cleanBuilding', keep),
   checkVideo: (num, dur) => ipcRenderer.invoke('checkVideo', num, dur),
   engineParts: () => ipcRenderer.invoke('engineParts'),

@@ -42,7 +42,7 @@ const dataDir = () => path.join(vault(), '.claude-workspace', 'launcher-data');
 const stateFile = () => path.join(dataDir(), 'state.json');
 
 /* ---------- state ---------- */
-function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true, posted1115: true, skip1119: true, skip1124: true, skip1124b: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
+function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true, posted1115: true, skip1119: true, skip1124: true, skip1124b: true, threads1124: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
 function loadState() {
   try {
     const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
@@ -93,6 +93,13 @@ function loadState() {
       const skip = [new Date(2026, 10, 19, 18, 30, 0, 0).toISOString(), new Date(2026, 10, 19, 21, 0, 0, 0).toISOString()];
       st.settings.skipSlots = Array.from(new Set([...(st.settings.skipSlots || []), ...skip]));
       st.migrations = { ...(st.migrations || {}), skip1119: true };
+      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
+    }
+    // Mo 2026-11-24: videos are rendered by Claude threads (mother thread + 5 sub threads), not the cloud. One-time reset of the autopilot test data.
+    if (!(st.migrations || {}).threads1124) {
+      const a = st.auto || {};
+      st.auto = { ...a, log: [], alerts: [], genJobs: [], dayPlan: undefined, hotSeen: {}, lastPlan: undefined, approvals: Object.fromEntries(Object.entries(a.approvals || {}).filter(([n]) => +n < 35)) };
+      st.migrations = { ...(st.migrations || {}), threads1124: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
     // Mo 2026-11-24: he uploads by hand; the plan starts with tomorrow's first slot. Every free slot from 21 to 24 Nov is skipped (a slot that already holds an upload stays), so nothing shows as "late". One time only.
@@ -477,6 +484,7 @@ ipcMain.handle('openVault', (_e, sub) => { const p = path.join(vault(), sub || '
 /* Autopilot: render one new video in the background (hidden, low priority) */
 ipcMain.handle('genStart', (_e, job) => generator.start({ vault: vault(), cid: String(job.cid), num: +job.num, via: job.via, reason: job.reason, deadline: job.deadline, model: job.model, variant: /^(job|cat)$/.test(job.variant) ? job.variant : undefined, onStatus: (st) => sendAll('genStatus', st) }));
 ipcMain.handle('renderSave', (_e, num, files) => { try { generator.saveCloud(vault(), +num, files); return { ok: true }; } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 200) }; } });
+ipcMain.handle('dayPlanWrite', (_e, plan) => { try { const f = path.join(dataDir(), 'day-plan.json'); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify(plan, null, 1)); return f; } catch { return null; } });
 ipcMain.handle('cleanBuilding', (_e, keep) => { try { return generator.cleanBuilding(vault(), keep || []); } catch { return 0; } });
 ipcMain.handle('checkVideo', async (_e, num, dur) => { try { return await checks.checkVideo(path.join(vault(), 'Results', `#${+num}`), +num, dur); } catch (e) { return { ok: false, fails: ['check crashed: ' + String(e.message || e).slice(0, 100)], notes: [] }; } });
 ipcMain.handle('engineParts', () => generator.engineParts(vault()));

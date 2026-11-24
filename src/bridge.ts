@@ -11,6 +11,7 @@ export interface BB {
   genStart?(job: { cid: string; num: number; via?: 'claude' | 'launcher'; reason?: string; deadline?: string; model?: string; variant?: 'job' | 'cat' }): Promise<{ ok: boolean; error?: string }>;
   genQueueWrite?(jobs: unknown[]): Promise<boolean>;
   renderSave?(num: number, files: { name: string; data: ArrayBuffer }[]): Promise<{ ok: boolean; error?: string }>;
+  dayPlanWrite?(plan: unknown): Promise<string | null>;
   cleanBuilding?(keep: number[]): Promise<number>;
   checkVideo?(num: number, durationSec: number | null): Promise<{ ok: boolean; fails: string[]; notes: string[] }>;
   engineParts?(): Promise<string[]>;
