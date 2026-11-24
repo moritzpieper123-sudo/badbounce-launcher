@@ -44,8 +44,8 @@ export default function Control() {
   const scheduleNext = async (num: number) => {
     const slot = d.slots.find((x) => x.when.getTime() - now.getTime() >= 20 * 60e3 && !x.taken);
     if (!slot || !bb.autoUploadBatch) { toast('No free slot found (or not the desktop app)'); return; }
-    toast(`#${vn(num)} goes into TikTok for ${hm(slot.when)}`);
-    await bb.autoUploadBatch([{ num, slotIso: slot.iso }], 'schedule', true);
+    const r = await bb.autoUploadBatch([{ num, slotIso: slot.iso }], 'schedule', true);
+    toast(r?.ok ? `#${vn(num)} goes into TikTok for ${hm(slot.when)}, a Chrome window works in the background` : `Not started: ${r?.error ?? 'unknown error'}`);
   };
   const nextSlot = d.slots.find((s) => s.when.getTime() > now.getTime() && !s.taken);
 

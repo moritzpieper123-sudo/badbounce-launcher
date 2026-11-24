@@ -620,7 +620,7 @@ else {
       quitting = true; app.quit();
     }, 4000);
   });
-  app.on('before-quit', () => { quitting = true; progress.quitting = true; });
+  app.on('before-quit', () => { quitting = true; progress.quitting = true; try { generator.stop(); } catch { /* */ } });
   app.on('will-quit', () => globalShortcut.unregisterAll());
   app.on('window-all-closed', () => { /* stay in tray */ });
 }

@@ -12,6 +12,7 @@ export interface Decision {
   rows: PlanRow[];                                                        // plan for the open slots of the generation window
   enqueue: { cid: string; reason: string; deadline?: string }[];                             // videos to render now
   claude: { cid: string; need: number; why: string }[];                   // concepts that need a Gen round with Claude
+  paused: string | null;                                                  // renders are on hold after repeated failures
   schedule: { num: number; slotIso: string; cid: string; reason: string } | null;   // video to put into TikTok now
   noVideo: { slotIso: string; waiting: number } | null;                   // a slot is due but nothing is approved
 }
@@ -51,7 +52,11 @@ export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canG
   const need: Record<string, number> = {}; for (const r of rows) need[r.cid] = (need[r.cid] || 0) + 1;
   const enqueue: Decision['enqueue'] = [], claude: Decision['claude'] = [];
   let slotsLeft = Math.max(0, 6 - au.genJobs.filter((j) => j.state === 'queued' || j.state === 'running').length);
+  // failsafe: after repeated render failures stop re-queuing (it would burn Claude usage in a loop); "Clear finished" in the Control Room lifts it
+  const failed = (cid?: string) => au.genJobs.filter((j) => j.state === 'error' && (!cid || j.cid === cid) && now.getTime() - new Date(j.endedAt ?? j.at).getTime() < 90 * 60e3).length;
+  const paused = failed() >= 3 ? 'Three renders failed in the last 90 minutes' : null;
   for (const s of stats) {
+    if (paused || failed(s.cid) >= 2) continue;
     const have = stockBy[s.cid] || 0, hot = s.status === 'hot';
     const want = Math.max(need[s.cid] || 0, hot ? MOMENTUM_MIN_SLOTS : 0) - have;
     if (want <= 0) continue;
@@ -79,5 +84,5 @@ export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canG
       schedule = { num: v.num, slotIso: cand.iso, cid: cidOf(v) ?? p.cid, reason: p.reason };
     }
   }
-  return { scores, stats, slots, rows, enqueue, claude, schedule, noVideo };
+  return { scores, stats, slots, rows, enqueue, claude, paused, schedule, noVideo };
 }

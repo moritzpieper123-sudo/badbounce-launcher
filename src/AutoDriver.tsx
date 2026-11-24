@@ -45,8 +45,9 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
     if (st.state === 'running') { genRunning.current = true; return; }
     genRunning.current = false;
     if (st.state !== 'done' && st.state !== 'error') return;
-    upd.current((s0) => patch(s0, (au) => ({ ...au, genJobs: au.genJobs.map((j) => (j.num === st.num && j.state === 'running' ? { ...j, state: st.state === 'done' ? 'done' : 'error', msg: st.msg } : j)) })));
-    if (st.state === 'error' && /not logged in|\/login/i.test(st.msg ?? '')) alert({ id: 'claude-login', kind: 'gen', title: 'Claude is not signed in on this PC', sub: 'Open cmd, type  claude  , press Enter, then type  /login  and sign in once. After that the autopilot renders by itself.' });
+    upd.current((s0) => patch(s0, (au) => ({ ...au, genJobs: au.genJobs.map((j) => (j.num === st.num && j.state === 'running' ? { ...j, state: st.state === 'done' ? 'done' : 'error', msg: st.msg, endedAt: new Date().toISOString() } : j)) })));
+    if (st.state === 'error' && /usage limit|limit reached|rate limit|quota|try again (later|at)/i.test(st.msg ?? '')) alert({ id: 'claude-limit', kind: 'gen', title: 'Claude usage limit reached', sub: 'Rendering is on hold until your Claude limit resets. Videos already approved are still posted.' });
+    else if (st.state === 'error' && /not logged in|\/login/i.test(st.msg ?? '')) alert({ id: 'claude-login', kind: 'gen', title: 'Claude is not signed in on this PC', sub: 'Open cmd, type  claude  , press Enter, then type  /login  and sign in once. After that the autopilot renders by itself.' });
     else if (st.state === 'error') alert({ id: `gen-${st.cid}`, kind: 'gen', title: `Rendering ${st.cid} failed`, sub: st.msg ?? '' });
     else { clear(`gen-${st.cid}`); clear('claude-login'); }
   }), []);
@@ -70,6 +71,8 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
           await upd.current((st) => patch(st, (a) => ({ ...a, hotSeen: { ...(a.hotSeen ?? {}), ...Object.fromEntries(fresh.map((x) => [x.link, new Date().toISOString()])) } })));
           for (const x of fresh) await alert({ id: `hot-${x.link}`, kind: 'hot', title: `Going viral: ${x.cid ?? 'video'}${x.num != null ? ` #${vn(x.num)}` : ''}`, sub: `score ${x.score}${x.ratio != null ? `, ${x.ratio.toFixed(1)}x the usual views` : ''}. The next slots go to ${x.cid ?? 'it'}.` });
         }
+        if (d.paused) await alert({ id: 'gen-paused', kind: 'gen', title: 'Rendering paused after repeated failures', sub: `${d.paused}. Nothing new is queued. Fix the cause (see the alerts), then press "Clear finished" in the Control Room to try again.` });
+        else clear('gen-paused');
         // 2. reset a render job that was running when the launcher closed
         if (gs?.state !== 'running' && au.genJobs.some((j) => j.state === 'running')) await upd.current((st) => patch(st, (a) => ({ ...a, genJobs: a.genJobs.map((j) => (j.state === 'running' ? { ...j, state: 'queued' as const } : j)) })));
         // 3. queue renders the plan needs

@@ -74,6 +74,23 @@ function finalDescription(vault, cid) {
   return '';
 }
 
+/** A finished video appears in Results\#N only when every file is complete: files are written into a staging folder first,
+ *  copied over thumbnail / description / notes first, and the video last (as .part, then renamed), so the launcher never sees half a video. */
+function publish(stage, final, num) {
+  const names = safeLs(stage), pick = (pre) => names.find((f) => f.startsWith(`${pre} #${num}`));
+  fs.mkdirSync(final, { recursive: true });
+  for (const pre of ['Thumbnail', 'Description', 'Notes']) { const f = pick(pre); fs.copyFileSync(path.join(stage, f), path.join(final, f)); }
+  const v = pick('Badbounce'), dst = path.join(final, v);
+  fs.copyFileSync(path.join(stage, v), dst + '.part'); fs.renameSync(dst + '.part', dst);
+  try { fs.rmSync(stage, { recursive: true, force: true }); } catch { /* */ }
+}
+let child = null;
+function killTree(p) {
+  try { if (process.platform === 'win32') spawn('taskkill', ['/pid', String(p.pid), '/T', '/F'], { windowsHide: true }); else p.kill(); } catch { /* */ }
+}
+/** called when the launcher quits: a running render must not outlive it */
+function stop() { if (child) killTree(child); }
+
 function run(py, args, env, cwd, onLine) {
   return new Promise((resolve) => {
     const p = spawn(py, ['-3', ...args], { cwd, env: { ...process.env, PYTHONIOENCODING: 'utf-8', ...env }, windowsHide: true });
@@ -98,14 +115,15 @@ function claudePrompt(cid, num, reason, deadline) {
     `- Read Konzepte\\Konzept ${k}\\*.md (the section "Standard rules" / "Final rules") and Engine\\${cid}\\README.md + report.md. Use only that Konzept's own engine in Engine\\${cid} (run commands from inside that folder) and its original sounds.`,
     `- Make a NEW variant: new seed, and the Konzept's variable (boss, shape, machine, flags, heads, song only if the sheet says a song is allowed without asking) that has not been used in an earlier Results folder. Never repeat an earlier video.`,
     `- Render at scale 1.0 (upload quality), 60-70 s, counts rounded to the nearest thousand, standard watermark, ALL CAPS titles, no slow motion. Check the file with ffprobe (duration) before you finish.`,
-    `- Write exactly these files into Results\\#${num}\\ : "Badbounce #${num}.mp4", "Thumbnail #${num}.png" (the standard thumbnail of this Konzept), "Description #${num}.txt" (caption formula Opt #16 from Konzepte\\Konzepte Overview.md: searchable question, max 5 hashtags, no #badbounce, TikTok-flag safe, see the sheets), and "Notes #${num}.md" whose first line is "# <short title>" followed by the line "Konzept ${k} (${cid})" and the seed / variant numbers you used.`,
+    `- Write exactly these files into Results\\_building\\#${num}\\ (NOT into Results\\#${num}; the launcher moves them when all four are complete) : "Badbounce #${num}.mp4", "Thumbnail #${num}.png" (the standard thumbnail of this Konzept), "Description #${num}.txt" (caption formula Opt #16 from Konzepte\\Konzepte Overview.md: searchable question, max 5 hashtags, no #badbounce, TikTok-flag safe, see the sheets), and "Notes #${num}.md" whose first line is "# <short title>" followed by the line "Konzept ${k} (${cid})" and the seed / variant numbers you used.`,
     `- Do NOT upload or post anything and do not change other Results folders, Final folders or engines. If something is impossible, write nothing into Results and say why in one sentence.`,
     `Finish with one line: DONE #${num} or FAILED #${num}: <reason>.`,
   ].join('\n');
 }
 function startClaude({ vault, cid, num, reason, deadline, model, onStatus, onDone }) {
-  const dir = path.join(vault, 'Results', `#${num}`);
-  if (fs.existsSync(dir) && safeLs(dir).length) return { ok: false, error: `Results\\#${num} already exists` };
+  const final = path.join(vault, 'Results', `#${num}`), dir = path.join(vault, 'Results', '_building', `#${num}`);
+  if (fs.existsSync(final) && safeLs(final).length) return { ok: false, error: `Results\\#${num} already exists` };
+  try { fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true }); } catch (e) { return { ok: false, error: `cannot prepare ${dir}: ${e.message}` }; }
   running = { num, cid, msg: 'Claude is starting…' };
   const emit = (state, msg) => { if (running) running.msg = msg; onStatus && onStatus({ state, num, cid, msg }); };
   emit('running', `${cid}: Claude is working`);
@@ -116,17 +134,21 @@ function startClaude({ vault, cid, num, reason, deadline, model, onStatus, onDon
   const exe = cands.find((c) => fs.existsSync(c)) || 'claude';
   const viaShell = process.platform === 'win32' && !/\.exe$/i.test(exe);
   const p = spawn(viaShell && exe.includes(' ') ? `"${exe}"` : exe, args, { cwd: vault, shell: viaShell, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
-  p.stdin.on('error', () => {}); p.stdin.end(claudePrompt(cid, num, reason || 'planned', deadline));
+  child = p; p.stdin.on('error', () => {}); p.stdin.end(claudePrompt(cid, num, reason || 'planned', deadline));
   try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* */ }
   let out = '', killed = false;
-  const timer = setTimeout(() => { killed = true; try { p.kill(); } catch { /* */ } }, 100 * 60e3);
+  const timer = setTimeout(() => { killed = true; killTree(p); }, 100 * 60e3);
   const cut = (b) => { out += String(b); const ln = out.split(/\r?\n/).map((x) => x.trim()).filter(Boolean).pop(); if (ln) emit('running', `${cid}: ${ln}`.slice(0, 160)); };
   p.stdout.on('data', cut); p.stderr.on('data', cut);
-  const finish = (ok, msg) => { clearTimeout(timer); const st = { state: ok ? 'done' : 'error', num, cid, msg }; running = null; onStatus && onStatus(st); onDone && onDone({ ...st, ok }); };
+  const finish = (ok, msg) => { clearTimeout(timer); child = null; const st = { state: ok ? 'done' : 'error', num, cid, msg }; running = null; onStatus && onStatus(st); onDone && onDone({ ...st, ok }); };
   p.on('error', (e) => finish(false, `could not start Claude (${e.code || e.message}). Is the claude command installed?`));
   p.on('close', (code) => {
     const have = ['Badbounce', 'Thumbnail', 'Description', 'Notes'].every((n) => safeLs(dir).some((f) => f.startsWith(n + ' #' + num)));
-    if (!killed && have) finish(true, `${cid} #${num} is ready for review`);
+    let big = false; try { const v = safeLs(dir).find((f) => f.startsWith('Badbounce #')); big = !!v && fs.statSync(path.join(dir, v)).size > 200 * 1024; } catch { /* */ }
+    if (!killed && have && big) {
+      try { publish(dir, final, num); finish(true, `${cid} #${num} is ready for review`); } catch (e) { finish(false, `could not move the finished files into Results\\#${num}: ${e.message}`.slice(0, 300)); }
+    }
+    else if (!killed && have) finish(false, 'The video file is empty or too small');
     else if (/not logged in/i.test(out)) finish(false, 'Not logged in: run claude once and /login');
     else finish(false, killed ? 'Claude took longer than 100 min' : `Claude stopped (exit ${code}) without all four files: ${out.trim().split(/\r?\n/).pop() || 'no answer'}`.slice(0, 300));
   });
@@ -161,11 +183,12 @@ function start({ vault, cid, num, via, reason, deadline, model, onStatus, onDone
       if (!res.ok || !fs.existsSync(outThumb)) throw new Error('thumbnail failed: ' + (res.msg || 'no file'));
       const desc = finalDescription(vault, cid);
       if (!desc) throw new Error(`no ${cid} description.txt in Konzepte\\...\\Final`);
-      fs.mkdirSync(dir, { recursive: true });
-      fs.copyFileSync(made, path.join(dir, `Badbounce #${num}.mp4`));
-      fs.copyFileSync(outThumb, path.join(dir, `Thumbnail #${num}.png`));
-      fs.writeFileSync(path.join(dir, `Description #${num}.txt`), desc + '\n');
-      fs.writeFileSync(path.join(dir, `Notes #${num}.md`), `# ${R.title(params)}\n\nKonzept ${R.konzept} (${cid})\n${R.notes(params)}\n\nMade automatically by the launcher autopilot on ${new Date().toISOString().slice(0, 10)}. Waiting for review in the Control Room.\n`);
+      const stage = path.join(tmp, 'stage'); fs.mkdirSync(stage, { recursive: true });
+      fs.copyFileSync(made, path.join(stage, `Badbounce #${num}.mp4`));
+      fs.copyFileSync(outThumb, path.join(stage, `Thumbnail #${num}.png`));
+      fs.writeFileSync(path.join(stage, `Description #${num}.txt`), desc + '\n');
+      fs.writeFileSync(path.join(stage, `Notes #${num}.md`), `# ${R.title(params)}\n\nKonzept ${R.konzept} (${cid})\n${R.notes(params)}\n\nMade automatically by the launcher autopilot on ${new Date().toISOString().slice(0, 10)}. Waiting for review in the Control Room.\n`);
+      publish(stage, dir, num);
       try { if (made !== outVideo) fs.unlinkSync(made); } catch { /* */ }
       try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* */ }
       const st = { state: 'done', num, cid, msg: `${cid} #${num} is ready for review` };
@@ -180,4 +203,4 @@ function start({ vault, cid, num, via, reason, deadline, model, onStatus, onDone
 
 const status = () => (running ? { state: 'running', num: running.num, cid: running.cid, msg: running.msg } : { state: 'idle' });
 
-module.exports = { start, status, ready, finalDescription, usedNumbers, RECIPES };
+module.exports = { publish, start, stop, status, ready, finalDescription, usedNumbers, RECIPES };
