@@ -14,6 +14,7 @@ export interface BB {
   genQueueWrite?(jobs: unknown[]): Promise<boolean>;
   genStatus?(): Promise<GenStatus>;
   genReady?(): Promise<string[]>;
+  genStop?(): Promise<boolean>;
   onGenStatus?(cb: (s: GenStatus) => void): () => void;
   uploadStatus?(): Promise<UploadStatus>;
   onUploadStatus?(cb: (s: UploadStatus) => void): () => void;

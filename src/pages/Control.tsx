@@ -120,7 +120,13 @@ export default function Control() {
         {d.rows[0] && <p className="small muted">Why the next one: {d.rows[0].reason}</p>}
         {au.genJobs.length > 0 && <>
           <h2 style={{ marginTop: 6 }}>Render queue</h2>
-          {[...au.genJobs].reverse().slice(0, 6).map((j) => <div key={j.id} className="row between small"><span><b>{j.cid}</b> #{j.num} <span className="dim">· {j.reason}</span></span><span style={{ color: j.state === 'error' ? 'var(--red)' : j.state === 'done' ? 'var(--green)' : 'var(--muted)' }}>{j.state}{j.msg && j.state === 'error' ? `: ${j.msg.slice(0, 60)}` : ''}</span></div>)}
+          {[...au.genJobs].reverse().slice(0, 8).map((j) => <div key={j.id} className="row between small" style={{ gap: 8, flexWrap: 'wrap' }}><span><b>{j.cid}</b> #{j.num} <span className="dim">· {j.reason}{j.first ? ' · runs next' : ''}</span></span>
+            <span className="row" style={{ gap: 6 }}>
+              <span style={{ color: j.state === 'error' ? 'var(--red)' : j.state === 'done' ? 'var(--green)' : 'var(--muted)' }}>{j.state}{j.msg && j.state === 'error' ? `: ${j.msg.slice(0, 60)}` : ''}</span>
+              {j.state === 'queued' && <><button className="btn sm" title="Render this one before all others" onClick={() => set((a) => ({ ...a, genJobs: a.genJobs.map((x) => (x.id === j.id ? { ...x, first: true } : { ...x, first: false })) }))}>Run next</button>
+                <button className="btn sm danger" title="Remove from the queue" onClick={() => set((a) => ({ ...a, genJobs: a.genJobs.filter((x) => x.id !== j.id) }))}>Cancel</button></>}
+              {j.state === 'running' && <button className="btn sm danger" title="Stops this render now. The job ends as 'Stopped by you'." onClick={async () => { await bb.genStop?.(); toast(`Render of ${j.cid} #${j.num} stopped`); }}>Stop</button>}
+            </span></div>)}
           <button className="btn sm" onClick={() => set((a) => ({ ...a, genJobs: a.genJobs.filter((j) => j.state === 'queued' || j.state === 'running') }))}>Clear finished</button>
         </>}
       </section>

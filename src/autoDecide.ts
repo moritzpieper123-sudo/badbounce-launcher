@@ -53,7 +53,7 @@ export function decide(snap: Snapshot, now: Date, o: { uploadBusy: boolean; canG
   const enqueue: Decision['enqueue'] = [], claude: Decision['claude'] = [];
   let slotsLeft = Math.max(0, 6 - au.genJobs.filter((j) => j.state === 'queued' || j.state === 'running').length);
   // failsafe: after repeated render failures stop re-queuing (it would burn Claude usage in a loop); "Clear finished" in the Control Room lifts it
-  const failed = (cid?: string) => au.genJobs.filter((j) => j.state === 'error' && (!cid || j.cid === cid) && now.getTime() - new Date(j.endedAt ?? j.at).getTime() < 90 * 60e3).length;
+  const failed = (cid?: string) => au.genJobs.filter((j) => j.state === 'error' && j.msg !== 'Stopped by you' && (!cid || j.cid === cid) && now.getTime() - new Date(j.endedAt ?? j.at).getTime() < 90 * 60e3).length;
   const paused = failed() >= 3 ? 'Three renders failed in the last 90 minutes' : null;
   for (const s of stats) {
     if (paused || failed(s.cid) >= 2) continue;

@@ -494,6 +494,7 @@ ipcMain.handle('uploadStatus', () => uploader.status());
 /* Autopilot: render one new video in the background (hidden, low priority) */
 ipcMain.handle('genStart', (_e, job) => generator.start({ vault: vault(), cid: String(job.cid), num: +job.num, via: job.via, reason: job.reason, deadline: job.deadline, model: job.model, onStatus: (st) => sendAll('genStatus', st) }));
 ipcMain.handle('genStatus', () => generator.status());
+ipcMain.handle('genStop', () => generator.cancel());
 ipcMain.handle('genReady', () => generator.ready(vault()));
 /* ranked render queue as a file (for Claude and for you): Engine\Auto\gen-requests.json */
 ipcMain.handle('genQueueWrite', (_e, jobs) => { try { const d = path.join(vault(), 'Engine', 'Auto'); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'gen-requests.json'), JSON.stringify({ updated: new Date().toISOString(), jobs }, null, 1)); return true; } catch { return false; } });

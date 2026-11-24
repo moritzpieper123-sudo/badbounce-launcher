@@ -84,12 +84,14 @@ function publish(stage, final, num) {
   fs.copyFileSync(path.join(stage, v), dst + '.part'); fs.renameSync(dst + '.part', dst);
   try { fs.rmSync(stage, { recursive: true, force: true }); } catch { /* */ }
 }
-let child = null;
+let child = null, cancelled = false;
 function killTree(p) {
   try { if (process.platform === 'win32') spawn('taskkill', ['/pid', String(p.pid), '/T', '/F'], { windowsHide: true }); else p.kill(); } catch { /* */ }
 }
 /** called when the launcher quits: a running render must not outlive it */
 function stop() { if (child) killTree(child); }
+/** the user pressed Stop: kills the running render, the job ends as "Stopped by you" (not counted as a failure) */
+function cancel() { if (!child) return false; cancelled = true; killTree(child); return true; }
 
 function run(py, args, env, cwd, onLine) {
   return new Promise((resolve) => {
@@ -134,7 +136,7 @@ function startClaude({ vault, cid, num, reason, deadline, model, onStatus, onDon
   const exe = cands.find((c) => fs.existsSync(c)) || 'claude';
   const viaShell = process.platform === 'win32' && !/\.exe$/i.test(exe);
   const p = spawn(viaShell && exe.includes(' ') ? `"${exe}"` : exe, args, { cwd: vault, shell: viaShell, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
-  child = p; p.stdin.on('error', () => {}); p.stdin.end(claudePrompt(cid, num, reason || 'planned', deadline));
+  child = p; cancelled = false; p.stdin.on('error', () => {}); p.stdin.end(claudePrompt(cid, num, reason || 'planned', deadline));
   try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* */ }
   let out = '', killed = false;
   const timer = setTimeout(() => { killed = true; killTree(p); }, 100 * 60e3);
@@ -144,6 +146,7 @@ function startClaude({ vault, cid, num, reason, deadline, model, onStatus, onDon
   p.on('error', (e) => finish(false, `could not start Claude (${e.code || e.message}). Is the claude command installed?`));
   p.on('close', (code) => {
     const have = ['Badbounce', 'Thumbnail', 'Description', 'Notes'].every((n) => safeLs(dir).some((f) => f.startsWith(n + ' #' + num)));
+    if (cancelled) { cancelled = false; try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* */ } return finish(false, 'Stopped by you'); }
     let big = false; try { const v = safeLs(dir).find((f) => f.startsWith('Badbounce #')); big = !!v && fs.statSync(path.join(dir, v)).size > 200 * 1024; } catch { /* */ }
     if (!killed && have && big) {
       try { publish(dir, final, num); finish(true, `${cid} #${num} is ready for review`); } catch (e) { finish(false, `could not move the finished files into Results\\#${num}: ${e.message}`.slice(0, 300)); }
@@ -203,4 +206,4 @@ function start({ vault, cid, num, via, reason, deadline, model, onStatus, onDone
 
 const status = () => (running ? { state: 'running', num: running.num, cid: running.cid, msg: running.msg } : { state: 'idle' });
 
-module.exports = { publish, start, stop, status, ready, finalDescription, usedNumbers, RECIPES };
+module.exports = { publish, start, stop, cancel, status, ready, finalDescription, usedNumbers, RECIPES };

@@ -89,7 +89,7 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
           await upd.current((st) => patch(st, (a) => ({ ...a, genJobs: [...a.genJobs, ...jobs].slice(-40) })));
         }
         // 4. start the next queued render (one at a time)
-        const next = [...au.genJobs].filter((j) => j.state === 'queued').sort((a, b) => (a.deadline ?? '9').localeCompare(b.deadline ?? '9') || a.num - b.num)[0];
+        const next = [...au.genJobs].filter((j) => j.state === 'queued').sort((a, b) => Number(!!b.first) - Number(!!a.first) || Number(/follow-up/.test(b.reason)) - Number(/follow-up/.test(a.reason)) || (a.deadline ?? '9').localeCompare(b.deadline ?? '9') || a.num - b.num)[0];   // your pick first, then viral follow-ups (they lose value every hour), then the earliest deadline
         bb.genQueueWrite?.(au.genJobs.filter((j) => j.state === 'queued' || j.state === 'running'));
         if (next && gs?.state !== 'running' && !genRunning.current && Date.now() >= limitUntil.current) {
           const r = await bb.genStart!({ cid: next.cid, num: next.num, via, model: au.model ?? 'sonnet', reason: next.reason, deadline: next.deadline && new Date(new Date(next.deadline).getTime() + 75 * 60e3).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) });
