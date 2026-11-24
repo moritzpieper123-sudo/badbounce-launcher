@@ -41,6 +41,12 @@ export default function Control() {
   const queueNow = (cid: string) => { if (!bb.genStart) return; set((a) => ({ ...a, genJobs: [...a.genJobs, { id: `${Date.now()}`, cid, num: Math.max(0, ...snap.videos.map((v) => Math.floor(v.num)), ...a.genJobs.map((j) => j.num)) + 1, state: 'queued' as const, at: new Date().toISOString(), reason: 'you asked' }] })); toast(`${cid} is queued for rendering`); };
   const copyGen = async (cid: string, n: number) => { await bb.copyText(`Gen x${n} ${cid}`); toast(`Copied "Gen x${n} ${cid}", paste it in the project chat`); };
   const nextRow = d.rows[0];
+  const scheduleNext = async (num: number) => {
+    const slot = d.slots.find((x) => x.when.getTime() - now.getTime() >= 20 * 60e3 && !x.taken);
+    if (!slot || !bb.autoUploadBatch) { toast('No free slot found (or not the desktop app)'); return; }
+    toast(`#${vn(num)} goes into TikTok for ${hm(slot.when)}`);
+    await bb.autoUploadBatch([{ num, slotIso: slot.iso }], 'schedule', true);
+  };
   const nextSlot = d.slots.find((s) => s.when.getTime() > now.getTime() && !s.taken);
 
   return <>
@@ -48,7 +54,7 @@ export default function Control() {
       <button className={`btn ${au.enabled ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, enabled: !a.enabled }))} title="When on: renders videos 3 h before the day's first slot, schedules approved videos shortly before each slot, reacts to viral videos">
         <Icon name="sparkle" size={15} /> Autopilot {au.enabled ? 'ON' : 'OFF'}</button>
       <button className="btn" onClick={() => set((a) => ({ ...a, producer: viaClaude ? 'launcher' : 'claude' }))} title="Who renders the videos"><Icon name="film" size={15} /> Rendered by {viaClaude ? 'Claude' : 'launcher (K6b, K9 only)'}</button>
-      <button className={`btn ${au.autoApprove ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, autoApprove: !a.autoApprove }))} title="ON: if you have not approved anything when a slot is due (night slots), the oldest waiting video is scheduled anyway. OFF: the slot stays empty and you get an alert.">Night auto-approve {au.autoApprove ? 'ON' : 'OFF'}</button>
+      <button className={`btn ${au.autoApprove ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, autoApprove: !a.autoApprove }))} title="ON (always): every new video counts as approved and is scheduled without your review. OFF: only videos you approve are scheduled; if none is approved when a slot is due, the slot stays empty and you get an alert.">Auto-approve {au.autoApprove ? 'ON' : 'OFF'}</button>
       {viaClaude && <button className="btn" onClick={() => set((a) => ({ ...a, model: ({ sonnet: 'haiku', haiku: 'opus', opus: 'sonnet' } as const)[a.model ?? 'sonnet'] }))} title="Which Claude model renders the videos (click to change). Sonnet is the safe default, Haiku is cheapest, Opus is the strongest.">Model: {au.model ?? 'sonnet'}</button>}
       {isDesktop && <button className="btn" onClick={() => bb.statsFetch?.()}><Icon name="update" size={15} /> Pull data now</button>}
     </>} />
@@ -78,7 +84,7 @@ export default function Control() {
         {stock.pending.length > 0 && <button className="btn sm primary" onClick={approveAll}><Icon name="check" size={14} /> Approve all</button>}</div>
       {!stock.pending.length && !stock.approved.length && <div className="empty">Nothing waiting. New videos appear here the moment they are rendered; nothing is scheduled before you approve it.</div>}
       <div className="cr-queue">
-        {[...stock.pending, ...stock.approved].map((v) => <ReviewCard key={v.num} v={v} approved={au.approvals[String(v.num)] === 'ok'} onDecide={decide1} planned={d.rows.find((r) => r.cid === cidOf(v))} />)}
+        {[...stock.pending, ...stock.approved].map((v) => <ReviewCard key={v.num} v={v} approved={au.approvals[String(v.num)] === 'ok'} onDecide={decide1} onNext={scheduleNext} planned={d.rows.find((r) => r.cid === cidOf(v))} />)}
       </div>
       {stock.rejected.length > 0 && <p className="small dim">{stock.rejected.length} rejected video{stock.rejected.length > 1 ? 's' : ''} stay in Results and are never scheduled. <button className="chip chip-btn" onClick={() => stock.rejected.forEach((v) => decide1(v.num, null))}>Undo all</button></p>}
     </section>
@@ -123,7 +129,7 @@ export default function Control() {
   </>;
 }
 
-function ReviewCard({ v, approved, onDecide, planned }: { v: Video; approved: boolean; onDecide: (n: number, d: 'ok' | 'no' | null) => void; planned?: { cid: string } }) {
+function ReviewCard({ v, approved, onDecide, onNext, planned }: { v: Video; approved: boolean; onDecide: (n: number, d: 'ok' | 'no' | null) => void; onNext: (n: number) => void; planned?: { cid: string } }) {
   const [play, setPlay] = useState(false);
   const cid = cidOf(v);
   return <div className={`cr-card ${approved ? 'ok' : ''}`}>
@@ -136,6 +142,7 @@ function ReviewCard({ v, approved, onDecide, planned }: { v: Video; approved: bo
       <div className="small dim">{v.durationSec ? `${Math.round(v.durationSec)} s` : ''}{v.durationSec && (v.durationSec < 60 || v.durationSec > 70) ? ' · outside 60-70 s' : ''}</div>
       <div className="row" style={{ gap: 6 }}>
         {approved ? <button className="btn sm" onClick={() => onDecide(v.num, null)}>Undo</button> : <button className="btn sm primary" onClick={() => onDecide(v.num, 'ok')}><Icon name="check" size={13} /> Approve</button>}
+        <button className="btn sm" title="Puts this video into the next free TikTok slot right now" onClick={() => onNext(v.num)}>Next slot</button>
         <button className="btn sm danger" onClick={() => onDecide(v.num, 'no')}>Reject</button>
         <button className="btn sm icon" title="Open folder" onClick={() => bb.openPath(v.folder)}><Icon name="folder" size={13} /></button>
       </div>
