@@ -10,6 +10,7 @@ export const PLAN_HOUR = 18;       // the plan for tomorrow is made from 18:00
 export const CHECK_HOUR = 22;      // at 22:00 the launcher warns about videos that did not arrive
 type Ctx = { snap: Snapshot; now: Date; patch: (f: (a: AutoState) => AutoState) => Promise<void>; note: (t: string, k?: 'info' | 'plan' | 'render' | 'warn') => unknown; alert: (a: { id: string; kind: 'gen'; title: string; sub: string }) => unknown; clear: (id: string) => void };
 let lastFetch = 0;
+const checked = new Set<string>();
 
 export async function dayTick(c: Ctx) {
   const { snap, now } = c, au = autoOf(snap.state);
@@ -31,6 +32,18 @@ export async function dayTick(c: Ctx) {
     await c.patch((a) => ({ ...a, dayPlan: { date, at: now.toISOString(), items, got: [] } }));
     c.note(`Tomorrow's ${items.length} videos planned (${r.tests} test, ${items.length - r.tests} best guess): ${items.map((i) => `#${i.num} ${i.cid}${i.variant ? '/' + i.variant : ''}`).join(', ')}.`, 'plan');
     return;
+  }
+  // 1b. auto-approve ON: every new video passes the checks first; pass = approved (free to upload), fail = stays in manual review with the reason
+  if (au.autoApprove && bb.checkVideo) {
+    for (const v of snap.videos) {
+      const key = `${v.num}|${v.createdMs}`;
+      if (checked.has(key) || !v.hasVideo || !v.hasThumb || !v.hasDesc || snap.state.uploads[String(v.num)] || au.approvals[String(v.num)]) continue;
+      if (Date.now() - v.createdMs < 60e3) continue;   // still being written
+      checked.add(key);
+      const r = await bb.checkVideo(v.num, v.durationSec ?? null);
+      if (r.ok) { await c.patch((a) => ({ ...a, approvals: { ...a.approvals, [String(v.num)]: 'ok' } })); c.note(`#${v.num} passed the checks and is approved${r.notes.length ? ' (' + r.notes[0] + ')' : ''}.`, 'render'); c.clear(`check-${v.num}`); }
+      else { c.note(`#${v.num} failed the checks: ${r.fails.join('; ')}. It waits for your review.`, 'warn'); c.alert({ id: `check-${v.num}`, kind: 'gen', title: `#${v.num} needs your review`, sub: `Auto-approve checks failed: ${r.fails.join('; ')}.` }); }
+    }
   }
   // 2. download finished videos (every 2 minutes)
   if (Date.now() - lastFetch >= 120e3 && bb.renderSave) {

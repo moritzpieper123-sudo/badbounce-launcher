@@ -12,6 +12,7 @@ export interface BB {
   genQueueWrite?(jobs: unknown[]): Promise<boolean>;
   renderSave?(num: number, files: { name: string; data: ArrayBuffer }[]): Promise<{ ok: boolean; error?: string }>;
   cleanBuilding?(keep: number[]): Promise<number>;
+  checkVideo?(num: number, durationSec: number | null): Promise<{ ok: boolean; fails: string[]; notes: string[] }>;
   genStatus?(): Promise<GenStatus>;
   genReady?(): Promise<string[]>;
   genStop?(): Promise<boolean>;

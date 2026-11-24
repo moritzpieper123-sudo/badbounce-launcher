@@ -76,7 +76,7 @@ export function decide(snap: Snapshot, now: Date, o: { canGen: boolean; genReady
   let noVideo: Decision['noVideo'] = null;
   const cand = open.find((s) => s.when.getTime() - now.getTime() >= 18 * 60e3);
   if (au.enabled && cand && cand.when.getTime() - now.getTime() <= lead) {
-    const appr = [...stock.approved, ...(au.autoApprove ? stock.pending.filter((v) => v.hasVideo && v.hasThumb && v.hasDesc && v.hasNotes && v.durationSec != null && v.durationSec >= 60 && v.durationSec <= 75) : [])];
+    const appr = stock.approved;   // auto-approve checks each new video in cloud/dayRun.ts and approves the ones that pass
     if (!appr.length) noVideo = { slotIso: cand.iso, waiting: stock.pending.length };
   }
   return { scores, stats, slots, rows, enqueue, claude, paused, noVideo };

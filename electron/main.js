@@ -14,6 +14,7 @@ const statsfetch = require('./statsfetch');
 const media = require('./media');
 const progress = require('./progress');
 const generator = require('./generator');
+const checks = require('./checks');
 
 const DEFAULT_SETTINGS = { day1: '2026-11-11', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
 const HIDDEN = process.argv.includes('--hidden');
@@ -477,6 +478,7 @@ ipcMain.handle('openVault', (_e, sub) => { const p = path.join(vault(), sub || '
 ipcMain.handle('genStart', (_e, job) => generator.start({ vault: vault(), cid: String(job.cid), num: +job.num, via: job.via, reason: job.reason, deadline: job.deadline, model: job.model, variant: /^(job|cat)$/.test(job.variant) ? job.variant : undefined, onStatus: (st) => sendAll('genStatus', st) }));
 ipcMain.handle('renderSave', (_e, num, files) => { try { generator.saveCloud(vault(), +num, files); return { ok: true }; } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 200) }; } });
 ipcMain.handle('cleanBuilding', (_e, keep) => { try { return generator.cleanBuilding(vault(), keep || []); } catch { return 0; } });
+ipcMain.handle('checkVideo', async (_e, num, dur) => { try { return await checks.checkVideo(path.join(vault(), 'Results', `#${+num}`), +num, dur); } catch (e) { return { ok: false, fails: ['check crashed: ' + String(e.message || e).slice(0, 100)], notes: [] }; } });
 ipcMain.handle('genStatus', () => generator.status());
 ipcMain.handle('genStop', () => generator.cancel());
 /* small atomic changes of the autopilot state from the island window (it must not save a whole stale copy of the state) */

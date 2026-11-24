@@ -80,7 +80,7 @@ export default function Analytics() {
         <h2>Konzept comparison</h2>
         {kt.length ? <table className="t"><thead><tr><th>Konzept</th><th>Posts</th><th>Avg views</th><th>Shares/1K</th><th>Full watch</th></tr></thead><tbody>
           {kt.map((r) => <tr key={r.k}><td><span className="row" style={{ gap: 6 }}><span className="dot" style={{ background: kColor(r.k) }} />K{r.k} {KONZEPTE[r.k]?.name}</span></td><td>{r.posts}</td><td>{fmtNum(Math.round(r.avgViews))}</td><td>{r.sharesPer1k.toFixed(1)}</td><td>{r.full != null ? `${r.full.toFixed(0)}%` : '–'}</td></tr>)}
-        </tbody></table> : <div className="empty">Matches CSV posts to videos by the TikTok link you paste after uploading (or by post time).</div>}
+        </tbody></table> : <div className="empty">Matches CSV posts to videos by caption and scheduled post time.</div>}
       </div>
       <div className="glass card">
         <div className="between"><h2>Best slot</h2><span className="small dim">avg views · posts</span></div>

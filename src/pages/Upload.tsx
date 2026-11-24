@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useApp } from '../ctx';
 import { buildPlan, kColor, KONZEPTE, ymd, vn } from '../logic';
-import { doUploadPack, markUploaded, setLink, unmarkUploaded } from '../actions';
+import { doUploadPack, markUploaded, unmarkUploaded } from '../actions';
 import { Header, NextUpload, Thumb } from './parts';
 import { Icon } from '../ui';
 import { bb } from '../bridge';
 
-const STEPS = ['Upload pack: video + thumbnail land in Downloads\\Badbounce upload, description is copied', 'TikTok Studio · Upload: pick the video', 'Paste the description (Ctrl+V)', 'Cover: upload the thumbnail or pick the matching frame', 'Post, then tick "Mark uploaded" here and paste the post link'];
+const STEPS = ['Upload pack: video + thumbnail land in Downloads\\Badbounce upload, description is copied', 'TikTok Studio · Upload: pick the video', 'Paste the description (Ctrl+V)', 'Cover: upload the thumbnail or pick the matching frame', 'Post, then tick "Mark uploaded" here'];
 
 export default function Upload() {
   const { snap, update, toast } = useApp();
@@ -40,14 +40,12 @@ export default function Upload() {
 
     <section className="glass card">
       <div className="between"><h2>Recently uploaded</h2></div>
-      <p className="sub" style={{ marginTop: -10 }}>Paste the TikTok link so the weekly CSV can be matched to each video.</p>
+      <p className="sub" style={{ marginTop: -10 }}>Posts in the CSV are matched to these videos by scheduled time and caption.</p>
       {recent.length ? recent.map(([n, u]) => {
         const v = snap.videos.find((x) => x.num === +n);
         return <div key={n} className="row" style={{ borderTop: '1px solid rgba(var(--wrgb),.07)', paddingTop: 10, flexWrap: 'wrap' }}>
           <Thumb v={v} w={36} h={64} />
           <div style={{ flex: '1 1 160px' }}><b>#{n}</b> <span className="muted small">· {new Date(u.at).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</span>{v && <div className="small muted">{label(v)}</div>}</div>
-          <input className="in" style={{ flex: '2 1 260px' }} placeholder="TikTok post link" value={edit[n] ?? u.link ?? ''} onChange={(e) => setEdit({ ...edit, [n]: e.target.value })} onBlur={() => edit[n] != null && update(setLink(+n, edit[n]))} />
-          {u.link && <button className="btn sm" onClick={() => bb.openUrl(u.link!)}><Icon name="link" size={14} /> Open</button>}
           <button className="btn sm" onClick={() => update(unmarkUploaded(+n))}>Undo</button>
         </div>;
       }) : <div className="empty">Nothing uploaded yet.</div>}

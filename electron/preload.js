@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('bb', {
   genStart: (job) => ipcRenderer.invoke('genStart', job),
   renderSave: (num, files) => ipcRenderer.invoke('renderSave', num, files),
   cleanBuilding: (keep) => ipcRenderer.invoke('cleanBuilding', keep),
+  checkVideo: (num, dur) => ipcRenderer.invoke('checkVideo', num, dur),
   genStatus: () => ipcRenderer.invoke('genStatus'),
   genReady: () => ipcRenderer.invoke('genReady'),
   genStop: () => ipcRenderer.invoke('genStop'),

@@ -6,7 +6,7 @@ import { Icon, KChip, Tick } from '../ui';
 import { buildPlan, fmtIn, fmtLate, KONZEPTE, minsUntil, setTaskCol, kColor, ymd, bufferInfo, dayDiff, parseYmd, vn } from '../logic';
 import { TikTokLogo } from '../logos';
 import { sfx } from '../sfx';
-import { doUploadPack, markUploaded, setLink, unmarkUploaded } from '../actions';
+import { doUploadPack, markUploaded, unmarkUploaded } from '../actions';
 import type { Task, Video } from '../types';
 
 export function Header({ title, sub, right, center }: { title: string; sub?: React.ReactNode; right?: React.ReactNode; center?: React.ReactNode }) {
@@ -24,20 +24,6 @@ export function NextUpload({ compact = false, manual = false }: { compact?: bool
   const now = new Date(snap.now);
   const plan = buildPlan(snap, now, 14).filter((s) => !s.uploaded && s.state !== 'missed');
   const next = plan.find((s) => s.video) || null;
-  const [linkFor, setLinkFor] = useState<number | null>(null);
-  const [link, setLinkTxt] = useState('');
-  if (linkFor != null) {
-    return <div className="next" style={{ flexDirection: 'column' }}>
-      <span className="small" style={{ color: 'var(--green)', fontWeight: 700 }}>#{linkFor} MARKED UPLOADED</span>
-      <span className="muted small">Paste the TikTok link of the post (optional, helps match stats):</span>
-      <input className="in" placeholder="https://www.tiktok.com/@…/video/…" value={link} onChange={(e) => setLinkTxt(e.target.value)} autoFocus />
-      <div className="row">
-        <button className="btn primary sm" onClick={async () => { await update(setLink(linkFor, link)); setLinkFor(null); setLinkTxt(''); toast('Link saved'); }}>Save link</button>
-        <button className="btn sm" onClick={() => { setLinkFor(null); setLinkTxt(''); }}>Skip</button>
-        <button className="btn sm" onClick={async () => { await update(unmarkUploaded(linkFor)); setLinkFor(null); toast('Undone'); }}>Undo</button>
-      </div>
-    </div>;
-  }
   if (!next) return <div className="empty">No ready video for the next slots. Make videos with Gen; they appear here as soon as Results/#X has video, thumbnail and description.</div>;
   const v = next.video!;
   const mins = minsUntil(next.when, now);
@@ -52,7 +38,7 @@ export function NextUpload({ compact = false, manual = false }: { compact?: bool
         <span className="row small" style={{ color: 'var(--muted)', gap: 6 }}><span className="dot" style={{ background: kColor(v.konzept) }} />Konzept {v.konzept ?? '?'} · {KONZEPTE[v.konzept ?? 0]?.name ?? v.title}</span>
         <div className="row" style={{ marginTop: 6, gap: 8 }}>
           <button className="btn primary sm" onClick={() => doUploadPack(v.num, toast)}><Icon name="upload" size={15} /> Upload pack</button>
-          <button className="btn sm" onClick={async () => { await update(markUploaded(snap, v.num)); setLinkFor(v.num); }} title="Mark uploaded"><Tick size={12} color="currentColor" /> Done</button>
+          <button className="btn sm" onClick={async () => { await update(markUploaded(snap, v.num)); toast(`#${v.num} marked uploaded`); }} title="Mark uploaded"><Tick size={12} color="currentColor" /> Done</button>
           <button className="btn sm icon" onClick={() => bb.openUrl('https://www.tiktok.com/tiktokstudio/upload')} title="Open TikTok Studio upload" aria-label="Open TikTok Studio upload"><TikTokLogo size={16} /></button>
         </div>
       </div>

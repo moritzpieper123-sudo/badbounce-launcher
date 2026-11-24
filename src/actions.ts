@@ -25,6 +25,3 @@ export function markUploaded(snap: Snapshot, num: number) {
 export function unmarkUploaded(num: number) {
   return (st: AppState): AppState => { const u = { ...st.uploads }; delete u[String(num)]; return { ...st, uploads: u }; };
 }
-export function setLink(num: number, link: string) {
-  return (st: AppState): AppState => { const u = st.uploads[String(num)]; if (!u) return st; return { ...st, uploads: { ...st.uploads, [String(num)]: { ...u, link: link.trim() || undefined } } }; };
-}

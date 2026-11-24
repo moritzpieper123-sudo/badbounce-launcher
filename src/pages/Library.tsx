@@ -42,7 +42,6 @@ export default function Library() {
           <span className="small dim">{up ? `Uploaded ${new Date(up.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : isReady(v) ? 'Ready to upload' : v.hasVideo ? 'Needs thumbnail/description' : 'In progress'}</span>
           <div className="row" style={{ gap: 6 }}>
             {isReady(v) && !up && <button className="btn sm primary" onClick={() => doUploadPack(v.num, toast)}><Icon name="upload" size={13} /> Upload</button>}
-            {up?.link && <button className="btn sm icon" onClick={() => bb.openUrl(up.link!)} title="Open the TikTok post" aria-label="Open the TikTok post"><TikTokLogo size={14} /></button>}
             <span style={{ flex: 1 }} />
             {isDesktop && <button className="btn sm icon" onClick={() => bb.openPath(v.folder)} title="Open folder" aria-label="Open folder"><Icon name="folder" size={14} /></button>}
             <button className={`btn sm icon ${open === v.num ? 'white' : ''}`} onClick={() => setOpen(open === v.num ? null : v.num)} title="Notes" aria-label="Notes"><Icon name="pen" size={14} /></button>
