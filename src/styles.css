@@ -961,3 +961,6 @@ main.content > .grid > *:nth-child(4) { animation-delay: .22s; } main.content > 
 
 .cr-actions .btn { flex: none; }
 .cr-actions .btn.icon { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.cat-head { display: flex; align-items: center; gap: 12px; margin: 22px 2px 10px; flex-wrap: wrap; }
+.cat-head h2 { font-size: 18px; }
+.cat-ico { width: 34px; height: 34px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; background: var(--surface); border: 1px solid var(--line); color: var(--yellow-text, #ffd24a); flex: none; }

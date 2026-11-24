@@ -38,7 +38,7 @@ export function AutoUpload({ num }: { num: number }) {
 }
 
 /** The "Up next" card with the one-click upload button. */
-export function NextUpload({ compact = false }: { compact?: boolean }) {
+export function NextUpload({ compact = false, manual = false }: { compact?: boolean; manual?: boolean }) {
   const { snap, update, toast } = useApp();
   const now = new Date(snap.now);
   const plan = buildPlan(snap, now, 14).filter((s) => !s.uploaded && s.state !== 'missed');
@@ -71,7 +71,7 @@ export function NextUpload({ compact = false }: { compact?: boolean }) {
         <span className="row small" style={{ color: 'var(--muted)', gap: 6 }}><span className="dot" style={{ background: kColor(v.konzept) }} />Konzept {v.konzept ?? '?'} · {KONZEPTE[v.konzept ?? 0]?.name ?? v.title}</span>
         <div className="row" style={{ marginTop: 6, gap: 8 }}>
           <button className="btn primary sm" onClick={() => doUploadPack(v.num, toast)}><Icon name="upload" size={15} /> Upload pack</button>
-          <AutoUpload num={v.num} />
+          {!manual && <AutoUpload num={v.num} />}
           <button className="btn sm" onClick={async () => { await update(markUploaded(snap, v.num)); setLinkFor(v.num); }} title="Mark uploaded"><Tick size={12} color="currentColor" /> Done</button>
           <button className="btn sm icon" onClick={() => bb.openUrl('https://www.tiktok.com/tiktokstudio/upload')} title="Open TikTok Studio upload" aria-label="Open TikTok Studio upload"><TikTokLogo size={16} /></button>
         </div>
