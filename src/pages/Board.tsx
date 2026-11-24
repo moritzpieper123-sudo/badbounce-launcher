@@ -1,11 +1,9 @@
 import React, { useRef, useState } from 'react';
 import { useApp } from '../ctx';
-import { allTasks, kColor, kName, setTaskCol, uid, ymd, KONZEPTE } from '../logic';
-import { markUploaded, unmarkUploaded } from '../actions';
+import { allTasks, kColor, kName, uid, KONZEPTE } from '../logic';
 import { Icon, Tick } from '../ui';
 import { Header, DueLabel } from './parts';
 import { useTaskDrag } from '../taskDrag';
-import { bb } from '../bridge';
 import type { Col, Task } from '../types';
 
 const COLS: { key: Col; name: string; dot: string }[] = [

@@ -5,7 +5,6 @@ import { doUploadPack } from '../actions';
 import { Header } from './parts';
 import { Icon, KChip, Stages } from '../ui';
 import { bb, isDesktop } from '../bridge';
-import { TikTokLogo } from '../logos';
 import type { Task } from '../types';
 
 export default function Library() {

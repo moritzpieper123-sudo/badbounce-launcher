@@ -14,7 +14,6 @@ export default function Upload() {
   const plan = buildPlan(snap, now, 4).filter((s) => !s.uploaded && s.state !== 'missed' && s.video);
   const all = Object.entries(snap.state.uploads).sort((a, b) => b[1].at.localeCompare(a[1].at));
   const recent = all.slice(0, 8);
-  const [edit, setEdit] = useState<Record<string, string>>({});
   const label = (v: { konzept: number | null } | undefined) => v ? `K${v.konzept ?? '?'} ${KONZEPTE[v.konzept ?? 0]?.name ?? ''}` : '';
   return <>
     <Header title="Upload" sub="You post in TikTok Studio yourself: upload pack, paste, post, then tick Done." right={<button className="btn" onClick={() => bb.openUrl('https://www.tiktok.com/tiktokstudio/upload')}><Icon name="upload" size={15} /> Open TikTok Studio</button>} />

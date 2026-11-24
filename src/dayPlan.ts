@@ -7,7 +7,7 @@
    - A concept is dropped after 3 judged posts with a median below half the channel median; a variant after 2 judged posts both below the plain posts of its concept.
      Dropped arms get one re-test every 14 days. */
 import type { Snapshot, Video } from './types';
-import { CIDS, CID_NAME, autoOf, cidOf, scorePosts, type AutoState, type PostScore } from './autopilot';
+import { CIDS, CID_NAME, autoOf, scorePosts, type AutoState, type PostScore } from './autopilot';
 import { VARIANTS, VARIANT_CIDS, variantOn, type VariantId } from './variants';
 import { addDays, at, parseYmd, slotsForDay, ymd } from './logic';
 
@@ -98,7 +98,7 @@ export function testShare(stats: ArmStat[], n: number): number {
 
 /** Plan one day: returns one item per slot (in slot order). */
 export function planDay(snap: Snapshot, now: Date, day: Date, pendingBy: Record<ArmKey, number> = {}, lastCid?: string | null): { items: PlanItem[]; stats: ArmStat[]; tests: number } {
-  const st = snap.state, au = autoOf(st);
+  const st = snap.state;
   const stats = armStats(snap, now, pendingBy);
   const slots = slotsForDay(day, st.settings.day1, st.settings.skipSlots).map((t) => at(day, t)).filter((d) => d.getTime() > now.getTime());
   const n = slots.length;

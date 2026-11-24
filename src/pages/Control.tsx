@@ -197,10 +197,8 @@ function ConceptRow({ s, max, canGen, onQueue, onCopy }: { s: ConceptStat; max: 
 
 /* "What is the autopilot doing, why, and when": right now, next 30 hours, and a log of what it already did. */
 function Overview({ d, au, now, gen, stock, uploads }: { d: ReturnType<typeof decide>; au: AutoState; now: Date; gen: GenStatus; stock: ReturnType<typeof stockOf>; uploads: AppState['uploads'] }) {
-  const lead = Math.max(20, au.leadMin ?? 40);
   const queued = au.genJobs.filter((j) => j.state === 'queued'), running = au.genJobs.find((j) => j.state === 'running');
   const upcoming = d.slots.filter((s) => s.when.getTime() > now.getTime() && s.when.getTime() - now.getTime() < 30 * 3600e3);
-  const nextUp = upcoming.find((s) => !s.taken);
   // headline: what is happening right now and what comes next
   let headline: string;
   if (!au.enabled) headline = 'The autopilot is OFF: nothing is rendered by itself. Press "Autopilot OFF" at the top to start it.';

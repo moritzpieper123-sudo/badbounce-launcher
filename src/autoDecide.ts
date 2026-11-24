@@ -1,9 +1,9 @@
 /* What the autopilot does right now: pure function (snapshot in, decision out), so it can be tested without the app. */
-import type { Snapshot, Video } from './types';
+import type { Snapshot } from './types';
 import { pickVariant } from './variants';
 import { addDays, at, hm, parseYmd, slotsForDay, slotMap, ymd } from './logic';
 import {
-  AUTO_GEN, CIDS, GEN_LEAD_H, RENDER_LEAD_MIN, LEAD_MIN, MOMENTUM_MIN_SLOTS, autoOf, cidOf, conceptStats, pickConcept, planSlots, scorePosts, stockOf,
+  AUTO_GEN, CIDS, GEN_LEAD_H, RENDER_LEAD_MIN, LEAD_MIN, MOMENTUM_MIN_SLOTS, autoOf, cidOf, conceptStats, planSlots, scorePosts, stockOf,
   type ConceptStat, type PlanRow, type PostScore,
 } from './autopilot';
 

@@ -4,7 +4,7 @@ import { dayNumber, fmtDay, phaseLabel, allTasks, ymd } from '../logic';
 import { Icon } from '../ui';
 import { Header } from './parts';
 import { NowPlaying } from '../music';
-import { Timeline, AutopilotPanel, NextSlotPanel, StatsPanel, GoalsPanel, WeekPanel, QueuePanel, ActivityPanel } from '../homeWidgets';
+import { Timeline, AutopilotPanel, NextSlotPanel, GoalsPanel, WeekPanel, QueuePanel, ActivityPanel } from '../homeWidgets';
 import { Spark, Count } from '../ui';
 import { fmtNum, kpis, konzeptTable, KONZEPTE } from '../logic';
 import { useHomeData } from '../Ambient';
@@ -21,7 +21,7 @@ export default function Today() {
   const h = now.getHours();
   const greet = h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
   const dn = dayNumber(now, snap.state.settings.day1);
-  const k = kpis(snap), kt = konzeptTable(snap), days = snap.state.stats.days;
+  const k = kpis(snap), kt = konzeptTable(snap);
   const due = allTasks(snap).filter((t) => t.col !== 'done' && (!t.due || t.due <= today)).length;
   const sub = dn < 1 ? `${fmtDay(now)} · warm-up not started` : `${fmtDay(now)} · Day ${dn} · ${phaseLabel(dn, now)}`;
   return <>
