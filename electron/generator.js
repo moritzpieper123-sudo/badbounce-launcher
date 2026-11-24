@@ -109,20 +109,22 @@ function run(py, args, env, cwd, onLine) {
    The launcher starts Claude Code headless (`claude -p`) in the vault, with the ranked job as the prompt. Claude follows the Konzept sheet + engine README
    and writes Results\#N like a normal Gen. Needs the `claude` command on the PC, signed in (Control Room > Autopilot checks it). */
 const CONCEPT_NUM = (cid) => parseInt(String(cid).slice(1), 10);
-function claudePrompt(cid, num, reason, deadline) {
+function claudePrompt(cid, num, reason, deadline, variant) {
   const k = CONCEPT_NUM(cid);
+  const vl = variant === 'job' ? 'job-application form + example sound' : variant === 'cat' ? 'snow-leopard picture, NO sound' : '';
   return [
     `You are the Badbounce video producer. Make ONE new video now: concept ${cid} (Konzept ${k}), video number #${num}. Reason: ${reason}.${deadline ? ` It must be finished before ${deadline}.` : ''}`,
     `Do the normal Gen process without asking questions (nobody is watching; decide yourself):`,
     `- Read Konzepte\\Konzept ${k}\\*.md (the section "Standard rules" / "Final rules") and Engine\\${cid}\\README.md + report.md. Use only that Konzept's own engine in Engine\\${cid} (run commands from inside that folder) and its original sounds.`,
     `- Make a NEW variant: new seed, and the Konzept's variable (boss, shape, machine, flags, heads, song only if the sheet says a song is allowed without asking) that has not been used in an earlier Results folder. Never repeat an earlier video.`,
     `- Render at scale 1.0 (upload quality), 60-70 s, counts rounded to the nearest thousand, standard watermark, ALL CAPS titles, no slow motion. Check the file with ffprobe (duration) before you finish.`,
-    `- Write exactly these files into Results\\_building\\#${num}\\ (NOT into Results\\#${num}; the launcher moves them when all four are complete) : "Badbounce #${num}.mp4", "Thumbnail #${num}.png" (the standard thumbnail of this Konzept), "Description #${num}.txt" (caption formula Opt #16 from Konzepte\\Konzepte Overview.md: searchable question, max 5 hashtags, no #badbounce, TikTok-flag safe, see the sheets), and "Notes #${num}.md" whose first line is "# <short title>" followed by the line "Konzept ${k} (${cid})" and the seed / variant numbers you used.`,
+    ...(variant ? [`- OVERLAY VARIANT "${variant}" (${vl}), Mo's standard recipe in Engine\\Variants\\README.md: render the normal video first, as Results\\_building\\#${num}\\normal.mp4 (it must pass every rule above on its own). Then run from any folder: python Engine\\Variants\\apply_variant.py "Results\\_building\\#${num}\\normal.mp4" ${variant} "Results\\_building\\#${num}\\Badbounce #${num}.mp4" and delete normal.mp4 afterwards. Thumbnail and description stay the normal ones of this Konzept (the description must not mention the overlay). If Engine\\Variants is missing or the script fails, write nothing and answer FAILED.`] : []),
+    `- Write exactly these files into Results\\_building\\#${num}\\ (NOT into Results\\#${num}; the launcher moves them when all four are complete) : "Badbounce #${num}.mp4", "Thumbnail #${num}.png" (the standard thumbnail of this Konzept), "Description #${num}.txt" (caption formula Opt #16 from Konzepte\\Konzepte Overview.md: searchable question, max 5 hashtags, no #badbounce, TikTok-flag safe, see the sheets), and "Notes #${num}.md" whose first line is "# <short title>" followed by the line "Konzept ${k} (${cid})" and the seed / variant numbers you used.${variant ? ` Add its own line "Variant: ${variant}" (the launcher reads it).` : ''}`,
     `- Do NOT upload or post anything and do not change other Results folders, Final folders or engines. If something is impossible, write nothing into Results and say why in one sentence.`,
     `Finish with one line: DONE #${num} or FAILED #${num}: <reason>.`,
   ].join('\n');
 }
-function startClaude({ vault, cid, num, reason, deadline, model, onStatus, onDone }) {
+function startClaude({ vault, cid, num, reason, deadline, model, variant, onStatus, onDone }) {
   const final = path.join(vault, 'Results', `#${num}`), dir = path.join(vault, 'Results', '_building', `#${num}`);
   if (fs.existsSync(final) && safeLs(final).length) return { ok: false, error: `Results\\#${num} already exists` };
   try { fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true }); } catch (e) { return { ok: false, error: `cannot prepare ${dir}: ${e.message}` }; }
@@ -136,7 +138,7 @@ function startClaude({ vault, cid, num, reason, deadline, model, onStatus, onDon
   const exe = cands.find((c) => fs.existsSync(c)) || 'claude';
   const viaShell = process.platform === 'win32' && !/\.exe$/i.test(exe);
   const p = spawn(viaShell && exe.includes(' ') ? `"${exe}"` : exe, args, { cwd: vault, shell: viaShell, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
-  child = p; cancelled = false; p.stdin.on('error', () => {}); p.stdin.end(claudePrompt(cid, num, reason || 'planned', deadline));
+  child = p; cancelled = false; p.stdin.on('error', () => {}); p.stdin.end(claudePrompt(cid, num, reason || 'planned', deadline, variant));
   try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* */ }
   let out = '', killed = false;
   const timer = setTimeout(() => { killed = true; killTree(p); }, 100 * 60e3);
@@ -158,10 +160,10 @@ function startClaude({ vault, cid, num, reason, deadline, model, onStatus, onDon
   return { ok: true };
 }
 
-function start({ vault, cid, num, via, reason, deadline, model, onStatus, onDone }) {
+function start({ vault, cid, num, via, reason, deadline, model, variant, onStatus, onDone }) {
   if (running) return { ok: false, error: `already rendering #${running.num}` };
   const R = recipes(vault)[cid];
-  if (via === 'claude' || !R) return startClaude({ vault, cid, num, reason, deadline, model, onStatus, onDone });
+  if (variant || via === 'claude' || !R) return startClaude({ vault, cid, num, reason, deadline, model, variant, onStatus, onDone });
   const engine = path.join(vault, 'Engine', cid);
   if (!fs.existsSync(engine)) return { ok: false, error: `Engine\\${cid} not found` };
   const dir = path.join(vault, 'Results', `#${num}`);

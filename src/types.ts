@@ -10,6 +10,7 @@ export interface Video {
   hasThumb: boolean;
   hasDesc: boolean;
   hasNotes?: boolean;
+  variant?: 'job' | 'cat' | null;   // overlay variant from the Notes line "Variant: job|cat" (see variants.ts)
   videoFile?: string;
   thumbFile?: string;
   descFile?: string;

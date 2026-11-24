@@ -8,7 +8,7 @@ export interface BB {
   saveState(state: AppState): Promise<void>;
   onChange(cb: () => void): () => void;
   uploadPack(num: number): Promise<{ ok: boolean; folder?: string; error?: string }>;
-  genStart?(job: { cid: string; num: number; via?: 'claude' | 'launcher'; reason?: string; deadline?: string; model?: string }): Promise<{ ok: boolean; error?: string }>;
+  genStart?(job: { cid: string; num: number; via?: 'claude' | 'launcher'; reason?: string; deadline?: string; model?: string; variant?: 'job' | 'cat' }): Promise<{ ok: boolean; error?: string }>;
   genQueueWrite?(jobs: unknown[]): Promise<boolean>;
   genStatus?(): Promise<GenStatus>;
   genReady?(): Promise<string[]>;

@@ -192,9 +192,10 @@ function scanVideos() {
     const konzept = km ? +km[1] : idx[num]?.konzept ?? null;
     const cm = notes.match(/\bK(1[01]|[1-9])([abc])?\b/);
     const cid = cm ? `K${cm[1]}${cm[2] || ''}` : null;
+    const vm = notes.match(/^\s*Variant:\s*(job|cat)\b/mi); const variant = vm ? vm[1].toLowerCase() : null;
     const titleM = notes.match(/^#\s+(.+)$/m);
     let created = 0; try { created = fs.statSync(folder).birthtimeMs || fs.statSync(folder).mtimeMs; } catch { /* */ }
-    out.push({ num, folder, konzept, cid, title: idx[num]?.title || (titleM ? titleM[1] : name), hasVideo: !!vid, hasThumb: !!th, hasDesc: !!de, hasNotes: !!no,
+    out.push({ num, folder, konzept, cid, title: idx[num]?.title || (titleM ? titleM[1] : name), hasVideo: !!vid, hasThumb: !!th, hasDesc: !!de, hasNotes: !!no, variant,
       videoFile: vid && path.join(folder, vid), thumbFile: th && path.join(folder, th), descFile: de && path.join(folder, de), description: desc,
       durationSec: vid ? mp4Duration(path.join(folder, vid)) : null, createdMs: created });
   }
@@ -473,7 +474,7 @@ ipcMain.handle('openUrl', (_e, u) => openLink(u));
 ipcMain.handle('openPath', (_e, p) => shell.openPath(p));
 ipcMain.handle('openVault', (_e, sub) => { const p = path.join(vault(), sub || ''); if (fs.existsSync(p)) return shell.openPath(p); fs.mkdirSync(p, { recursive: true }); return shell.openPath(p); });
 /* Autopilot: render one new video in the background (hidden, low priority) */
-ipcMain.handle('genStart', (_e, job) => generator.start({ vault: vault(), cid: String(job.cid), num: +job.num, via: job.via, reason: job.reason, deadline: job.deadline, model: job.model, onStatus: (st) => sendAll('genStatus', st) }));
+ipcMain.handle('genStart', (_e, job) => generator.start({ vault: vault(), cid: String(job.cid), num: +job.num, via: job.via, reason: job.reason, deadline: job.deadline, model: job.model, variant: /^(job|cat)$/.test(job.variant) ? job.variant : undefined, onStatus: (st) => sendAll('genStatus', st) }));
 ipcMain.handle('genStatus', () => generator.status());
 ipcMain.handle('genStop', () => generator.cancel());
 /* small atomic changes of the autopilot state from the island window (it must not save a whole stale copy of the state) */

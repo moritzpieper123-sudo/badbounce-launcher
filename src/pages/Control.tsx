@@ -10,6 +10,7 @@ import { fmtNum, hm, kColor, vn, ymd } from '../logic';
 import type { AppState, Video } from '../types';
 import { AUTO_GEN, CID_NAME, autoOf, cidOf, stockOf, type AutoState, type ConceptStat, type PostScore } from '../autopilot';
 import { decide } from '../autoDecide';
+import { VARIANTS, VARIANT_LABEL, variantOn } from '../variants';
 
 const ST_COL: Record<string, string> = { hot: '#FF7A59', rising: '#FFC63A', new: '#AAC3F0', ok: '#7FD9A8', weak: '#B8A2FF', flop: '#FF8F7A', winner: '#FFC63A', failing: '#FF8F7A' };
 const ST_TXT: Record<string, string> = { hot: 'HOT', rising: 'RISING', new: 'NEW', ok: 'OK', weak: 'WEAK', flop: 'FLOP', winner: 'WINNER', failing: 'FAILING' };
@@ -49,6 +50,7 @@ export default function Control() {
         <Icon name="sparkle" size={15} /> Autopilot {au.enabled ? 'ON' : 'OFF'}</button>
       <button className="btn" onClick={() => set((a) => ({ ...a, producer: viaClaude ? 'launcher' : 'claude' }))} title="Who renders the videos"><Icon name="film" size={15} /> Rendered by {viaClaude ? 'Claude' : 'launcher (K6b, K9 only)'}</button>
       <button className={`btn ${au.autoApprove ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, autoApprove: !a.autoApprove }))} title="ON (always): a new video counts as approved without your review, but only if it is 60-75 s long and has all 4 files (video, thumbnail, description, notes). A video without notes never fails anything, it just waits for your review. OFF: only videos you approve count as approved; if none is approved when a slot is close, you get an alert.">Auto-approve {au.autoApprove ? 'ON' : 'OFF'}</button>
+      {VARIANTS.map((x) => <button key={x.id} className={`btn ${variantOn(au, x.id) ? 'primary' : ''}`} onClick={() => set((a) => ({ ...a, variants: { ...a.variants, [x.id]: !variantOn(a, x.id) } }))} title={`Variant "${x.label}" (${x.sub}). ON: the autopilot tests it once on every eligible concept (K1, K5, K6a, K7a, K7b, K8, K9, K10) and rides it when its post gets hot. OFF: never used.`}>{x.label} variant {variantOn(au, x.id) ? 'ON' : 'OFF'}</button>)}
       {viaClaude && <button className="btn" onClick={() => set((a) => ({ ...a, model: ({ sonnet: 'haiku', haiku: 'opus', opus: 'sonnet' } as const)[a.model ?? 'sonnet'] }))} title="Which Claude model renders the videos (click to change). Sonnet is the safe default, Haiku is cheapest, Opus is the strongest.">Model: {au.model ?? 'sonnet'}</button>}
       {isDesktop && <button className="btn" onClick={() => bb.statsFetch?.()}><Icon name="update" size={15} /> Pull data now</button>}
     </>} />
@@ -116,7 +118,7 @@ export default function Control() {
         {d.rows[0] && <p className="small muted">Why the next one: {d.rows[0].reason}</p>}
         {au.genJobs.length > 0 && <>
           <h2 style={{ marginTop: 6 }}>Render queue</h2>
-          {[...au.genJobs].reverse().slice(0, 8).map((j) => <div key={j.id} className="row between small" style={{ gap: 8, flexWrap: 'wrap' }}><span><b>{j.cid}</b> #{j.num} <span className="dim">· {j.reason}{j.first ? ' · runs next' : ''}</span></span>
+          {[...au.genJobs].reverse().slice(0, 8).map((j) => <div key={j.id} className="row between small" style={{ gap: 8, flexWrap: 'wrap' }}><span><b>{j.cid}</b> #{j.num}{j.variant && <span className="hm-tag" style={{ marginLeft: 6 }}>{VARIANT_LABEL[j.variant]}</span>} <span className="dim">· {j.reason}{j.first ? ' · runs next' : ''}</span></span>
             <span className="row" style={{ gap: 6 }}>
               <span style={{ color: j.state === 'error' ? 'var(--red)' : j.state === 'done' ? 'var(--green)' : 'var(--muted)' }}>{j.state}{j.msg && j.state === 'error' ? `: ${j.msg.slice(0, 60)}` : ''}</span>
               {j.state === 'queued' && <><button className="btn sm" title="Render this one before all others" onClick={() => set((a) => ({ ...a, genJobs: a.genJobs.map((x) => (x.id === j.id ? { ...x, first: true } : { ...x, first: false })) }))}>Run next</button>
@@ -139,7 +141,7 @@ function ReviewCard({ v, approved, onDecide, planned }: { v: Video; approved: bo
       {play && v.videoFile ? <video src={bb.fileUrl(v.videoFile)} controls autoPlay playsInline /> : <><Thumb v={v} w={108} h={192} /><span className="cr-play"><Icon name="play" size={20} /></span></>}
     </div>
     <div className="cr-info">
-      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}><b>#{vn(v.num)}</b>{cid && <span className="chip" style={{ color: cidColor(cid) }}><span className="dot" style={{ background: cidColor(cid) }} />{cid} {CID_NAME[cid]}</span>}{approved && <span className="chip" style={{ color: 'var(--green)' }}>approved</span>}{planned && planned.cid === cid && <span className="chip">planned today</span>}</div>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}><b>#{vn(v.num)}</b>{cid && <span className="chip" style={{ color: cidColor(cid) }}><span className="dot" style={{ background: cidColor(cid) }} />{cid} {CID_NAME[cid]}</span>}{v.variant && <span className="chip">{VARIANT_LABEL[v.variant]}</span>}{approved && <span className="chip" style={{ color: 'var(--green)' }}>approved</span>}{planned && planned.cid === cid && <span className="chip">planned today</span>}</div>
       <div className="small muted cr-desc">{(v.description || '').split('\n').filter(Boolean).slice(0, 2).join(' ')}</div>
       <div className="small dim">{v.durationSec ? `${Math.round(v.durationSec)} s` : ''}{v.durationSec && (v.durationSec < 60 || v.durationSec > 70) ? ' · outside 60-70 s' : ''}</div>
       <div className="row cr-actions" style={{ gap: 6, flexWrap: 'wrap' }}>

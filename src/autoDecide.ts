@@ -1,5 +1,6 @@
 /* What the autopilot does right now: pure function (snapshot in, decision out), so it can be tested without the app. */
 import type { Snapshot, Video } from './types';
+import { pickVariant } from './variants';
 import { addDays, at, hm, parseYmd, slotsForDay, slotMap, ymd } from './logic';
 import {
   AUTO_GEN, CIDS, GEN_LEAD_H, RENDER_LEAD_MIN, LEAD_MIN, MOMENTUM_MIN_SLOTS, autoOf, cidOf, conceptStats, pickConcept, planSlots, scorePosts, stockOf,
@@ -10,7 +11,7 @@ export interface Decision {
   scores: PostScore[]; stats: ConceptStat[];
   slots: { iso: string; when: Date; taken: boolean; inWindow: boolean }[];   // next 3 days
   rows: PlanRow[];                                                        // plan for the open slots of the generation window
-  enqueue: { cid: string; reason: string; deadline?: string }[];                             // videos to render now
+  enqueue: { cid: string; reason: string; deadline?: string; variant?: 'job' | 'cat' }[];                             // videos to render now
   claude: { cid: string; need: number; why: string }[];                   // concepts that need a Gen round with Claude
   paused: string | null;                                                  // renders are on hold after repeated failures
   noVideo: { slotIso: string; waiting: number } | null;                   // a slot is close but nothing is approved
@@ -63,7 +64,8 @@ export function decide(snap: Snapshot, now: Date, o: { canGen: boolean; genReady
       const mine = rows.filter((r) => r.cid === s.cid);   // job i is for the i-th planned slot of this concept (earliest deadline first)
       for (let i = 0; i < want && slotsLeft > 0; i++, slotsLeft--) {
         const slot = mine[Math.max(0, have) + i]?.slotIso;
-        enqueue.push({ cid: s.cid, reason: hot ? `follow-up: ${s.cid} is hot (score ${Math.round(s.hotScore)}), more of it while it is viral` : `fills the ${slot ? hm(new Date(slot)) : 'next'} slot${mine[Math.max(0, have) + i] ? ': ' + mine[Math.max(0, have) + i].reason : ''}`, deadline: slot ? new Date(new Date(slot).getTime() - RENDER_LEAD_MIN * 60e3).toISOString() : undefined });
+        const pv = pickVariant(s.cid, { au, videos: snap.videos, scores, hotNum: hot ? s.hotPost?.num ?? null : null });
+        enqueue.push({ cid: s.cid, variant: pv.variant, reason: (hot ? `follow-up: ${s.cid} is hot (score ${Math.round(s.hotScore)}), more of it while it is viral` : `fills the ${slot ? hm(new Date(slot)) : 'next'} slot${mine[Math.max(0, have) + i] ? ': ' + mine[Math.max(0, have) + i].reason : ''}`) + (pv.why ? ` · ${pv.why}` : ''), deadline: slot ? new Date(new Date(slot).getTime() - RENDER_LEAD_MIN * 60e3).toISOString() : undefined });
       }
     } else if (hot || s.status === 'winner') {
       claude.push({ cid: s.cid, need: want, why: hot ? 'hot right now, follow-ups wanted' : 'a winner, stock is low' });

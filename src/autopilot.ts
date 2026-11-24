@@ -32,7 +32,7 @@ const CHECK_H = [1, 3, 6, 12, 24];    // age checkpoints for the view velocity
 
 /* ---------- state kept in AppState.auto ---------- */
 export interface AutoAlert { id: string; kind: 'stats' | 'upload' | 'gen' | 'stock' | 'studio' | 'hot' | 'info'; title: string; sub: string; at: string; last: string; count: number; resolved?: boolean; read?: boolean }
-export interface GenJob { id: string; cid: string; num: number; state: 'queued' | 'running' | 'done' | 'error'; at: string; msg?: string; reason: string; deadline?: string; endedAt?: string; first?: boolean }
+export interface GenJob { id: string; cid: string; num: number; state: 'queued' | 'running' | 'done' | 'error'; at: string; msg?: string; reason: string; deadline?: string; endedAt?: string; first?: boolean; variant?: 'job' | 'cat' }
 export interface LogEntry { t: string; kind: 'plan' | 'render' | 'upload' | 'info' | 'warn'; text: string }
 export interface AutoState {
   log?: LogEntry[];                         // what the autopilot did and why (newest last)
@@ -44,6 +44,7 @@ export interface AutoState {
   autoApprove?: boolean;                    // night slots: schedule a waiting video even if you have not approved it (off by default)
   model?: 'sonnet' | 'haiku' | 'opus';       // Claude model that renders (default sonnet: the videos are a fixed kit, Mo 2026-11-24)
   producer?: 'claude' | 'launcher';          // who renders: Claude Code on the PC (default, Mo 2026-11-24) or the launcher's own recipes
+  variants?: { job?: boolean; cat?: boolean };   // overlay variants the autopilot may use (both on by default), see variants.ts
   hotSeen?: Record<string, string>;         // post link -> ISO when we announced it
   lastPlan?: { at: string; slots: PlanRow[] };
 }
