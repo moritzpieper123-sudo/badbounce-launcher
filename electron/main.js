@@ -41,7 +41,7 @@ const dataDir = () => path.join(vault(), '.claude-workspace', 'launcher-data');
 const stateFile = () => path.join(dataDir(), 'state.json');
 
 /* ---------- state ---------- */
-function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true, posted1115: true, skip1119: true, skip1124: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
+function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true, posted1115: true, skip1119: true, skip1124: true, skip1124b: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
 function loadState() {
   try {
     const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
@@ -94,12 +94,13 @@ function loadState() {
       st.migrations = { ...(st.migrations || {}), skip1119: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
-    // Mo 2026-11-24: he uploads by hand and wants the plan to start with tomorrow's first slot: today's remaining slots are skipped (a slot that already holds an upload stays). One time only.
-    if (!(st.migrations || {}).skip1124) {
+    // Mo 2026-11-24: he uploads by hand; the plan starts with tomorrow's first slot. Every free slot from 21 to 24 Nov is skipped (a slot that already holds an upload stays), so nothing shows as "late". One time only.
+    if (!(st.migrations || {}).skip1124b) {
       const have = new Set(Object.values(st.uploads || {}).map((u) => new Date(u.slot || u.at).toISOString()));
-      const skip = [[1, 5], [5, 55], [10, 40], [15, 30], [20, 20]].map(([h, m]) => new Date(2026, 10, 24, h, m, 0, 0).toISOString()).filter((iso) => !have.has(iso));
+      const skip = [];
+      for (const day of [21, 22, 23, 24]) for (const [h, m] of [[1, 5], [5, 55], [10, 40], [15, 30], [20, 20]]) { const iso = new Date(2026, 10, day, h, m, 0, 0).toISOString(); if (!have.has(iso)) skip.push(iso); }
       st.settings.skipSlots = Array.from(new Set([...(st.settings.skipSlots || []), ...skip]));
-      st.migrations = { ...(st.migrations || {}), skip1124: true };
+      st.migrations = { ...(st.migrations || {}), skip1124: true, skip1124b: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
     return st;
@@ -396,7 +397,20 @@ ipcMain.handle('mailRead', async (_e, id) => { const r = await gmail.markRead(St
 ipcMain.handle('mailAllowModify', async () => { try { await gmail.allowModify(); broadcast(); return { ok: true }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
 ipcMain.handle('mailDisconnect', () => { gmail.disconnect(); broadcast(); });
 ipcMain.handle('mailBody', async (_e, id) => { try { return { ok: true, ...(await gmail.body(String(id))) }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
-function restartWithUpdate(hidden) { if (updater.apply(vault())) { quitting = true; app.relaunch({ args: hidden ? ['--hidden'] : [] }); app.exit(0); return true; } broadcast(); return false; }
+/* Mo 2026-11-24: an update must not stop a running render. While Claude renders, the new files are unpacked and the
+   windows are only RELOADED (the render is a child of this process, a restart would kill it). Changes to electron/*.js
+   take effect at the next real start; the screens (dist) are new immediately. */
+function restartWithUpdate(hidden) {
+  const rendering = (() => { try { return generator.status().state === 'running'; } catch { return false; } })();
+  if (updater.apply(vault())) {
+    if (rendering) {
+      for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed() && w.webContents) { try { w.webContents.reloadIgnoringCache(); } catch { /* */ } } }
+      return true;
+    }
+    quitting = true; app.relaunch({ args: hidden ? ['--hidden'] : [] }); app.exit(0); return true;
+  }
+  broadcast(); return false;
+}
 ipcMain.handle('applyUpdate', () => restartWithUpdate(false));
 const allWins = () => BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && w !== islandWin);
 const sendAll = (ch, ...a) => { for (const w of allWins()) w.webContents.send(ch, ...a); };
