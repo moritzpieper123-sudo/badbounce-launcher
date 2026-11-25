@@ -150,10 +150,17 @@ export function buildPlan(snap: Snapshot, from: Date, days: number): PlannedSlot
   let prevK: number | null = lastUp ? byNum.get(+lastUp[0])?.konzept ?? null : null;
   let rotIdx = prevK != null ? ROTATION.indexOf(prevK) : -1;
 
-  const pick = (): Video | null => {
+  // the day plan decided which video belongs in which slot (chooser): honour it when that video exists
+  const planned = new Map<string, number>();
+  for (const pl of Object.values(st.auto?.plans ?? {})) for (const i of pl.items) planned.set(i.slotIso, i.num);
+  const pick = (key = ''): Video | null => {
     if (!pool.length) return null;
-    let cands = pool.filter((v) => v.konzept == null || v.konzept !== prevK);
-    if (!cands.length) cands = pool;
+    const pn = planned.get(key); const pv = pn != null ? pool.find((v) => v.num === pn) : undefined;
+    if (pv) { pool.splice(pool.indexOf(pv), 1); return pv; }
+    const base = pool.filter((v) => ![...planned.values()].includes(v.num));   // videos planned for another slot wait for it
+    const src = base.length ? base : pool;
+    let cands = src.filter((v) => v.konzept == null || v.konzept !== prevK);
+    if (!cands.length) cands = src;
     let chosen: Video;
     if (useScores) {
       chosen = [...cands].sort((a, b) => (scores[b.konzept ?? 0] ?? 0) - (scores[a.konzept ?? 0] ?? 0) || a.num - b.num)[0];
@@ -189,7 +196,7 @@ export function buildPlan(snap: Snapshot, from: Date, days: number): PlannedSlot
       }
       const past = when.getTime() < now.getTime();
       if (past && day < oldest) { out.push({ date: ds, time, when, video: null, uploaded: false, state: 'missed' }); continue; }
-      const v = pick();
+      const v = pick(key);
       if (v) { prevK = v.konzept; if (v.konzept != null) rotIdx = ROTATION.indexOf(v.konzept); }
       let state: PlannedSlot['state'] = v ? 'ready' : 'missing';
       if (past) state = 'overdue';
