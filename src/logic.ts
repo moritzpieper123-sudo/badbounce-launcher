@@ -141,7 +141,8 @@ export function buildPlan(snap: Snapshot, from: Date, days: number): PlannedSlot
   // uploads keyed by slot
   const uploadsBySlot = new Map<string, number>();
   for (const [n, slot] of slotMap(st)) uploadsBySlot.set(slot, n);
-  const pool = snap.videos.filter((v) => isReady(v) && !isUploaded(st, v.num)).sort((a, b) => a.num - b.num);
+  const apr = st.auto?.approvals ?? {}, gated = !!st.auto?.enabled;   // autopilot on: only approved videos are offered for upload; a rejected video never is
+  const pool = snap.videos.filter((v) => isReady(v) && !isUploaded(st, v.num) && apr[String(v.num)] !== 'no' && (!gated || apr[String(v.num)] === 'ok')).sort((a, b) => a.num - b.num);
   const scores = konzeptScores(snap);
   const useScores = Object.keys(scores).length >= 2;
   // last uploaded Konzept, for "never twice in a row"

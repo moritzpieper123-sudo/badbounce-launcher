@@ -100,10 +100,13 @@ export function testShare(stats: ArmStat[], n: number): number {
 /** Slots that already hold an upload (Mo posts by hand and marks them). */
 const heldSlots = (st: Snapshot['state']) => new Set(Object.values(st.uploads || {}).map((u) => new Date(u.slot || u.at).getTime()));
 
-export function planDay(snap: Snapshot, now: Date, day: Date, pendingBy: Record<ArmKey, number> = {}, lastCid?: string | null): { items: PlanItem[]; stats: ArmStat[]; tests: number } {
+/** Free slots of a day (not yet passed, not holding an upload). */
+export const openSlots = (snap: Snapshot, now: Date, day: Date) => slotsForDay(day, snap.state.settings.day1, snap.state.settings.skipSlots).map((t) => at(day, t)).filter((d) => d.getTime() > now.getTime() && !heldSlots(snap.state).has(d.getTime()));
+
+export function planDay(snap: Snapshot, now: Date, day: Date, pendingBy: Record<ArmKey, number> = {}, lastCid?: string | null, reserve = 0): { items: PlanItem[]; stats: ArmStat[]; tests: number } {
   const st = snap.state;
   const stats = armStats(snap, now, pendingBy);
-  const slots = slotsForDay(day, st.settings.day1, st.settings.skipSlots).map((t) => at(day, t)).filter((d) => d.getTime() > now.getTime() && !heldSlots(st).has(d.getTime()));   // slots that already hold an upload (by hand) are not planned again
+  const slots = openSlots(snap, now, day).slice(reserve);   // slots that hold an upload (by hand) are not planned again; the first `reserve` slots will be filled by videos that already exist or are planned
   const n = slots.length;
   if (!n) return { items: [], stats, tests: 0 };
   const dayCount: Record<string, number> = {}, armCount: Record<ArmKey, number> = {};

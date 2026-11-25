@@ -3,7 +3,7 @@
 import { bb } from '../bridge';
 import type { Snapshot } from '../types';
 import { autoOf, cidOf, type AutoState } from '../autopilot';
-import { armKey, planDay, planTarget } from '../dayPlan';
+import { armKey, openSlots, planDay } from '../dayPlan';
 import { addDays, parseYmd, ymd } from '../logic';
 
 export const PLAN_HOUR = 22;       // the plan for tomorrow is made from 22:00 (Berlin), so it is ready well before the 00:00 render run
@@ -18,9 +18,12 @@ export async function dayTick(c: Ctx) {
   const today = parseYmd(ymd(now));
   // 1. planning: always TWO days ahead (Mo 2026-11-24): from 22:00 on day D the plan for D+2 is made; before 22:00 the days up to D+1 are covered. A day with no open slot is skipped.
   const lastDay = addDays(today, now.getHours() >= PLAN_HOUR ? 2 : 1);
+  // videos that already exist (not rejected, not posted) or are planned but not rendered yet will fill the earliest free slots: those slots are not planned again
+  let reserve = snap.videos.filter((v) => v.hasVideo && v.hasThumb && v.hasDesc && !snap.state.uploads[String(v.num)] && au.approvals[String(v.num)] !== 'no').length;
+  { const haveN = new Set(snap.videos.map((v) => v.num)); for (const pl of Object.values(au.plans ?? {})) reserve += pl.items.filter((i) => !haveN.has(i.num)).length; }
   for (let d = today; d.getTime() <= lastDay.getTime(); d = addDays(d, 1)) {
     const date = ymd(d);
-    if (au.plans?.[date] || au.dayPlan?.date === date || done.has(date)) continue;
+    if (au.plans?.[date] || au.dayPlan?.date === date || done.has(date)) { reserve = Math.max(0, reserve - openSlots(snap, now, d).length); continue; }
     if (planning) return;
     planning = true;
     try {
@@ -30,8 +33,8 @@ export async function dayTick(c: Ctx) {
       for (const v of snap.videos) if (!snap.state.uploads[String(v.num)]) bump(cidOf(v), v.variant ?? undefined);
       const have = new Set(snap.videos.map((v) => v.num));
       for (const pl of Object.values(plans)) for (const i of pl.items) if (!have.has(i.num)) bump(i.cid, i.variant);   // planned, not rendered yet
-      const r = planDay(snap, now, d, pendingBy, null);
-      if (!r.items.length) { done.add(date); continue; }
+      const r = planDay(snap, now, d, pendingBy, null, reserve);
+      if (!r.items.length) { reserve = Math.max(0, reserve - openSlots(snap, now, d).length); done.add(date); continue; }
       let n = Math.max(0, ...snap.videos.map((v) => Math.floor(v.num)), ...Object.values(plans).flatMap((pl) => pl.items.map((i) => i.num)));   // failed numbers are reused: only delivered or planned videos count
       const items = r.items.map((i) => ({ ...i, num: ++n }));
       const plan = { date, at: now.toISOString(), items, got: [] as number[] };

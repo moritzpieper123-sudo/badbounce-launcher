@@ -6,8 +6,8 @@ import { bb, isDesktop } from '../bridge';
 import type { GenStatus } from '../bridge';
 import { Header, Thumb } from './parts';
 import { Icon, Spark } from '../ui';
-import { fmtNum, hm, kColor, vn, ymd } from '../logic';
-import type { AppState, Video } from '../types';
+import { buildPlan, fmtNum, hm, kColor, vn, ymd } from '../logic';
+import type { Snapshot, AppState, Video } from '../types';
 import { AUTO_GEN, CID_NAME, autoOf, cidOf, stockOf, type AutoState, type ConceptStat, type PostScore } from '../autopilot';
 import { decide } from '../autoDecide';
 import { VARIANTS, VARIANT_LABEL, variantOn } from '../variants';
@@ -70,7 +70,7 @@ export default function Control() {
       <div className="cr-stat"><small>Last data pull</small><b>{lastPull ? ago(lastPull) : '–'}</b></div>
     </section>
 
-    <Overview d={d} au={au} now={now} gen={gen} stock={stock} uploads={snap.state.uploads} />
+    <Overview snap={snap} d={d} au={au} now={now} gen={gen} stock={stock} uploads={snap.state.uploads} />
 
     {alerts.length > 0 && <section className="glass card cr-alerts">
       <h2><Icon name="bell" size={16} /> Needs you</h2>
@@ -86,9 +86,10 @@ export default function Control() {
     <section className="glass card">
       <div className="between"><h2>Review queue <span className="chip">{stock.pending.length} new</span></h2>
         {!au.autoApprove && stock.pending.some((v) => planNums.has(v.num)) && <button className="btn sm primary" onClick={approveTomorrow}><Icon name="check" size={14} /> Approve tomorrow's {stock.pending.filter((v) => planNums.has(v.num)).length}</button>}</div>
-      {!stock.pending.length && !stock.approved.length && <div className="empty">Nothing waiting. New videos appear here the moment they are rendered; approve the ones you want to post.</div>}
+      {!stock.pending.length && <div className="empty">Nothing waiting for review. New videos appear here the moment they are rendered; approved ones move to the Upload page.</div>}
+      {stock.approved.length > 0 && <p className="small dim">{stock.approved.length} approved video{stock.approved.length > 1 ? 's' : ''} ({stock.approved.map((v) => '#' + v.num).join(', ')}) wait on the Upload page. <button className="chip chip-btn" onClick={() => stock.approved.forEach((v) => decide1(v.num, null))}>Undo all</button></p>}
       <div className="cr-queue">
-        {[...stock.pending, ...stock.approved].map((v) => <ReviewCard key={v.num} v={v} approved={au.approvals[String(v.num)] === 'ok'} onDecide={decide1} planned={d.rows.find((r) => r.cid === cidOf(v))} />)}
+        {[...stock.pending].map((v) => <ReviewCard key={v.num} v={v} approved={au.approvals[String(v.num)] === 'ok'} onDecide={decide1} planned={d.rows.find((r) => r.cid === cidOf(v))} />)}
       </div>
       {stock.rejected.length > 0 && <p className="small dim">{stock.rejected.length} rejected video{stock.rejected.length > 1 ? 's' : ''} stay in Results and are never offered for upload. <button className="chip chip-btn" onClick={() => stock.rejected.forEach((v) => decide1(v.num, null))}>Undo all</button></p>}
     </section>
@@ -151,6 +152,7 @@ export default function Control() {
   </>;
 }
 
+const PLAN_AT = 22;
 function ReviewCard({ v, approved, onDecide, planned }: { v: Video; approved: boolean; onDecide: (n: number, d: 'ok' | 'no' | null) => void; planned?: { cid: string } }) {
   const [play, setPlay] = useState(false);
   const cid = cidOf(v);
@@ -196,7 +198,7 @@ function ConceptRow({ s, max, canGen, onQueue, onCopy }: { s: ConceptStat; max: 
 }
 
 /* "What is the autopilot doing, why, and when": right now, next 30 hours, and a log of what it already did. */
-function Overview({ d, au, now, gen, stock, uploads }: { d: ReturnType<typeof decide>; au: AutoState; now: Date; gen: GenStatus; stock: ReturnType<typeof stockOf>; uploads: AppState['uploads'] }) {
+function Overview({ snap, d, au, now, gen, stock, uploads }: { snap: Snapshot; d: ReturnType<typeof decide>; au: AutoState; now: Date; gen: GenStatus; stock: ReturnType<typeof stockOf>; uploads: AppState['uploads'] }) {
   const queued = au.genJobs.filter((j) => j.state === 'queued'), running = au.genJobs.find((j) => j.state === 'running');
   const upcoming = d.slots.filter((s) => s.when.getTime() > now.getTime() && s.when.getTime() - now.getTime() < 30 * 3600e3);
   // headline: what is happening right now and what comes next
@@ -220,6 +222,14 @@ function Overview({ d, au, now, gen, stock, uploads }: { d: ReturnType<typeof de
           const day = ymd(s.when) === ymd(now) ? 'Today' : s.when.toLocaleDateString('en-GB', { weekday: 'short' });
           let what: React.ReactNode, why = '', color = 'var(--muted)';
           if (up) { what = <>#{vn(+up[0])} is posted</>; why = 'marked as uploaded by hand'; color = 'var(--green)'; }
+          else if (au.cloud !== false) {
+            const bp = buildPlan(snap, now, 3).find((x) => x.when.toISOString() === s.iso && x.video);
+            const pi = Object.values(au.plans ?? {}).flatMap((pl) => pl.items).find((i) => i.slotIso === s.iso);
+            const pc = bp ? cidOf(bp.video!) : pi?.cid;
+            if (bp) { what = <><span className="dot" style={{ background: cidColor(pc ?? '') }} /> #{vn(bp.video!.num)} {pc ? `${pc} ${CID_NAME[pc] ?? ''}` : ''}</>; why = 'approved and ready to post'; }
+            else if (pi) { what = <><span className="dot" style={{ background: cidColor(pi.cid) }} /> #{pi.num} {pi.cid} {CID_NAME[pi.cid]}</>; why = `${pi.reason}. ${snap.videos.some((v) => v.num === pi.num && v.hasVideo) ? 'Video is in Results, waiting for your review.' : 'A sub thread renders it.'}`; }
+            else { what = <span className="dim">Not planned yet</span>; why = `The plan for this day is made at ${PLAN_AT}:00, two days before.`; }
+          }
           else if (row) {
             const ready = stock.approved.find((v) => cidOf(v) === row.cid);
             const job = au.genJobs.find((j) => j.cid === row.cid && (j.state === 'queued' || j.state === 'running'));

@@ -42,7 +42,7 @@ const dataDir = () => path.join(vault(), '.claude-workspace', 'launcher-data');
 const stateFile = () => path.join(dataDir(), 'state.json');
 
 /* ---------- state ---------- */
-function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true, posted1115: true, skip1119: true, skip1124: true, skip1124b: true, threads1124: true, threads1124b: true, twoDays1125: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
+function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true, posted1115: true, skip1119: true, skip1124: true, skip1124b: true, threads1124: true, threads1124b: true, twoDays1125: true, twoDays1125b: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
 function loadState() {
   try {
     const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
@@ -93,6 +93,12 @@ function loadState() {
       const skip = [new Date(2026, 10, 19, 18, 30, 0, 0).toISOString(), new Date(2026, 10, 19, 21, 0, 0, 0).toISOString()];
       st.settings.skipSlots = Array.from(new Set([...(st.settings.skipSlots || []), ...skip]));
       st.migrations = { ...(st.migrations || {}), skip1119: true };
+      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
+    }
+    // Mo 2026-11-25: the plans made before the reserve fix duplicated slots that already had videos (#35, #36): drop them once, they are made anew. One time only.
+    if (!(st.migrations || {}).twoDays1125b) {
+      if (st.auto) { st.auto = { ...st.auto, dayPlan: undefined, plans: {}, log: (st.auto.log || []).filter((l) => !/planned/.test(l.text || '')) }; }
+      st.migrations = { ...(st.migrations || {}), twoDays1125b: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
     // Mo 2026-11-25: planning runs two days ahead with one plan per day, so the single plan made before is dropped and the days are planned anew. One time only.
