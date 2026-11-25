@@ -16,7 +16,7 @@ export async function dayTick(c: Ctx) {
   const { snap, now } = c, au = autoOf(snap.state);
   const tomorrow = planTarget(now), date = ymd(tomorrow);
   // 1. evening: make and publish tomorrow's plan once
-  if (now.getHours() >= PLAN_HOUR && au.dayPlan?.date !== date) {
+  if (au.dayPlan?.date !== date) {
     if (planning || plannedDate === date) return;
     planning = true;
     try {

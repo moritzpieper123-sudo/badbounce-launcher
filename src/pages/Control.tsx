@@ -39,7 +39,7 @@ export default function Control() {
   const alerts = au.alerts.filter((a) => !a.resolved && a.kind !== 'hot').slice(0, 8);
   const lastPull = snap.state.stats.snaps?.[snap.state.stats.snaps.length - 1]?.t;
   const decide1 = (num: number, v: 'ok' | 'no' | null) => set((a) => { const n = { ...a.approvals }; if (v) n[String(num)] = v; else delete n[String(num)]; return { ...a, approvals: n }; });
-  const tomorrow = au.dayPlan && au.dayPlan.date === ymd(new Date(now.getTime() + 864e5)) ? au.dayPlan : null;
+  const tomorrow = au.dayPlan && au.dayPlan.date >= ymd(now) ? au.dayPlan : null;   // the plan of today (before 18:00) or of tomorrow (from 18:00)
   const planNums = new Set((tomorrow?.items ?? []).map((i) => i.num));
   const approveTomorrow = () => set((a) => ({ ...a, approvals: { ...a.approvals, ...Object.fromEntries(stock.pending.filter((v) => planNums.has(v.num)).map((v) => [String(v.num), 'ok' as const])) } }));
   const arms = useMemo(() => armStats(snap, now), [snap, now]);
@@ -94,7 +94,7 @@ export default function Control() {
     </section>
 
     {tomorrow && <section className="glass card">
-      <h2>Tomorrow's {tomorrow.items.length} videos <span className="small dim" style={{ fontWeight: 400 }}>· planned {ago(tomorrow.at)}, rendered by Claude threads</span></h2>
+      <h2>{tomorrow.date === ymd(now) ? "Today's" : "Tomorrow's"} {tomorrow.items.length} videos <span className="small dim" style={{ fontWeight: 400 }}>· planned {ago(tomorrow.at)}, rendered by Claude threads</span></h2>
       {tomorrow.items.map((i) => { const got = snap.videos.some((v) => v.num === i.num && v.hasVideo); return <div key={i.num} className="cr-alert"><div><b>{hm(new Date(i.slotIso))}</b> · #{i.num} <span style={{ color: cidColor(i.cid) }}>{armLabel(`${i.cid}|${i.variant ?? 'plain'}`)}</span> <span className="chip">{i.kind === 'test' ? 'test' : 'best guess'}</span><div className="small dim">{i.reason}</div></div><span className="small" style={{ color: got ? 'var(--green)' : 'var(--dim)' }}>{got ? 'delivered' : 'rendering'}</span></div>; })}
     </section>}
 
