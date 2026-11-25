@@ -6,7 +6,7 @@ import { autoOf, cidOf, type AutoState } from '../autopilot';
 import { armKey, planDay, planTarget } from '../dayPlan';
 import { ymd } from '../logic';
 
-export const PLAN_HOUR = 18;       // the plan for tomorrow is made from 18:00
+export const PLAN_HOUR = 22;       // the plan for tomorrow is made from 22:00 (Berlin), so it is ready well before the 00:00 render run
 export const CHECK_HOUR = 22;      // at 22:00 the launcher warns about videos that did not arrive
 type Ctx = { snap: Snapshot; now: Date; patch: (f: (a: AutoState) => AutoState) => Promise<void>; note: (t: string, k?: 'info' | 'plan' | 'render' | 'warn') => unknown; alert: (a: { id: string; kind: 'gen'; title: string; sub: string }) => unknown; clear: (id: string) => void };
 const checked = new Set<string>();

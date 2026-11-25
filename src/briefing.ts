@@ -22,7 +22,7 @@ export function briefing(snap: Snapshot, now: Date): { title: string; lines: str
     const got = p.items.filter((i) => have.has(i.num)), miss = p.items.filter((i) => !have.has(i.num));
     const posted = p.items.filter((i) => snap.state.uploads[String(i.num)]).length;
     lines.push(`Render summary for ${p.date === today ? 'today' : 'tomorrow'}: ${got.length} of ${p.items.length} videos delivered${posted ? `, ${posted} already scheduled` : ''}.${miss.length ? ` Still missing: ${miss.map((m) => `#${m.num} ${m.cid}${m.variant ? '/' + m.variant : ''}`).join(', ')}.` : ' Everything is ready for scheduling.'}`);
-  } else lines.push(`No day plan is active. ${h >= 18 ? 'The plan for tomorrow is made when the autopilot runs.' : 'Tomorrow\'s plan is made from 18:00.'}`);
+  } else lines.push(`No day plan is active. ${h >= 22 ? 'The plan for tomorrow is made when the autopilot runs.' : 'Tomorrow\'s plan is made from 22:00.'}`);
   // tests
   const arms = armStats(snap, now), open = arms.filter((a) => a.verdict === 'testing').length, drop = arms.filter((a) => a.verdict === 'drop').length, win = arms.filter((a) => a.verdict === 'winner');
   lines.push(`Testing: ${open} of ${arms.length} arms still collecting posts${drop ? `, ${drop} dropped` : ''}${win.length ? `, winners: ${win.slice(0, 3).map((w) => w.key.replace('|plain', '').replace('|', ' ')).join(', ')}` : ''}.`);
