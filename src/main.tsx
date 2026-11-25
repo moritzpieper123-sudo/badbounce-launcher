@@ -26,11 +26,16 @@ import Analytics from './pages/Analytics';
 import Library from './pages/Library';
 import Overview from './pages/Overview';
 import Libraries from './pages/Libraries';
+import Control from './pages/Control';
+import { AutoDriver } from './AutoDriver';
+import { autoOf, stockOf } from './autopilot';
 import Ideas from './pages/Ideas';
 import Tools from './pages/Tools';
 import Settings from './pages/Settings';
 import Mail from './pages/Mail';
 import { installClickSfx } from './sfx';
+import Ambient from './Ambient';
+import { useIdle, exitAmbient } from './idle';
 
 const PAGES = [
   { id: 'today', label: 'Today', short: 'Today', icon: 'home' },
@@ -38,6 +43,7 @@ const PAGES = [
   { id: 'upload', label: 'Next upload', short: 'Upload', icon: 'upload' },
   { id: 'board', label: 'To do', short: 'To do', icon: 'check' },
   { id: 'analytics', label: 'Analytics', short: 'Analytics', icon: 'chart' },
+  { id: 'control', label: 'Control Room (autopilot)', short: 'Control', icon: 'radar', desktop: true },
   { id: 'library', label: 'Library', short: 'Library', icon: 'grid' },
   { id: 'overview', label: 'Overview (final Konzepte)', short: 'Overview', icon: 'film' },
   { id: 'libraries', label: 'Libraries (Konzept assets + sounds)', short: 'Libraries', icon: 'music' },
@@ -66,6 +72,11 @@ function App() {
   useEffect(() => bb.onNavigate((p) => go(p)), [go]);
   useEffect(() => { const h = () => { const p = location.hash.slice(1); if (p) setPage(p); }; addEventListener('hashchange', h); return () => removeEventListener('hashchange', h); }, []);
   const toast = useCallback((m: string) => setMsg(m), []);
+  const pageRef = useRef(page); pageRef.current = page;
+  const before = useRef<string | null>(null);
+  const onIdle = useCallback(() => { if (pageRef.current !== 'today') { before.current = pageRef.current; go('today'); } else before.current = null; }, [go]);
+  const idle = useIdle(onIdle);
+  useEffect(() => { if (!idle.ambient && before.current) { const p = before.current; before.current = null; go(p); } }, [idle.ambient, go]);
   // background CSV fetch: status + the files it brings back
   const updRef = useRef(update); updRef.current = update;
   useEffect(() => bb.onCsvStatus?.((st) => { setCsv(st); if (st.state === 'error' || st.state === 'login' || st.state === 'needs-you') setMsg(st.msg); }), []);
@@ -85,7 +96,7 @@ function App() {
   const buf = bufferInfo(snap);
   const today = ymd(new Date(snap.now));
   const dueTasks = allTasks(snap).filter((t) => t.col !== 'done' && (!t.due || t.due <= today)).length;
-  const counts: Record<string, number> = { board: dueTasks, mail: snap.mail?.unread ?? 0 };
+  const counts: Record<string, number> = { board: dueTasks, mail: snap.mail?.unread ?? 0, control: stockOf(snap).pending.length + autoOf(snap.state).alerts.filter((a) => !a.resolved && !a.read && a.kind !== 'hot').length };
   const cur = PAGES.find((p) => p.id === page) ?? { label: 'Settings', short: 'Settings' };
   const backup = async () => { const p = await bb.backupNow(); update((s) => ({ ...s, lastBackup: new Date().toISOString() })); toast(`Saved backup: ${p.split(/[\\/]/).pop()}`); };
   const checkUpdate = async () => {
@@ -96,7 +107,7 @@ function App() {
     toast(r.error ? `Update check failed: ${r.error}` : r.ready ? `Update ${r.ready} is ready · click the button again to install` : `You are up to date (v${r.current})`);
   };
   const fetchCsv = () => { if (!bb.csvFetch) { go('analytics'); return; } setCsv({ state: 'running', msg: 'Starting…' }); bb.csvFetch(); };
-  const Page = { today: Today, schedule: Schedule, board: Board, upload: Upload, analytics: Analytics, library: Library, overview: Overview, libraries: Libraries, ideas: Ideas, mail: Mail, tools: Tools, settings: Settings, vault: VaultGraphPage }[page] || Today;
+  const Page = { today: Today, schedule: Schedule, board: Board, upload: Upload, analytics: Analytics, library: Library, overview: Overview, control: Control, libraries: Libraries, ideas: Ideas, mail: Mail, tools: Tools, settings: Settings, vault: VaultGraphPage }[page] || Today;
   const notes = notifications(snap, { due, buf, dueTasks, csv });
   const bellProps = { notes, go, fetchCsv, csv };
   const navIdx = PAGES.findIndex((p) => p.id === page);
@@ -182,6 +193,8 @@ function App() {
         </main>
       </div>
       <Toast msg={msg} onDone={() => setMsg(null)} />
+      {isDesktop && idle.ambient && <div onClick={exitAmbient}><Ambient /></div>}
+      {isDesktop && <AutoDriver snap={snap} update={update} />}
       {!isDesktop && <ShareSheet />}
     </AppCtx.Provider>
   );
@@ -195,6 +208,9 @@ function notifications(snap: Snapshot, o: { due: boolean; buf: ReturnType<typeof
   if (o.buf.days < 1 && o.buf.missing2 > 0) out.push({ kind: 'gen', key: 'buf', icon: 'film', y: true, title: `Buffer under 1 day`, sub: `Make ${o.buf.missing2} video${o.buf.missing2 > 1 ? 's' : ''} with Gen` });
   if (o.dueTasks) out.push({ kind: 'board', key: 'tasks', icon: 'check', title: `${o.dueTasks} task${o.dueTasks > 1 ? 's' : ''} due`, sub: 'Today and late' });
   if (snap.mail?.unread) out.push({ kind: 'mail', key: 'mail', icon: 'mail', title: `${snap.mail.unread} unread email${snap.mail.unread > 1 ? 's' : ''}`, sub: snap.mail.items.find((m) => m.unread)?.subject ?? '' });
+  const au = autoOf(snap.state), pend = stockOf(snap).pending.length;
+  for (const a of au.alerts.filter((x) => !x.resolved && !x.read).slice(0, 5)) out.push({ kind: 'control', key: `auto:${a.id}`, icon: a.kind === 'hot' ? 'sparkle' : 'bell', y: a.kind !== 'hot', title: a.title, sub: a.sub });
+  if (au.enabled && pend) out.push({ kind: 'control', key: 'review', icon: 'radar', title: `${pend} video${pend > 1 ? 's' : ''} wait for your review`, sub: 'Approve the ones you want to post in the Control Room' });
   if (snap.update?.ready) out.push({ kind: 'update', key: 'upd', icon: 'sparkle', y: true, title: `Update ${snap.update.ready} is ready`, sub: 'Restarts the launcher' });
   return out;
 }
@@ -203,7 +219,7 @@ function Bell({ notes, go, fetchCsv, csv, small }: { notes: ReturnType<typeof no
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { if (!open) return; const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); }; addEventListener('mousedown', h); return () => removeEventListener('mousedown', h); }, [open]);
   const n = notes.length, hot = notes.some((x) => x.y);
-  const act = (k: string) => { setOpen(false); if (k === 'board') go('board'); else if (k === 'mail') go('mail'); else if (k === 'gen') go('today'); else if (k === 'update') bb.applyUpdate?.(); };
+  const act = (k: string) => { setOpen(false); if (k === 'board') go('board'); else if (k === 'control') go('control'); else if (k === 'mail') go('mail'); else if (k === 'gen') go('today'); else if (k === 'update') bb.applyUpdate?.(); };
   return <div ref={ref} style={{ position: 'relative' }}>
     <button className={small ? 'iconbtn sm' : `glass round ${hot ? 'ring-on' : ''}`} onClick={() => setOpen((o) => !o)} aria-label={`${n} notifications`} title="Notifications" style={small ? { position: 'relative' } : undefined}>
       <Icon name="bell" size={small ? 16 : 18} />{n > 0 && <span className="vcount" style={small ? { position: 'absolute', top: -6, right: -6, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: 'var(--yellow)', color: 'var(--accent-ink)', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' } : undefined}>{n}</span>}

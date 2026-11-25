@@ -113,7 +113,10 @@ const BACKLOG_DAYS = 14;
  *  A slot more than BACKLOG_DAYS older than the post is skipped (counts as missed). */
 export function slotMap(st: AppState): Map<number, string> {
   const out = new Map<number, string>();
-  const posted = Object.entries(st.uploads).map(([n, u]) => ({ n: +n, t: Date.parse(u.realAt || u.at) || 0 }))
+  // posts the launcher itself scheduled in TikTok keep their real slot (so the next video goes into the next FREE slot, not behind them)
+  const pinned = new Set<string>();
+  for (const [n, u] of Object.entries(st.uploads)) if (u.scheduled && u.slot) { const iso = new Date(u.slot).toISOString(); out.set(+n, iso); pinned.add(iso); }
+  const posted = Object.entries(st.uploads).filter(([, u]) => !(u.scheduled && u.slot)).map(([n, u]) => ({ n: +n, t: Date.parse(u.realAt || u.at) || 0 }))
     .sort((a, b) => a.t - b.t || a.n - b.n);
   if (!posted.length) return out;
   let day = parseYmd(st.settings.day1), guard = 0, i = 0;
@@ -123,6 +126,7 @@ export function slotMap(st: AppState): Map<number, string> {
     day = addDays(day, 1);
     while (queue.length && i < posted.length) {
       const s = queue[0];
+      if (pinned.has(s.toISOString())) { queue.shift(); continue; }
       if (s.getTime() < posted[i].t - BACKLOG_DAYS * 86400000) { queue.shift(); continue; }
       out.set(posted[i].n, s.toISOString()); queue.shift(); i++;
     }
@@ -409,13 +413,16 @@ export function applyFetch(old: Stats, r: { posts: PostStat[]; followers?: numbe
 /* ---------- analytics ---------- */
 export function matchPosts(snap: Snapshot) {
   const out: { post: PostStat; num: number | null; konzept: number | null; slot: string | null }[] = [];
-  const byLink = new Map<string, number>();
-  for (const [n, u] of Object.entries(snap.state.uploads)) if (u.link) byLink.set(normLink(u.link), +n);
+  // Mo schedules every post himself, so there are no links: match by caption first (the description starts with the video's question), then by scheduled time
+  const capKey = (t: string) => t.toLowerCase().replace(/#\S+/g, '').replace(/[^\p{L}\p{N} ]+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+  const byCap = new Map<string, number>();
+  for (const v of snap.videos) if (v.description) { const k = capKey(v.description); if (k.length >= 12 && snap.state.uploads[String(v.num)]) byCap.set(k, v.num); }
   for (const p of snap.state.stats.posts) {
-    let n: number | null = p.link ? byLink.get(normLink(p.link)) ?? null : null;
+    let n: number | null = null;
+    const ck = capKey(p.title || ''); if (ck.length >= 12) { for (const [k, num] of byCap) if (ck.startsWith(k) || k.startsWith(ck)) { n = num; break; } }
     if (n == null && p.postTime) {
       const t = Date.parse(p.postTime);
-      if (!isNaN(t)) { let best: [number, number] | null = null; for (const [k, u] of Object.entries(snap.state.uploads)) { const d = Math.min(Math.abs(Date.parse(u.at) - t), u.realAt ? Math.abs(Date.parse(u.realAt) - t) : Infinity); if (d < 3 * 3600000 && (!best || d < best[1])) best = [+k, d]; } if (best) n = best[0]; }
+      if (!isNaN(t)) { let best: [number, number] | null = null; for (const [k, u] of Object.entries(snap.state.uploads)) { const d = Math.min(Math.abs(Date.parse(u.slot ?? u.at) - t), Math.abs(Date.parse(u.at) - t), u.realAt ? Math.abs(Date.parse(u.realAt) - t) : Infinity); if (d < 3 * 3600000 && (!best || d < best[1])) best = [+k, d]; } if (best) n = best[0]; }
     }
     if (n == null) { const m = p.title.match(/#(\d+)([a-z])?\b/i); if (m) n = +m[1] + (m[2] ? (m[2].toLowerCase().charCodeAt(0) - 96) / 100 : 0); }
     const v = n != null ? snap.videos.find((x) => x.num === n) : undefined;

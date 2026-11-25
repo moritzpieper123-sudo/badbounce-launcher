@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../ctx';
-import { kColor, KONZEPTE, uid } from '../logic';
+import { KONZEPTE, uid } from '../logic';
 import { Header } from './parts';
 import { Icon, KChip } from '../ui';
 import { bb, isDesktop } from '../bridge';

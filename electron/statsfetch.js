@@ -179,7 +179,7 @@ async function loadAndWait(win, url, ms) {
   while (Date.now() - t0 < ms) { await wait(400); if (!win.webContents.isLoading()) break; }
 }
 
-async function run({ dataDir, status, result }) {
+async function run({ dataDir, status, result, deep }) {
   if (running) return; running = true;
   const t0 = Date.now(); const debug = path.join(dataDir(), 'stats-debug');
   const dump = (name, obj) => { try { fs.mkdirSync(debug, { recursive: true }); fs.writeFileSync(path.join(debug, name), typeof obj === 'string' ? obj : JSON.stringify(obj, null, 1)); } catch { /* ignore */ } };
@@ -209,9 +209,10 @@ async function run({ dataDir, status, result }) {
 
     // Studio per-video analytics (login required; silently skipped if not logged in)
     status({ state: 'running', msg: `Got ${posts.size} videos, reading watch time…` });
-    studio = 'ok'; let logged = true;
+    studio = 'ok'; let logged = true; let probed = 0, keysFound = 0;
     for (const p of posts.values()) {
       if (!logged) break;
+      if (deep && !deep(p)) continue; // older videos only change slowly: skip their Studio page to keep every run short
       const id = p.link.split('/video/')[1];
       const s2 = sniff(win, /(creator|insight|analytics|aweme).*(video|item|post|detail|overview)|\/api\/v\d\/creator/i);
       await loadAndWait(win, STUDIO_VIDEO(id), 20000);
@@ -219,7 +220,8 @@ async function run({ dataDir, status, result }) {
       await wait(2200);
       const hits = s2.hits.splice(0); s2.stop();
       dump(`studio-${id}.json`, hits);
-      Object.assign(p, pickVideoInsight(mergeInsight(hits)));
+      const got = pickVideoInsight(mergeInsight(hits)); probed++; if (Object.keys(got).length) keysFound++;
+      Object.assign(p, got);
     }
     // audience pages: viewers (age, gender, countries, traffic) + followers (active hours); same login, skipped if not logged in
     let audience = {};
@@ -236,7 +238,9 @@ async function run({ dataDir, status, result }) {
       }
       if (Object.keys(audience).length) audience.at = new Date().toISOString();
     }
-    result({ posts: [...posts.values()], followers, at: new Date().toISOString(), audience });
+    // health for the launcher's alerts: did the Studio pages still answer in the format we read?
+    const health = { studio: studio === 'login' ? 'login' : probed && !keysFound ? 'changed' : 'ok', probed, keysFound, videos: posts.size };
+    result({ posts: [...posts.values()], followers, at: new Date().toISOString(), audience, health });
     const secs = Math.round((Date.now() - t0) / 1000);
     status({ state: 'done', msg: `Stats updated: ${posts.size} videos in ${secs}s` + (studio === 'login' ? ' (watch time needs the TikTok login, run "Fetch automatically" once)' : '') });
   } catch (e) {

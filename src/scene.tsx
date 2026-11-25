@@ -35,6 +35,13 @@ export function skyPalette(now: Date): Pal {
   return P.night;
 }
 
+/** The palette the app display setting picks right now (auto follows the sun, dark / medium / light are fixed). */
+export function themePalette(mode: string, theme: string, now: Date): Pal {
+  return mode === 'auto' ? skyPalette(now) : theme === 'dark' ? P.night : theme === 'medium' ? P.sunset : P.day;
+}
+/** The same palette pulled towards black: for the screen saver. */
+export function darkPalette(pal: Pal, k = 0.78): Pal { return pal.map((c) => mix(c, '#010206', k)); }
+
 export function Background() {
   const { mode, theme } = useTheme();
   const [now, setNow] = useState(() => new Date());

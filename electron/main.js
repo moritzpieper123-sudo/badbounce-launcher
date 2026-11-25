@@ -13,7 +13,8 @@ const csvfetch = require('./csvfetch');
 const statsfetch = require('./statsfetch');
 const media = require('./media');
 const progress = require('./progress');
-const uploader = require('./uploader');
+const generator = require('./generator');
+const checks = require('./checks');
 
 const DEFAULT_SETTINGS = { day1: '2026-11-11', quietFrom: 22, quietTo: 8, islandEnabled: true, quietEnabled: true, dnd: false, dndFullscreen: true, commentReminderMin: 20, projectUrl: 'https://claude.ai/code/project/chan_01RphMgk3koQT52rqVy41WMd', autostart: true, csvWeekday: 0 };
 const HIDDEN = process.argv.includes('--hidden');
@@ -41,7 +42,7 @@ const dataDir = () => path.join(vault(), '.claude-workspace', 'launcher-data');
 const stateFile = () => path.join(dataDir(), 'state.json');
 
 /* ---------- state ---------- */
-function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true, posted1115: true, skip1119: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
+function emptyState() { return { version: 1, migrations: { firstUpload1111: true, warmup1113: true, firstPostToday1113: true, posted1114: true, postTime1114: true, posted1115: true, skip1119: true, skip1124: true, skip1124b: true, threads1124: true, threads1124b: true }, uploads: {}, notes: {}, tasks: [], autoCols: {}, ideas: [], stats: { days: [], posts: [] }, milestonesSeen: [], alertsSeen: {}, settings: { ...DEFAULT_SETTINGS } }; }
 function loadState() {
   try {
     const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
@@ -92,6 +93,28 @@ function loadState() {
       const skip = [new Date(2026, 10, 19, 18, 30, 0, 0).toISOString(), new Date(2026, 10, 19, 21, 0, 0, 0).toISOString()];
       st.settings.skipSlots = Array.from(new Set([...(st.settings.skipSlots || []), ...skip]));
       st.migrations = { ...(st.migrations || {}), skip1119: true };
+      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
+    }
+    // Mo 2026-11-24: slots that already hold an upload are not planned again, so the plan made before this fix (5 videos) is dropped and made anew. One time only.
+    if (!(st.migrations || {}).threads1124b) {
+      if (st.auto) { st.auto = { ...st.auto, dayPlan: undefined, log: (st.auto.log || []).filter((l) => !/planned/.test(l.text || '')) }; }
+      st.migrations = { ...(st.migrations || {}), threads1124b: true };
+      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
+    }
+    // Mo 2026-11-24: videos are rendered by Claude threads (mother thread + 5 sub threads), not the cloud. One-time reset of the autopilot test data.
+    if (!(st.migrations || {}).threads1124) {
+      const a = st.auto || {};
+      st.auto = { ...a, log: [], alerts: [], genJobs: [], dayPlan: undefined, hotSeen: {}, lastPlan: undefined, approvals: Object.fromEntries(Object.entries(a.approvals || {}).filter(([n]) => +n < 35)) };
+      st.migrations = { ...(st.migrations || {}), threads1124: true };
+      try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
+    }
+    // Mo 2026-11-24: he uploads by hand; the plan starts with tomorrow's first slot. Every free slot from 21 to 24 Nov is skipped (a slot that already holds an upload stays), so nothing shows as "late". One time only.
+    if (!(st.migrations || {}).skip1124b) {
+      const have = new Set(Object.values(st.uploads || {}).map((u) => new Date(u.slot || u.at).toISOString()));
+      const skip = [];
+      for (const day of [21, 22, 23, 24]) for (const [h, m] of [[1, 5], [5, 55], [10, 40], [15, 30], [20, 20]]) { const iso = new Date(2026, 10, day, h, m, 0, 0).toISOString(); if (!have.has(iso)) skip.push(iso); }
+      st.settings.skipSlots = Array.from(new Set([...(st.settings.skipSlots || []), ...skip]));
+      st.migrations = { ...(st.migrations || {}), skip1124: true, skip1124b: true };
       try { const tmp = stateFile() + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(st, null, 1)); fs.renameSync(tmp, stateFile()); } catch (e) { console.error('migrate', e); }
     }
     return st;
@@ -181,9 +204,12 @@ function scanVideos() {
     let desc; if (de) try { desc = fs.readFileSync(path.join(folder, de), 'utf8'); } catch { /* */ }
     const km = notes.match(/Konzept\s*(\d+)/i);
     const konzept = km ? +km[1] : idx[num]?.konzept ?? null;
+    const cm = notes.match(/\bK(1[01]|[1-9])([abc])?\b/);
+    const cid = cm ? `K${cm[1]}${cm[2] || ''}` : null;
+    const vm = notes.match(/^\s*Variant:\s*(job|cat)\b/mi); const variant = vm ? vm[1].toLowerCase() : null;
     const titleM = notes.match(/^#\s+(.+)$/m);
     let created = 0; try { created = fs.statSync(folder).birthtimeMs || fs.statSync(folder).mtimeMs; } catch { /* */ }
-    out.push({ num, folder, konzept, title: idx[num]?.title || (titleM ? titleM[1] : name), hasVideo: !!vid, hasThumb: !!th, hasDesc: !!de,
+    out.push({ num, folder, konzept, cid, title: idx[num]?.title || (titleM ? titleM[1] : name), hasVideo: !!vid, hasThumb: !!th, hasDesc: !!de, hasNotes: !!no, variant,
       videoFile: vid && path.join(folder, vid), thumbFile: th && path.join(folder, th), descFile: de && path.join(folder, de), description: desc,
       durationSec: vid ? mp4Duration(path.join(folder, vid)) : null, createdMs: created });
   }
@@ -250,7 +276,7 @@ function autoBackup() {
 
 /* ---------- windows ---------- */
 let mainWin = null, islandWin = null, tray = null, quitting = false;
-const ISL_W = 900, ISL_H = 420;
+const ISL_W = 900, ISL_H = 520;
 const iconPath = () => path.join(__dirname, process.platform === 'win32' ? 'icon.ico' : 'icon.png');
 function load(win, page) {
   if (DEV_URL) win.loadURL(`${DEV_URL}/${page}.html`);
@@ -386,7 +412,20 @@ ipcMain.handle('mailRead', async (_e, id) => { const r = await gmail.markRead(St
 ipcMain.handle('mailAllowModify', async () => { try { await gmail.allowModify(); broadcast(); return { ok: true }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
 ipcMain.handle('mailDisconnect', () => { gmail.disconnect(); broadcast(); });
 ipcMain.handle('mailBody', async (_e, id) => { try { return { ok: true, ...(await gmail.body(String(id))) }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
-function restartWithUpdate(hidden) { if (updater.apply(vault())) { quitting = true; app.relaunch({ args: hidden ? ['--hidden'] : [] }); app.exit(0); return true; } broadcast(); return false; }
+/* Mo 2026-11-24: an update must not stop a running render. While Claude renders, the new files are unpacked and the
+   windows are only RELOADED (the render is a child of this process, a restart would kill it). Changes to electron/*.js
+   take effect at the next real start; the screens (dist) are new immediately. */
+function restartWithUpdate(hidden) {
+  const rendering = (() => { try { return generator.status().state === 'running'; } catch { return false; } })();
+  if (updater.apply(vault())) {
+    if (rendering) {
+      for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed() && w.webContents) { try { w.webContents.reloadIgnoringCache(); } catch { /* */ } } }
+      return true;
+    }
+    quitting = true; app.relaunch({ args: hidden ? ['--hidden'] : [] }); app.exit(0); return true;
+  }
+  broadcast(); return false;
+}
 ipcMain.handle('applyUpdate', () => restartWithUpdate(false));
 const allWins = () => BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && w !== islandWin);
 const sendAll = (ch, ...a) => { for (const w of allWins()) w.webContents.send(ch, ...a); };
@@ -405,15 +444,39 @@ ipcMain.on('openGraphWindow', () => {
 });
 /* background TikTok CSV fetch */
 ipcMain.handle('csvFetch', () => csvfetch.start({ status: (st) => sendAll('csvStatus', st), files: (f) => sendAll('csvFiles', f) }));
-const runStats = () => statsfetch.run({ dataDir, status: (st) => sendAll('statsStatus', st), result: (r) => sendAll('statsPosts', r) });
+/* Studio pages are only opened for fresh videos (<= 72 h) and for a few that never got their numbers: keeps each run short, so we can pull often */
+function deepFn() {
+  const known = new Set(); let unknown = 0;
+  try { for (const p of loadState().stats.posts || []) if (p.link && (p.avgWatch != null || p.retention)) known.add((p.link.match(/video\/(\d+)/) || [])[1]); } catch { /* */ }
+  return (p) => {
+    const age = p.postTime ? (Date.now() - Date.parse(p.postTime)) / 3600e3 : 0;
+    if (age <= 72) return true;
+    const id = (p.link.match(/video\/(\d+)/) || [])[1];
+    return !known.has(id) && unknown++ < 8;
+  };
+}
+let lastStatsAt = 0;
+const runStats = () => { lastStatsAt = Date.now(); statsfetch.run({ dataDir, deep: deepFn(), status: (st) => sendAll('statsStatus', st), result: (r) => sendAll('statsPosts', r) }); };
 ipcMain.handle('statsFetch', () => { runStats(); });
+/* Hourly or better (Mo 2026-11-24): every 20 min while a video is younger than 12 h (viral watch), else every 45 min. Never while a run is active. */
+function statsDue() {
+  if (statsfetch.isRunning()) return false;
+  let fresh = false;
+  try { fresh = (loadState().stats.posts || []).some((p) => p.postTime && Date.now() - Date.parse(p.postTime) < 12 * 3600e3); } catch { /* */ }
+  return Date.now() - lastStatsAt >= (fresh ? 20 : 45) * 60e3;
+}
 ipcMain.on('csvShow', () => csvfetch.show());
 ipcMain.on('csvCancel', () => csvfetch.cancel((st) => sendAll('csvStatus', st)));
 function toggleFull() { if (!mainWin) return; const full = !mainWin.isFullScreen(); mainWin.setFullScreen(full); const c = readCfg(); c.windowed = !full; writeCfg(c); }
 ipcMain.on('win', (_e, a) => { if (!mainWin) return; if (a === 'min') { if (mainWin.isFullScreen()) mainWin.minimize(); else mainWin.minimize(); } else if (a === 'close') mainWin.hide(); else if (a === 'full') toggleFull(); });
 ipcMain.handle('checkUpdate', () => { const st = updater.check(vault()); broadcast(); return st; });
 ipcMain.handle('mailRefresh', async () => { await gmail.refresh(); broadcast(); });
-ipcMain.handle('save', (_e, st) => { saveState(st); broadcast(); });
+/* an upload that was just scheduled must survive a stale save from the window (race: the window saves its old copy right after the status event) */
+const freshMarks = {};
+ipcMain.handle('save', (_e, st) => {
+  try { const now = Date.now(); for (const [n, m] of Object.entries(freshMarks)) { if (now - m.t > 120000) delete freshMarks[n]; else if (st && st.uploads && !st.uploads[n]) st.uploads[n] = m.e; } } catch { /* */ }
+  saveState(st); broadcast();
+});
 ipcMain.handle('copy', (_e, t) => clipboard.writeText(String(t)));
 // claude.ai links open in the Claude desktop app when it is installed (claude:// protocol), else in the browser
 function openLink(u) {
@@ -424,45 +487,30 @@ function openLink(u) {
 ipcMain.handle('openUrl', (_e, u) => openLink(u));
 ipcMain.handle('openPath', (_e, p) => shell.openPath(p));
 ipcMain.handle('openVault', (_e, sub) => { const p = path.join(vault(), sub || ''); if (fs.existsSync(p)) return shell.openPath(p); fs.mkdirSync(p, { recursive: true }); return shell.openPath(p); });
-/* Mo's own upload script (Engine\Upload\bb_upload.py): schedules ONE video per run in TikTok Studio */
-const vkey = (num) => String(num).replace(/^(\d+)\.(\d+)$/, (_m, a, b) => a + String.fromCharCode(96 + +b));
-let batchBusy = false;
-function markScheduled(num, slotIso) {
-  const st = loadState(); st.uploads = st.uploads || {};
-  st.uploads[String(num)] = { at: slotIso, realAt: new Date().toISOString(), slot: slotIso, scheduled: true };
-  saveState(st); broadcast();
-}
-const runOne = (num, slotIso, mode, extra) => new Promise((resolve) => {
-  const r = uploader.start({ vault: vault(), key: vkey(num), mode, slotIso,
-    onStatus: (st) => sendAll('uploadStatus', { ...st, msg: (extra || '') + (st.msg || '') }),
-    onDone: (d) => { if (d.ok && mode === 'schedule') markScheduled(num, slotIso); resolve(d); } });
-  if (!r.ok) resolve({ ok: false, msg: r.error });
+/* Autopilot: render one new video in the background (hidden, low priority) */
+ipcMain.handle('genStart', (_e, job) => generator.start({ vault: vault(), cid: String(job.cid), num: +job.num, via: job.via, reason: job.reason, deadline: job.deadline, model: job.model, variant: /^(job|cat)$/.test(job.variant) ? job.variant : undefined, onStatus: (st) => sendAll('genStatus', st) }));
+ipcMain.handle('renderSave', (_e, num, files) => { try { generator.saveCloud(vault(), +num, files); return { ok: true }; } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 200) }; } });
+ipcMain.handle('dayPlanWrite', (_e, plan) => { try { const f = path.join(dataDir(), 'day-plan.json'); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify(plan, null, 1)); return f; } catch { return null; } });
+ipcMain.handle('cleanBuilding', (_e, keep) => { try { return generator.cleanBuilding(vault(), keep || []); } catch { return 0; } });
+ipcMain.handle('checkVideo', async (_e, num, dur) => { try { return await checks.checkVideo(path.join(vault(), 'Results', `#${+num}`), +num, dur); } catch (e) { return { ok: false, fails: ['check crashed: ' + String(e.message || e).slice(0, 100)], notes: [] }; } });
+ipcMain.handle('engineParts', () => generator.engineParts(vault()));
+ipcMain.handle('engineZip', (_e, part, known) => generator.engineZip(vault(), String(part), known));
+ipcMain.handle('genStatus', () => generator.status());
+ipcMain.handle('genStop', () => generator.cancel());
+/* small atomic changes of the autopilot state from the island window (it must not save a whole stale copy of the state) */
+ipcMain.handle('autoPatch', (_e, op) => {
+  const st = loadState(); const a = st.auto = st.auto || { enabled: false, approvals: {}, genJobs: [], alerts: [] };
+  a.approvals = a.approvals || {}; a.genJobs = a.genJobs || []; a.alerts = a.alerts || [];
+  if (op.type === 'enabled') a.enabled = !!op.value;
+  else if (op.type === 'autoApprove') a.autoApprove = !!op.value;
+  else if (op.type === 'approve') for (const n of op.nums || []) a.approvals[String(n)] = 'ok';
+  else if (op.type === 'dismiss') a.alerts = a.alerts.map((x) => (x.id === op.id ? { ...x, resolved: true } : x));
+  else return false;
+  saveState(st); broadcast(); return true;
 });
-ipcMain.handle('autoUpload', (_e, num, slotIso, mode) => {
-  if (batchBusy) return { ok: false, error: 'a batch run is active' };
-  return uploader.start({ vault: vault(), key: vkey(num), mode, slotIso,
-    onStatus: (st) => sendAll('uploadStatus', st),
-    onDone: (r) => { if (r.ok && r.mode === 'schedule') markScheduled(num, r.slotIso); } });
-});
-/* all ready videos in one run: items = [{ num, slotIso }] in slot order; stops at the first failure */
-ipcMain.handle('autoUploadBatch', (_e, items, mode) => {
-  if (batchBusy || uploader.status().state === 'running') return { ok: false, error: 'an upload is already running' };
-  if (!Array.isArray(items) || !items.length) return { ok: false, error: 'nothing to schedule' };
-  batchBusy = true;
-  (async () => {
-    let done = 0;
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      const d = await runOne(it.num, it.slotIso, mode, `(${i + 1}/${items.length}) `);
-      if (!d.ok) { sendAll('uploadStatus', { state: 'error', key: vkey(it.num), mode, msg: `stopped at ${i + 1}/${items.length}: ${d.msg}` }); batchBusy = false; return; }
-      done++;
-    }
-    sendAll('uploadStatus', { state: 'ok', key: 'all', mode, msg: `${done} of ${items.length} ${mode === 'test' ? 'tested' : 'scheduled'}` });
-    batchBusy = false;
-  })();
-  return { ok: true };
-});
-ipcMain.handle('uploadStatus', () => uploader.status());
+ipcMain.handle('genReady', () => generator.ready(vault()));
+/* ranked render queue as a file (for Claude and for you): Engine\Auto\gen-requests.json */
+ipcMain.handle('genQueueWrite', (_e, jobs) => { try { const d = path.join(vault(), 'Engine', 'Auto'); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'gen-requests.json'), JSON.stringify({ updated: new Date().toISOString(), jobs }, null, 1)); return true; } catch { return false; } });
 ipcMain.handle('uploadPack', (_e, num) => {
   try {
     const v = scanVideos().find((x) => x.num === num);
@@ -567,7 +615,7 @@ else {
     media.start((m) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('media', m); }, path.join(dataDir(), 'media-log.txt'));
     app.on('before-quit', () => media.stop());
     autoBackup(); setInterval(autoBackup, 3600000);
-    setTimeout(runStats, 40e3); setInterval(runStats, 30 * 60e3); // live stats in the background, every 30 min
+    setTimeout(runStats, 40e3); setInterval(() => { if (statsDue()) runStats(); }, 60e3); // live stats in the background, 20-45 min apart (hidden window)
     // re-scan the vault every 20 s so new Gen results appear on their own
     setInterval(broadcast, 20000);
     // look for a new version in OneDrive every 5 min; install it right away while the window is hidden
@@ -586,7 +634,7 @@ else {
       quitting = true; app.quit();
     }, 4000);
   });
-  app.on('before-quit', () => { quitting = true; progress.quitting = true; });
+  app.on('before-quit', () => { quitting = true; progress.quitting = true; try { generator.stop(); } catch { /* */ } });
   app.on('will-quit', () => globalShortcut.unregisterAll());
   app.on('window-all-closed', () => { /* stay in tray */ });
 }
