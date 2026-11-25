@@ -65,6 +65,15 @@ function parseTranscript(file, size) {
   return { title: title || first, steps, ops, cwd };
 }
 
+/** rebuilds a list from TaskCreate / TaskUpdate calls (ids are 1, 2, 3 ... in creation order) */
+function fromOps(ops) {
+  const list = [];
+  for (const o of ops) {
+    if (o.name === 'TaskCreate') list.push({ id: list.length + 1, label: String(o.input.subject || ''), state: 'pending', now: o.input.activeForm || '' });
+    else { const t = list.find((x) => String(x.id) === String(o.input.taskId)); if (t) { if (o.input.status) t.state = norm(o.input.status); if (o.input.subject) t.label = String(o.input.subject); if (o.input.activeForm) t.now = o.input.activeForm; } }
+  }
+  return list.filter((x) => x.state !== 'gone' && x.label);
+}
 function readTaskDir(dir) {
   const out = [];
   let files; try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')); } catch { return out; }
@@ -93,9 +102,12 @@ function scan() {
         let steps = readTaskDir(path.join(root, 'tasks', sid));
         let tmax = 0; for (const x of (fs.existsSync(path.join(root, 'tasks', sid)) ? fs.readdirSync(path.join(root, 'tasks', sid)) : [])) tmax = Math.max(tmax, (st(path.join(root, 'tasks', sid, x)) || {}).mtimeMs || 0);
         if (!steps.length && t.steps) steps = t.steps;
+        if (!steps.length && t.ops && t.ops.length) steps = fromOps(t.ops);
         const todoMain = path.join(root, 'todos', `${sid}-agent-${sid}.json`);
         if (!steps.length) { try { const a = JSON.parse(fs.readFileSync(todoMain, 'utf8')); if (Array.isArray(a)) steps = a.map((x) => ({ label: String(x.content || ''), state: norm(x.status), now: x.activeForm || '' })); } catch { /* */ } }
         const updated = Math.max(s.mtimeMs, tmax);
+        // never leave a working session out: no task list yet -> still a card
+        if (!steps.length && now - updated < ACTIVE_MS) steps = [{ label: 'Working (no task list yet)', state: 'active', now: '' }];
         if (steps.length) cards.push({ id: sid, title: t.title || path.basename(t.cwd || d) || 'Session', where: path.basename(t.cwd || '') || '', steps, updated, live: now - updated < ACTIVE_MS });
         // subtasks: sub-agent todo files of this session
         try {
