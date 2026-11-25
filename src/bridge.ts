@@ -67,11 +67,11 @@ export interface BB {
   win?(a: 'min' | 'close' | 'full'): void;
   checkUpdate?(): Promise<{ current: string; ready: string | null; error: string | null }>;
   progressInfo?(): Promise<ProgressInfo>;
-  progressSet?(p: Partial<{ display: number; autostart: boolean; hideBar: boolean }>): Promise<ProgressInfo>;
-  progressCmd?(c: 'toggle' | 'show' | 'full' | 'reload' | 'browser' | 'signin' | 'signout'): Promise<ProgressInfo>;
+  progressSet?(p: Partial<{ display: number; autostart: boolean; sound: boolean }>): Promise<ProgressInfo>;
+  progressCmd?(c: 'toggle' | 'show' | 'full' | 'reload'): Promise<ProgressInfo>;
   onProgressChanged?(cb: () => void): () => void;
 }
-export interface ProgressInfo { displays: { id: number; label: string; chosen: boolean }[]; autostart: boolean; hideBar: boolean; visible: boolean; full: boolean; signedIn: boolean }
+export interface ProgressInfo { displays: { id: number; label: string; chosen: boolean }[]; autostart: boolean; sound: boolean; visible: boolean; full: boolean }
 export interface FinalVideo { id: string; folder: string; video: string; thumb: string | null; description: string; size: number; mtime: number }
 export interface GenStatus { state: 'idle' | 'running' | 'done' | 'error'; num?: number; cid?: string; msg?: string }
 export interface UploadStatus { state: 'idle' | 'running' | 'ok' | 'error'; key?: string; mode?: string; msg?: string }
