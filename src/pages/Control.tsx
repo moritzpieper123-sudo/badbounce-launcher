@@ -155,6 +155,7 @@ export default function Control() {
 const PLAN_AT = 22;
 function ReviewCard({ v, approved, onDecide, planned }: { v: Video; approved: boolean; onDecide: (n: number, d: 'ok' | 'no' | null) => void; planned?: { cid: string } }) {
   const [play, setPlay] = useState(false);
+  const [sure, setSure] = useState(false);   // Reject needs a second click: cards move up when a neighbour is approved, so a fast second click must never reject by accident (Mo 2026-11-25)
   const cid = cidOf(v);
   return <div className={`cr-card ${approved ? 'ok' : ''}`}>
     <div className="cr-vid" onClick={() => setPlay(true)}>
@@ -166,7 +167,7 @@ function ReviewCard({ v, approved, onDecide, planned }: { v: Video; approved: bo
       <div className="small dim">{v.durationSec ? `${Math.round(v.durationSec)} s` : ''}{v.durationSec && (v.durationSec < 60 || v.durationSec > 70) ? ' · outside 60-70 s' : ''}</div>
       <div className="row cr-actions" style={{ gap: 6, flexWrap: 'wrap' }}>
         {approved ? <button className="btn sm" onClick={() => onDecide(v.num, null)}>Undo</button> : <button className="btn sm primary" onClick={() => onDecide(v.num, 'ok')}><Icon name="check" size={13} /> Approve</button>}
-        <button className="btn sm danger" onClick={() => onDecide(v.num, 'no')}>Reject</button>
+        <button className="btn sm danger" onClick={() => { if (!sure) { setSure(true); setTimeout(() => setSure(false), 4000); } else onDecide(v.num, 'no'); }}>{sure ? 'Really reject?' : 'Reject'}</button>
         <button className="btn sm icon" title="Open folder" onClick={() => bb.openPath(v.folder)}><Icon name="folder" size={13} /></button>
       </div>
     </div>
