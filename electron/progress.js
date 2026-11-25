@@ -67,7 +67,7 @@ function info() {
   const c = cfg(), prim = screen.getPrimaryDisplay().id, cur = targetDisplay().id;
   return {
     displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, label: `Monitor ${i + 1} (${d.size.width}×${d.size.height}${d.id === prim ? ', main' : ''})`, chosen: d.id === cur })),
-    autostart: c.autostart, sound: c.sound, visible: visible(), full: isFull(),
+    autostart: c.autostart, sound: c.sound, visible: visible(), full: isFull(), hideBar: false, signedIn: true, // last two only keep the older launcher settings page quiet
   };
 }
 function set(patch) {
@@ -94,7 +94,7 @@ const THEMES = ['auto', 'dark', 'medium', 'light'];
 function pushConfig() {
   if (!alive()) return;
   let m = cfg().theme; if (!THEMES.includes(m)) m = 'dark';
-  if (m === 'auto') m = autoTheme || 'dark';
+  if (m === 'auto') { const h = new Date().getHours(); m = autoTheme || (h >= 8 && h < 18 ? 'light' : h >= 6 && h < 20 ? 'medium' : 'dark'); }
   win.webContents.send('viewerConfig', { theme: m, sound: cfg().sound !== false });
 }
 let autoTheme = null;
