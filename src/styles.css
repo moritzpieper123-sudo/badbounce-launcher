@@ -1243,3 +1243,6 @@ svg.ax-clock { display: block; width: clamp(480px, min(52vw, 68vh), 900px); heig
 @keyframes axflashn { 0%, 100% { opacity: .2; } 50% { opacity: .55; } }
 .ax.night .ax-alert { animation: none; box-shadow: 0 0 30px rgba(255,59,48,.3); }
 .ax.err .ax-inner { zoom: .88; }
+/* Phone home: the upload card sits right under the title so a video can be posted from there (Mo 2026-11-25); on wide screens the Next-slot panel already covers it */
+.phone-first { display: none; }
+@media (max-width: 760px) { .phone-first { display: block; } }

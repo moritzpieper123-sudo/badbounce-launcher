@@ -2,7 +2,7 @@ import React from 'react';
 import { useApp } from '../ctx';
 import { dayNumber, fmtDay, phaseLabel, allTasks, ymd } from '../logic';
 import { Icon } from '../ui';
-import { Header } from './parts';
+import { Header, NextUpload } from './parts';
 import { NowPlaying } from '../music';
 import { Timeline, AutopilotPanel, NextSlotPanel, GoalsPanel, WeekPanel, QueuePanel, ActivityPanel } from '../homeWidgets';
 import { Spark, Count } from '../ui';
@@ -30,6 +30,7 @@ export default function Today() {
       {isDesktop && <button className="btn" onClick={enterAmbient} title="Hides all bars and shows the screen saver"><Icon name="sparkle" size={15} /> Screen saver</button>}
       {isDesktop && <button className="btn" onClick={() => setIdleEnabled(!idle.enabled)} title="Screen saver after 60 s without mouse or keyboard">Idle: {idle.enabled ? 'on' : 'off'}</button>}
     </>} />
+    <section className="glass card phone-first" aria-label="Up next"><h2>Up next</h2><NextUpload manual /></section>
     <section className="grid g-kpi" aria-label="Key numbers">
       <div className="glass card lift kpi t-frost"><span className="l"><Icon name="check" size={15} />Followers</span>
         <div className="v num"><Count value={k.followers} format={fmtNum} /></div>
