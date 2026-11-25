@@ -170,5 +170,5 @@ export function planDay(snap: Snapshot, now: Date, day: Date, pendingBy: Record<
 }
 
 /** Day to plan: tomorrow, unless the evening has not started and today still has open slots (then today). */
-/** From 18:00 the plan is for tomorrow; before that it is for today (its remaining open slots), so a day never goes unplanned after midnight. */
-export const planTarget = (now: Date) => now.getHours() >= 18 ? addDays(parseYmd(ymd(now)), 1) : parseYmd(ymd(now));
+/** From 22:00 the plan is for tomorrow; before that it is for today (its remaining open slots), so a day never goes unplanned after midnight. */
+export const planTarget = (now: Date) => now.getHours() >= 22 ? addDays(parseYmd(ymd(now)), 1) : parseYmd(ymd(now));
