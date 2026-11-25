@@ -44,8 +44,9 @@ export async function dayTick(c: Ctx) {
       if (!file) { c.alert({ id: 'day-plan', kind: 'gen', title: 'Could not write the plan file', sub: 'day-plan.json in launcher-data was not written.' }); return; }
       c.clear('day-plan');
       done.add(date);
+      reserve = Math.max(0, reserve - openSlots(snap, now, d).length);   // the reserve was used up by this day
       await c.patch((a) => ({ ...a, plans: { ...(a.plans ?? {}), [date]: plan }, dayPlan: plan }));
-      c.note(`The ${items.length} videos for ${date} are planned (${r.tests} test, ${items.length - r.tests} best guess): ${items.map((i) => `#${i.num} ${i.cid}${i.variant ? '/' + i.variant : ''}`).join(', ')}.`, 'plan');
+      c.note(`The ${items.length} video${items.length === 1 ? '' : 's'} for ${date} ${items.length === 1 ? 'is' : 'are'} planned (${r.tests} test, ${items.length - r.tests} best guess): ${items.map((i) => `#${i.num} ${i.cid}${i.variant ? '/' + i.variant : ''}`).join(', ')}.`, 'plan');
     } finally { planning = false; }
     return;   // one plan per tick
   }
