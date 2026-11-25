@@ -34,6 +34,7 @@ const CHECK_H = [1, 3, 6, 12, 24];    // age checkpoints for the view velocity
 export interface AutoAlert { id: string; kind: 'stats' | 'upload' | 'gen' | 'stock' | 'studio' | 'hot' | 'info'; title: string; sub: string; at: string; last: string; count: number; resolved?: boolean; read?: boolean }
 export interface GenJob { id: string; cid: string; num: number; state: 'queued' | 'running' | 'done' | 'error'; at: string; msg?: string; reason: string; deadline?: string; endedAt?: string; first?: boolean; variant?: 'job' | 'cat' }
 export interface LogEntry { t: string; kind: 'plan' | 'render' | 'upload' | 'info' | 'warn'; text: string }
+export interface DayPlan { date: string; at: string; items: { slotIso: string; cid: string; variant?: 'job' | 'cat'; kind: 'test' | 'best'; reason: string; num: number }[]; got?: number[]; missingAlerted?: boolean }
 export interface AutoState {
   log?: LogEntry[];                         // what the autopilot did and why (newest last)
   enabled: boolean;
@@ -48,7 +49,9 @@ export interface AutoState {
   hotSeen?: Record<string, string>;         // post link -> ISO when we announced it
   lastPlan?: { at: string; slots: PlanRow[] };
   cloud?: boolean;                          // renders happen in the cloud (default on): the launcher plans tomorrow's 5 videos each evening, the cloud tasks render, the launcher downloads
-  dayPlan?: { date: string; at: string; items: { slotIso: string; cid: string; variant?: 'job' | 'cat'; kind: 'test' | 'best'; reason: string; num: number }[]; got?: number[]; missingAlerted?: boolean };
+  plans?: Record<string, DayPlan>;           // every planned day by date (two days ahead)
+  dayPlan?: DayPlan;                         // the newest plan
+  _old?: { date: string; at: string; items: { slotIso: string; cid: string; variant?: 'job' | 'cat'; kind: 'test' | 'best'; reason: string; num: number }[]; got?: number[]; missingAlerted?: boolean };
 }
 export const DEFAULT_AUTO: AutoState = { enabled: false, approvals: {}, genJobs: [], alerts: [] };
 export const autoOf = (st: AppState): AutoState => ({ ...DEFAULT_AUTO, ...(st.auto || {}) });

@@ -39,8 +39,8 @@ export default function Control() {
   const alerts = au.alerts.filter((a) => !a.resolved && a.kind !== 'hot').slice(0, 8);
   const lastPull = snap.state.stats.snaps?.[snap.state.stats.snaps.length - 1]?.t;
   const decide1 = (num: number, v: 'ok' | 'no' | null) => set((a) => { const n = { ...a.approvals }; if (v) n[String(num)] = v; else delete n[String(num)]; return { ...a, approvals: n }; });
-  const tomorrow = au.dayPlan && au.dayPlan.date >= ymd(now) ? au.dayPlan : null;   // the plan of today (before 18:00) or of tomorrow (from 18:00)
-  const planNums = new Set((tomorrow?.items ?? []).map((i) => i.num));
+  const planList = Object.values(au.plans ?? {}).filter((pl) => pl.date >= ymd(now)).sort((x, y) => x.date.localeCompare(y.date));   // planned days, two days ahead
+  const planNums = new Set(planList.flatMap((pl) => pl.items.map((i) => i.num)));
   const approveTomorrow = () => set((a) => ({ ...a, approvals: { ...a.approvals, ...Object.fromEntries(stock.pending.filter((v) => planNums.has(v.num)).map((v) => [String(v.num), 'ok' as const])) } }));
   const arms = useMemo(() => armStats(snap, now), [snap, now]);
   const VCOL: Record<string, string> = { testing: '#AAC3F0', keep: '#7FD9A8', winner: '#FFC63A', drop: '#FF8F7A', retest: '#B8A2FF' };
@@ -93,10 +93,10 @@ export default function Control() {
       {stock.rejected.length > 0 && <p className="small dim">{stock.rejected.length} rejected video{stock.rejected.length > 1 ? 's' : ''} stay in Results and are never offered for upload. <button className="chip chip-btn" onClick={() => stock.rejected.forEach((v) => decide1(v.num, null))}>Undo all</button></p>}
     </section>
 
-    {tomorrow && <section className="glass card">
-      <h2>{tomorrow.date === ymd(now) ? "Today's" : "Tomorrow's"} {tomorrow.items.length} videos <span className="small dim" style={{ fontWeight: 400 }}>· planned {ago(tomorrow.at)}, rendered by Claude threads</span></h2>
+    {planList.map((tomorrow) => <section key={tomorrow.date} className="glass card">
+      <h2>{tomorrow.date === ymd(now) ? 'Today' : tomorrow.date === ymd(new Date(now.getTime() + 864e5)) ? 'Tomorrow' : tomorrow.date} · {tomorrow.items.length} videos <span className="small dim" style={{ fontWeight: 400 }}>· planned {ago(tomorrow.at)}, rendered by Claude threads</span></h2>
       {tomorrow.items.map((i) => { const got = snap.videos.some((v) => v.num === i.num && v.hasVideo); return <div key={i.num} className="cr-alert"><div><b>{hm(new Date(i.slotIso))}</b> · #{i.num} <span style={{ color: cidColor(i.cid) }}>{armLabel(`${i.cid}|${i.variant ?? 'plain'}`)}</span> <span className="chip">{i.kind === 'test' ? 'test' : 'best guess'}</span><div className="small dim">{i.reason}</div></div><span className="small" style={{ color: got ? 'var(--green)' : 'var(--dim)' }}>{got ? 'delivered' : 'rendering'}</span></div>; })}
-    </section>}
+    </section>)}
 
     <section className="glass card">
       <h2>Test board <span className="small dim" style={{ fontWeight: 400 }}>· every concept plain 3 posts, every variant 2 posts, then keep or drop</span></h2>

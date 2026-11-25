@@ -15,7 +15,7 @@ export function briefing(snap: Snapshot, now: Date): { title: string; lines: str
     lines.push(`Views over 30 days: ${fmtNum(k.views30)}.${kt[0] ? ` The strongest concept so far is K${kt[0].k} ${KONZEPTE[kt[0].k]?.name}, with ${fmtNum(Math.round(kt[0].avgViews))} views on average.` : ''}`);
   } else lines.push('No channel data has been pulled yet, Sir. The first pull fills this report.');
   // render summary
-  const p = au.dayPlan, tomorrow = ymd(new Date(now.getTime() + 864e5)), today = ymd(now);
+  const tomorrow = ymd(new Date(now.getTime() + 864e5)), today = ymd(now), p = au.plans?.[today] ?? au.plans?.[tomorrow] ?? au.dayPlan;
   const have = new Set(snap.videos.filter((v) => v.hasVideo).map((v) => v.num));
   if (au.cloud === false) lines.push('Cloud rendering is switched off; renders run on this PC.');
   else if (p && (p.date === today || p.date === tomorrow)) {
