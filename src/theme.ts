@@ -38,9 +38,9 @@ const readMode = (): Mode => { try { const t = localStorage.getItem('bb-theme-mo
 let mode: Mode = readMode();
 const listeners = new Set<() => void>();
 export const themeFor = (m: Mode): Theme => (m === 'auto' ? sunTheme() : m);
-function apply() { const t = themeFor(mode); if (document.documentElement.dataset.theme !== t) document.documentElement.dataset.theme = t; listeners.forEach((l) => l()); }
+function apply() { const t = themeFor(mode); if (document.documentElement.dataset.theme !== t) { document.documentElement.dataset.theme = t; if (!document.body.classList.contains('island-body')) sendMode(); } listeners.forEach((l) => l()); }
 // tells the launcher (and with it the Progress screen) which theme mode is chosen
-const sendMode = () => { try { (window as unknown as { bb?: { themeMode?: (m: Mode) => void } }).bb?.themeMode?.(mode); } catch { /* ignore */ } };
+const sendMode = () => { try { (window as unknown as { bb?: { themeMode?: (m: Mode, resolved: Theme) => void } }).bb?.themeMode?.(mode, themeFor(mode)); } catch { /* ignore */ } };
 export function setMode(m: Mode) { mode = m; try { localStorage.setItem('bb-theme-mode', m); } catch { /* ignore */ } apply(); sendMode(); }
 export const getMode = () => mode;
 if (!document.body.classList.contains('island-body')) {

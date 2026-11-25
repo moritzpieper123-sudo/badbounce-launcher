@@ -596,7 +596,7 @@ else {
     createIsland();
     progress.start({ readCfg, writeCfg, onChange: () => sendAll('progressChanged') });
     // the launcher's theme button also sets the Progress screen's theme
-    ipcMain.on('themeMode', (_e, m) => progress.setTheme(String(m)));
+    ipcMain.on('themeMode', (_e, m, r) => progress.setTheme(String(m), String(r)));
     try {
       tray = new Tray(nativeImage.createFromPath(iconPath()).resize({ width: 16, height: 16 }));
       tray.setToolTip('Badbounce Launcher');
