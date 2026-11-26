@@ -7,16 +7,21 @@ import { Icon } from '../ui';
 import { bb, isDesktop, type InboxScan, type InboxItem } from '../bridge';
 
 
-/* K4 song editor: waveform, play, drag to mark the OPEN passages (music unmuffled), hear the gate (muffled outside the passages).
+/* K4 song editor: waveform with zoom, play, drag to mark the OPEN passages (music unmuffled), hear the gate (muffled outside the passages).
+   Precise: wheel = zoom, drag edges to adjust, type exact seconds, nudge 0.01 s, I / O keys mark in/out at the playhead.
    Saved as `passages` [[from, to], ...] in seconds next to the song in Inbox\K4\Songs\index.json. */
-const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
+const r2 = (t: number) => Math.round(t * 100) / 100;
+type Reg = [number, number];
 function SongEditor({ cid, it, onClose }: { cid: string; it: InboxItem; onClose: () => void }) {
   const { toast } = useApp();
   const cv = useRef<HTMLCanvasElement | null>(null);
   const [buf, setBuf] = useState<AudioBuffer | null>(null);
-  const [peaks, setPeaks] = useState<number[]>([]);
-  const [regs, setRegs] = useState<[number, number][]>(it.passages ?? []);
-  const [drag, setDrag] = useState<[number, number] | null>(null);
+  const [regs, setRegs] = useState<Reg[]>(it.passages ?? []);
+  const [view, setView] = useState<[number, number]>([0, 0]);               // visible window in seconds
+  const [drag, setDrag] = useState<{ kind: 'new' | 'edge' | 'pan'; i?: number; side?: 0 | 1; a: number; b: number } | null>(null);
+  const [hover, setHover] = useState<string>('crosshair');
+  const [inMark, setInMark] = useState<number | null>(null);
   const [pos, setPos] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [gate, setGate] = useState(true);
@@ -28,6 +33,7 @@ function SongEditor({ cid, it, onClose }: { cid: string; it: InboxItem; onClose:
   const regsRef = useRef(regs); regsRef.current = regs;
   const gateRef = useRef(gate); gateRef.current = gate;
   const dur = buf?.duration ?? 0;
+  const [v0, v1] = view[1] > view[0] ? view : [0, dur];
 
   useEffect(() => {
     let dead = false;
@@ -37,10 +43,8 @@ function SongEditor({ cid, it, onClose }: { cid: string; it: InboxItem; onClose:
         const c = (ctx.current ??= new AudioContext());
         const b = await c.decodeAudioData(ab);
         if (dead) return;
-        const ch = b.getChannelData(0), n = 1400, step = Math.max(1, Math.floor(ch.length / n)), pk: number[] = [];
-        for (let i = 0; i < n; i++) { let m = 0; for (let j = i * step; j < Math.min(ch.length, (i + 1) * step); j += 8) m = Math.max(m, Math.abs(ch[j])); pk.push(m); }
-        setBuf(b); setPeaks(pk);
-      } catch (e) { setErr('Could not read this audio file'); }
+        setBuf(b); setView([0, b.duration]);
+      } catch { setErr('Could not read this audio file'); }
     })();
     return () => { dead = true; stop(); ctx.current?.close().catch(() => {}); };
   }, []);
@@ -66,65 +70,129 @@ function SongEditor({ cid, it, onClose }: { cid: string; it: InboxItem; onClose:
       if (p && c) {
         const t = p.off + (c.currentTime - p.t0); setPos(t);
         const open = !gateRef.current || inReg(t);
-        p.filt.frequency.setTargetAtTime(open ? 20000 : 450, c.currentTime, 0.03);
+        p.filt.frequency.setTargetAtTime(open ? 20000 : 450, c.currentTime, 0.015);
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick); return () => cancelAnimationFrame(raf);
   }, []);
 
-  useEffect(() => {
-    const c = cv.current; if (!c) return;
-    const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = 120; c.width = w * dpr; c.height = h * dpr;
-    const g = c.getContext('2d')!; g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
-    const x = (t: number) => (dur ? (t / dur) * w : 0);
-    for (const [a, b] of [...regs, ...(drag ? [[Math.min(...drag), Math.max(...drag)] as [number, number]] : [])]) { g.fillStyle = 'rgba(255,198,58,.28)'; g.fillRect(x(a), 0, Math.max(2, x(b) - x(a)), h); g.fillStyle = '#FFC63A'; g.fillRect(x(a), 0, 2, h); g.fillRect(x(b) - 2, 0, 2, h); }
-    peaks.forEach((p, i) => { const px = (i / peaks.length) * w, t = (i / peaks.length) * dur, hh = Math.max(1.5, p * (h - 10)); g.fillStyle = inReg(t) ? '#FFE08A' : 'rgba(170,195,240,.55)'; g.fillRect(px, (h - hh) / 2, Math.max(1, w / peaks.length - 0.5), hh); });
-    g.fillStyle = '#fff'; g.fillRect(x(pos) - 1, 0, 2, h);
-  }, [peaks, regs, drag, pos, dur]);
+  const tOf = (clientX: number) => { const r = cv.current!.getBoundingClientRect(); return Math.max(0, Math.min(dur, v0 + ((clientX - r.left) / r.width) * (v1 - v0))); };
+  const xOf = (t: number, w: number) => ((t - v0) / (v1 - v0)) * w;
 
-  const tAt = (e: React.MouseEvent) => { const r = cv.current!.getBoundingClientRect(); return Math.max(0, Math.min(dur, ((e.clientX - r.left) / r.width) * dur)); };
-  const merge = (a: [number, number][]) => { const s = [...a].sort((x, y) => x[0] - y[0]), out: [number, number][] = []; for (const r of s) { const l = out[out.length - 1]; if (l && r[0] <= l[1]) l[1] = Math.max(l[1], r[1]); else out.push([r[0], r[1]]); } return out; };
-  const down = (e: React.MouseEvent) => { if (!dur) return; const t = tAt(e); setDrag([t, t]); };
-  const move = (e: React.MouseEvent) => { if (drag) setDrag([drag[0], tAt(e)]); };
-  const up = () => {
-    if (!drag) return; const [a, b] = [Math.min(...drag), Math.max(...drag)]; setDrag(null);
-    if (b - a < 0.4) { setPos(a); if (play.current) start(a); else setPos(a); return; }
-    setRegs((r) => merge([...r, [Math.round(a * 10) / 10, Math.round(b * 10) / 10]]));
+  useEffect(() => {
+    const c = cv.current; if (!c || !buf) return;
+    const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = 150; c.width = w * dpr; c.height = h * dpr;
+    const g = c.getContext('2d')!; g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
+    // ruler
+    const span = v1 - v0, steps = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60], tick = steps.find((x) => (x / span) * w >= 70) ?? 60;
+    g.font = '10px sans-serif'; g.textBaseline = 'top';
+    for (let t = Math.ceil(v0 / tick) * tick; t <= v1; t += tick) { const x = xOf(t, w); g.fillStyle = 'rgba(170,195,240,.25)'; g.fillRect(x, 0, 1, h); g.fillStyle = 'rgba(244,246,255,.7)'; g.fillText(fmt(t), x + 3, 2); }
+    // regions
+    const regsNow: Reg[] = regs.map((r, i) => (drag && drag.kind === 'edge' && drag.i === i ? [Math.min(drag.a, drag.b), Math.max(drag.a, drag.b)] : r) as Reg);
+    if (drag && drag.kind === 'new') regsNow.push([Math.min(drag.a, drag.b), Math.max(drag.a, drag.b)]);
+    for (const [a, b] of regsNow) { const xa = xOf(a, w), xb = xOf(b, w); g.fillStyle = 'rgba(255,198,58,.26)'; g.fillRect(xa, 0, Math.max(2, xb - xa), h); g.fillStyle = '#FFC63A'; g.fillRect(xa - 1, 0, 3, h); g.fillRect(xb - 2, 0, 3, h); }
+    if (inMark != null) { g.fillStyle = '#7CF'; g.fillRect(xOf(inMark, w), 0, 2, h); }
+    // waveform: per pixel max over the visible samples
+    const ch = buf.getChannelData(0), sr = buf.sampleRate;
+    for (let px = 0; px < w; px++) {
+      const t0 = v0 + (px / w) * span, t1 = v0 + ((px + 1) / w) * span;
+      const i0 = Math.floor(t0 * sr), i1 = Math.min(ch.length, Math.ceil(t1 * sr)), st = Math.max(1, Math.floor((i1 - i0) / 24));
+      let mx = 0; for (let i = i0; i < i1; i += st) { const a = Math.abs(ch[i]); if (a > mx) mx = a; }
+      const hh = Math.max(1.5, mx * (h - 26)); g.fillStyle = inReg((t0 + t1) / 2) ? '#FFE08A' : 'rgba(170,195,240,.6)'; g.fillRect(px, 16 + (h - 16 - hh) / 2, 1, hh);
+    }
+    g.fillStyle = '#fff'; g.fillRect(xOf(pos, w) - 1, 0, 2, h);
+  }, [buf, view, regs, drag, pos, inMark]);
+
+  const hit = (clientX: number): { i: number; side: 0 | 1 } | null => {
+    const r = cv.current!.getBoundingClientRect(), w = r.width;
+    for (let i = 0; i < regsRef.current.length; i++) for (const side of [0, 1] as const) if (Math.abs(xOf(regsRef.current[i][side], w) - (clientX - r.left)) <= 7) return { i, side };
+    return null;
   };
+  const merge = (a: Reg[]) => { const s2 = [...a].sort((x, y) => x[0] - y[0]), out: Reg[] = []; for (const r of s2) { const l = out[out.length - 1]; if (l && r[0] <= l[1]) l[1] = Math.max(l[1], r[1]); else out.push([r[0], r[1]]); } return out; };
+  const down = (e: React.MouseEvent) => {
+    if (!dur) return; const t = tOf(e.clientX);
+    if (e.button === 1 || e.altKey) { setDrag({ kind: 'pan', a: e.clientX, b: v0 }); return; }
+    const h2 = hit(e.clientX); if (h2) { setDrag({ kind: 'edge', i: h2.i, side: h2.side, a: regsRef.current[h2.i][0], b: regsRef.current[h2.i][1] }); return; }
+    setDrag({ kind: 'new', a: t, b: t });
+  };
+  const move = (e: React.MouseEvent) => {
+    if (!drag) { setHover(hit(e.clientX) ? 'ew-resize' : 'crosshair'); return; }
+    const t = tOf(e.clientX);
+    if (drag.kind === 'new') setDrag({ ...drag, b: t });
+    else if (drag.kind === 'edge') setDrag(drag.side === 0 ? { ...drag, a: Math.min(t, drag.b) } : { ...drag, b: Math.max(t, drag.a) });
+    else { const r = cv.current!.getBoundingClientRect(), dt = ((drag.a - e.clientX) / r.width) * (v1 - v0), s0 = Math.max(0, Math.min(dur - (v1 - v0), drag.b + dt)); setView([s0, s0 + (v1 - v0)]); }
+  };
+  const up = () => {
+    if (!drag) return; const d = drag; setDrag(null);
+    if (d.kind === 'pan') return;
+    if (d.kind === 'edge') { setRegs((rs) => merge(rs.map((r, i): Reg => (i === d.i ? [r2(Math.min(d.a, d.b)), r2(Math.max(d.a, d.b))] : r)).filter((r) => r[1] - r[0] >= 0.05))); return; }
+    const [a, b] = [Math.min(d.a, d.b), Math.max(d.a, d.b)];
+    const minLen = 4 * ((v1 - v0) / (cv.current?.clientWidth || 800));
+    if (b - a < Math.max(0.05, minLen)) { seek(a); return; }
+    setRegs((rs) => merge([...rs, [r2(a), r2(b)]]));
+  };
+  const wheel = (e: React.WheelEvent) => {
+    if (!dur) return; const t = tOf(e.clientX), f = e.deltaY < 0 ? 0.8 : 1.25, len = Math.max(0.05, Math.min(dur, (v1 - v0) * f));
+    const frac = (t - v0) / (v1 - v0), s0 = Math.max(0, Math.min(dur - len, t - frac * len)); setView([s0, s0 + len]);
+  };
+  const zoomBy = (f: number) => { const mid = pos >= v0 && pos <= v1 ? pos : (v0 + v1) / 2, len = Math.max(0.05, Math.min(dur, (v1 - v0) * f)), frac = (mid - v0) / (v1 - v0), s0 = Math.max(0, Math.min(dur - len, mid - frac * len)); setView([s0, s0 + len]); };
   const setVolume = (v: number) => { setVol(v); try { localStorage.setItem('bb.songVol', String(v)); } catch { /* */ } const p = play.current, c = ctx.current; if (p && c) p.gain.gain.setTargetAtTime(v * v, c.currentTime, 0.02); };
   const seek = (t: number) => { const n = Math.max(0, Math.min(dur, t)); setPos(n); if (play.current) start(n); };
-  const key = (e: React.KeyboardEvent) => {
-    if ((e.target as HTMLElement).tagName === 'INPUT' && (e.target as HTMLInputElement).type === 'range' && e.key.startsWith('Arrow')) return;
-    if (e.key === ' ') { e.preventDefault(); toggle(); } else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(pos - (e.shiftKey ? 15 : 5)); } else if (e.key === 'ArrowRight') { e.preventDefault(); seek(pos + (e.shiftKey ? 15 : 5)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setVolume(Math.min(1, vol + 0.05)); } else if (e.key === 'ArrowDown') { e.preventDefault(); setVolume(Math.max(0, vol - 0.05)); }
-  };
   const toggle = () => { if (playing) stop(); else start(pos >= dur - 0.2 ? 0 : pos); };
-  const save = async () => { const r = await bb.inboxSetPassages?.(cid, it.file!, regs); if (r?.ok) { toast(`${r.passages?.length ?? 0} passage${r.passages?.length === 1 ? '' : 's'} saved`); } else toast(r?.error || 'Could not save'); };
+  const markIn = () => setInMark(r2(pos));
+  const markOut = () => { if (inMark == null) { toast('Press I (or Mark in) first'); return; } const a = Math.min(inMark, pos), b = Math.max(inMark, pos); if (b - a < 0.05) return; setRegs((rs) => merge([...rs, [r2(a), r2(b)]])); setInMark(null); };
+  const setReg = (i: number, side: 0 | 1, v: number) => setRegs((rs) => rs.map((r, j) => { if (j !== i) return r; const n: Reg = [r[0], r[1]]; n[side] = r2(Math.max(0, Math.min(dur, v))); return n[0] < n[1] ? n : r; }));
+  const key = (e: React.KeyboardEvent) => {
+    const tg = e.target as HTMLInputElement; if (tg.tagName === 'INPUT' && (tg.type === 'number' || (tg.type === 'range' && e.key.startsWith('Arrow')))) return;
+    const k = e.key.toLowerCase(), big = e.shiftKey ? 15 : e.ctrlKey ? 0.1 : 5;
+    if (k === ' ') { e.preventDefault(); toggle(); } else if (k === 'arrowleft') { e.preventDefault(); seek(pos - (e.altKey ? 0.01 : big)); } else if (k === 'arrowright') { e.preventDefault(); seek(pos + (e.altKey ? 0.01 : big)); }
+    else if (k === 'arrowup') { e.preventDefault(); setVolume(Math.min(1, vol + 0.05)); } else if (k === 'arrowdown') { e.preventDefault(); setVolume(Math.max(0, vol - 0.05)); }
+    else if (k === 'i') markIn(); else if (k === 'o') markOut(); else if (k === 'f') setView([0, dur]);
+  };
+  const save = async () => { const r = await bb.inboxSetPassages?.(cid, it.file!, regs); if (r?.ok) toast(`${r.passages?.length ?? 0} passage${r.passages?.length === 1 ? '' : 's'} saved`); else toast(r?.error || 'Could not save'); };
+  const zoomed = dur > 0 && v1 - v0 < dur - 0.01;
   return <div className="songed" tabIndex={0} onKeyDown={key} style={{ outline: 'none', margin: '8px 0 14px', padding: 12, borderRadius: 14, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.1)' }}>
     {err ? <div className="small" style={{ color: 'var(--yellow)' }}>{err}</div> : !buf ? <div className="small dim">Loading waveform…</div> : <>
-      <canvas ref={cv} style={{ width: '100%', height: 120, display: 'block', cursor: 'crosshair', borderRadius: 10, background: 'rgba(0,0,0,.25)' }} onMouseDown={down} onMouseMove={move} onMouseUp={up} onMouseLeave={() => drag && up()} />
+      <canvas ref={cv} style={{ width: '100%', height: 150, display: 'block', cursor: drag?.kind === 'pan' ? 'grabbing' : hover, borderRadius: 10, background: 'rgba(0,0,0,.25)' }} onMouseDown={down} onMouseMove={move} onMouseUp={up} onMouseLeave={() => drag && up()} onWheel={wheel} />
+      {zoomed && <input type="range" className="songed-range" min={0} max={Math.max(0.01, dur - (v1 - v0))} step={0.01} value={v0} onChange={(e) => { const s0 = parseFloat(e.target.value); setView([s0, s0 + (v1 - v0)]); }} aria-label="Scroll the zoomed view" style={{ width: '100%', marginTop: 8, ['--p' as string]: `${(v0 / Math.max(0.01, dur - (v1 - v0))) * 100}%` }} />}
       <div className="songed-tl" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
-        <span className="small dim" style={{ width: 44 }}>{fmt(pos)}</span>
-        <input type="range" className="songed-range" min={0} max={dur} step={0.1} value={Math.min(pos, dur)} onChange={(e) => seek(parseFloat(e.target.value))} aria-label="Timeline" style={{ flex: 1, ['--p' as string]: `${dur ? (pos / dur) * 100 : 0}%` }} />
-        <span className="small dim" style={{ width: 44, textAlign: 'right' }}>{fmt(dur)}</span>
+        <span className="small dim" style={{ width: 52 }}>{fmt(pos)}</span>
+        <input type="range" className="songed-range" min={0} max={dur} step={0.01} value={Math.min(pos, dur)} onChange={(e) => seek(parseFloat(e.target.value))} aria-label="Timeline" style={{ flex: 1, ['--p' as string]: `${dur ? (pos / dur) * 100 : 0}%` }} />
+        <span className="small dim" style={{ width: 52, textAlign: 'right' }}>{fmt(dur)}</span>
       </div>
       <div className="row" style={{ gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button className="btn sm" onClick={() => seek(pos - 15)} title="Back 15 s (Shift+Left)">-15 s</button>
         <button className="btn sm" onClick={() => seek(pos - 5)} title="Back 5 s (Left)">-5 s</button>
+        <button className="btn sm" onClick={() => seek(pos - 0.1)} title="Back 0.1 s (Ctrl+Left)">-0.1</button>
         <button className="btn sm accent" onClick={toggle} title="Space"><Icon name={playing ? 'pause' : 'play'} size={14} /> {playing ? 'Pause' : 'Play'}</button>
+        <button className="btn sm" onClick={() => seek(pos + 0.1)} title="Forward 0.1 s (Ctrl+Right)">+0.1</button>
         <button className="btn sm" onClick={() => seek(pos + 5)} title="Forward 5 s (Right)">+5 s</button>
-        <button className="btn sm" onClick={() => seek(pos + 15)} title="Forward 15 s (Shift+Right)">+15 s</button>
         <span className="row small" style={{ gap: 6, alignItems: 'center' }}><Icon name={vol === 0 ? 'mute' : 'vol'} size={14} /><input type="range" className="songed-range" min={0} max={1} step={0.01} value={vol} onChange={(e) => setVolume(parseFloat(e.target.value))} aria-label="Volume" style={{ width: 110, ['--p' as string]: `${vol * 100}%` }} />{Math.round(vol * 100)}%</span>
-        <label className="small" style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}><input type="checkbox" checked={gate} onChange={(e) => setGate(e.target.checked)} /> Hear the gate (muffled outside the passages)</label>
+        <label className="small" style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}><input type="checkbox" checked={gate} onChange={(e) => setGate(e.target.checked)} /> Hear the gate</label>
+      </div>
+      <div className="row" style={{ gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="btn sm" onClick={() => zoomBy(0.5)} title="Zoom in (mouse wheel)">Zoom +</button>
+        <button className="btn sm" onClick={() => zoomBy(2)} title="Zoom out (mouse wheel)">Zoom -</button>
+        <button className="btn sm" onClick={() => setView([0, dur])} title="Fit whole song (F)">Fit</button>
+        <span className="small dim">{(v1 - v0).toFixed(2)} s visible</span>
         <span style={{ flex: 1 }} />
+        <button className="btn sm" onClick={markIn} title="I">{inMark != null ? `In ${fmt(inMark)}` : 'Mark in (I)'}</button>
+        <button className="btn sm" onClick={markOut} title="O">Mark out (O)</button>
         <button className="btn sm" onClick={() => setRegs([])} disabled={!regs.length}>Clear all</button>
         <button className="btn sm accent" onClick={save}>Save passages</button>
         <button className="btn sm" onClick={() => { stop(); onClose(); }}>Close</button>
       </div>
-      <p className="small dim" style={{ margin: '8px 0 4px' }}>Drag on the wave to mark a passage where the music must be open (unmuffled). Click to jump. Yellow = open, grey = muffled. Keys: Space play, Left/Right 5 s (Shift 15 s), Up/Down volume.</p>
-      {regs.map((r, i) => <div key={i} className="row small" style={{ gap: 8, alignItems: 'center', padding: '2px 0' }}>
-        <button className="btn sm icon" aria-label="Play passage" onClick={() => start(r[0])}><Icon name="play" size={12} /></button>
-        <span>{fmt(r[0])} to {fmt(r[1])}</span><span className="dim">{(r[1] - r[0]).toFixed(1)} s</span>
+      <p className="small dim" style={{ margin: '8px 0 4px' }}>Drag on the wave = new open passage. Drag a yellow edge = adjust. Wheel = zoom, Alt+drag = scroll. Click = jump. Keys: Space play, Left/Right 5 s (Ctrl 0.1 s, Alt 0.01 s, Shift 15 s), I / O mark in/out at the playhead, F fit, Up/Down volume. Yellow = open, grey = muffled.</p>
+      {regs.map((r, i) => <div key={i} className="row small" style={{ gap: 6, alignItems: 'center', padding: '3px 0', flexWrap: 'wrap' }}>
+        <button className="btn sm icon" aria-label="Play passage" title="Play from 0.5 s before" onClick={() => start(Math.max(0, r[0] - 0.5))}><Icon name="play" size={12} /></button>
+        {([0, 1] as const).map((side) => <span key={side} className="row" style={{ gap: 3, alignItems: 'center' }}>
+          <span className="dim">{side ? 'to' : 'from'}</span>
+          <button className="btn sm icon" onClick={() => setReg(i, side, r[side] - 0.01)} title="-0.01 s">-</button>
+          <input className="in" type="number" step={0.01} min={0} max={dur} value={r[side]} style={{ width: 84 }} onChange={(e) => { const v = parseFloat(e.target.value); if (isFinite(v)) setReg(i, side, v); }} />
+          <button className="btn sm icon" onClick={() => setReg(i, side, r[side] + 0.01)} title="+0.01 s">+</button>
+          <button className="btn sm" onClick={() => setReg(i, side, pos)} title="Set to the playhead">playhead</button>
+        </span>)}
+        <span className="dim">{(r[1] - r[0]).toFixed(2)} s</span>
         <button className="btn sm icon" aria-label="Delete passage" onClick={() => setRegs((x) => x.filter((_, j) => j !== i))}>✕</button>
       </div>)}
     </>}
@@ -159,7 +227,7 @@ export function TempLibrary() {
     {isDesktop && scan && !scan.exists && <div className="glass card"><div className="empty">The vault folder Inbox (with inbox.py) was not found.</div></div>}
     {isDesktop && scan?.exists && scan.cats.map((c) => <div key={c.id} className="glass card" style={{ marginBottom: 12 }}>
       <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <b style={{ flex: 1 }}><span className="ov-n">{c.id}</span>{c.title}</b>
+        <b style={{ flex: 1 }}><span className="ov-n" style={{ marginRight: 8 }}>{c.id}</span>{c.title}</b>
         <span className={`chip ${c.low ? 'warn' : ''}`}>{c.left} left{c.low ? ' · running low' : ''}</span>
         <span className="chip">{c.used} used</span>
         {c.kind === 'song' && <button className="btn sm accent" onClick={async () => { const r = await bb.inboxAdd?.(c.id); if (r?.ok) { toast(`${r.added} song${r.added === 1 ? '' : 's'} added`); setTimeout(load, 1500); } else if (r && r.error !== 'cancelled') toast(r.error || 'Could not add'); }}><Icon name="upload" size={14} /> Add songs</button>}

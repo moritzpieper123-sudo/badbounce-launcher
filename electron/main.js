@@ -479,7 +479,7 @@ ipcMain.handle('inboxSetPassages', (_e, cid, file, passages) => {
   const ip = path.join(inboxRoot(), c.id, c.sub, 'index.json'); let j;
   try { j = JSON.parse(fs.readFileSync(ip, 'utf8')); } catch { return { ok: false, error: 'index.json not found, press Check now first' }; }
   const it = (j.items || []).find((x) => x.file === file); if (!it) return { ok: false, error: 'song not in the index yet' };
-  const clean = (Array.isArray(passages) ? passages : []).map((p) => [Math.max(0, Math.round(Number(p[0]) * 10) / 10), Math.round(Number(p[1]) * 10) / 10]).filter((p) => p[1] - p[0] >= 0.3).sort((a, b) => a[0] - b[0]);
+  const clean = (Array.isArray(passages) ? passages : []).map((p) => [Math.max(0, Math.round(Number(p[0]) * 100) / 100), Math.round(Number(p[1]) * 100) / 100]).filter((p) => p[1] - p[0] >= 0.05).sort((a, b) => a[0] - b[0]);
   if (clean.length) { it.passages = clean; it.passagesSource = 'manual'; } else { delete it.passages; delete it.passagesSource; }
   try { fs.writeFileSync(ip, JSON.stringify(j, null, 2)); } catch (e) { return { ok: false, error: String(e.message || e) }; }
   sendAll('inboxChanged'); return { ok: true, passages: clean };
