@@ -428,7 +428,7 @@ ipcMain.handle('librariesRebuild', () => { rebuildLibraries(true); return libSta
 
 /* Temp library (vault Inbox/): one-time-use assets Mo refills (K2/K4 songs, K3 meme packs). Inbox/inbox.py keeps the index.json files
    (finds new files, best song section, pack checks); the launcher runs it every 10 min and when a file arrives, and reads the result. */
-const INBOX_LOW = 3;
+const INBOX_LOW = 2; // warn when only 1 video (or none) can still be made: 1 song, or 1 complete pack (8 memes + merge sound)
 const INBOX_CATS = [
   { id: 'K2', sub: 'Songs', kind: 'song', title: 'K2 Edge increase: songs' },
   { id: 'K4', sub: 'Songs', kind: 'song', title: 'K4 Ball escape: songs' },
