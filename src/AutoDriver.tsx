@@ -56,6 +56,24 @@ export function AutoDriver({ snap, update }: { snap: Snapshot; update: Update })
     else if (st.state === 'done') { clear('claude-login'); clear('gen-missing'); clear('gen-paused'); limitUntil.current = 0; }
   }), []);
 
+  // ---- temp library (vault Inbox): low stock -> bell notification + island alert (both read the autopilot alerts)
+  useEffect(() => {
+    if (!bb.inbox) return;
+    const check = async () => {
+      let sc; try { sc = await bb.inbox!(); } catch { return; }
+      if (!sc?.exists) return;
+      for (const c of sc.cats) {
+        const id = `inbox-${c.id}`, open = autoOf(ref.current.state).alerts.find((x) => x.id === id && !x.resolved);
+        if (!c.low) { if (open) clear(id); continue; }
+        const what = c.kind === 'song' ? 'songs' : 'meme packs';
+        const sub = c.left === 0 ? `None left: ${c.id} videos wait until you add more ${what} (Temp library).` : `Only ${c.left} left. Add more ${what} in the Temp library.`;
+        if (!open || open.sub !== sub) alert({ id, kind: 'stock', title: `${c.id} ${what} running low`, sub });
+      }
+    };
+    const t0 = window.setTimeout(check, 40000), t = window.setInterval(check, 5 * 60000), off = bb.onInboxChanged?.(() => window.setTimeout(check, 2000));
+    return () => { clearTimeout(t0); clearInterval(t); off?.(); };
+  }, []);
+
   // ---- the minute tick
   useEffect(() => {
     if (!isDesktop || !bb.genStart) return;
