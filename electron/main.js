@@ -1,5 +1,5 @@
 // Badbounce Launcher — Electron main process
-const { app, BrowserWindow, ipcMain, shell, clipboard, screen, globalShortcut, protocol, net, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, screen, globalShortcut, protocol, net, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const { Readable } = require('stream');
 const fs = require('fs');
@@ -425,6 +425,67 @@ function startLibrariesAuto() {
   try { libWatch?.close(); let t = null; libWatch = fs.watch(path.join(vault(), 'Engine'), { recursive: true }, (_ev, f) => { if (f && /__pycache__|\.(pyc|mp4|log|tmp)$/i.test(String(f))) return; clearTimeout(t); t = setTimeout(() => rebuildLibraries(false), 60000); }); } catch { /* no Engine folder */ }
 }
 ipcMain.handle('librariesRebuild', () => { rebuildLibraries(true); return libStatus; });
+
+/* Temp library (vault Inbox/): one-time-use assets Mo refills (K2/K4 songs, K3 meme packs). Inbox/inbox.py keeps the index.json files
+   (finds new files, best song section, pack checks); the launcher runs it every 10 min and when a file arrives, and reads the result. */
+const INBOX_LOW = 3;
+const INBOX_CATS = [
+  { id: 'K2', sub: 'Songs', kind: 'song', title: 'K2 Edge increase: songs' },
+  { id: 'K4', sub: 'Songs', kind: 'song', title: 'K4 Ball escape: songs' },
+  { id: 'K3', sub: 'Packs', kind: 'pack', title: 'K3 Meme drop: meme packs (8 stages + merge sound)' },
+];
+let inboxProc = null, inboxAgain = false, inboxTimer = null, inboxWatch = null;
+function inboxRoot() { return path.join(vault(), 'Inbox'); }
+function runInboxPy(done) {
+  const script = path.join(inboxRoot(), 'inbox.py');
+  if (!fs.existsSync(script)) { done && done(false); return; }
+  if (inboxProc) { inboxAgain = true; return; }
+  const tries = process.platform === 'win32' ? [['py', ['-3']], ['python', []]] : [['python3', []]];
+  const run = (i) => {
+    if (i >= tries.length) { done && done(false); return; }
+    const [cmd, pre] = tries[i]; let p;
+    try { p = spawn(cmd, [...pre, script, 'status'], { cwd: inboxRoot(), windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } }); } catch { run(i + 1); return; }
+    inboxProc = p; p.stdout.on('data', () => {}); p.stderr.on('data', () => {});
+    try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* */ }
+    p.on('error', () => { inboxProc = null; run(i + 1); });
+    p.on('close', (code) => { inboxProc = null; sendAll('inboxChanged'); done && done(code === 0); if (inboxAgain) { inboxAgain = false; setTimeout(() => runInboxPy(), 3000); } });
+  };
+  run(0);
+}
+function scanInbox() {
+  const root = inboxRoot(); const cats = [];
+  for (const c of INBOX_CATS) {
+    const dir = path.join(root, c.id, c.sub); let j = { items: [] };
+    try { j = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')); } catch { /* not indexed yet */ }
+    const items = (j.items || []).map((it) => ({ ...it, path: c.kind === 'song' ? path.join(dir, it.file) : (it.images && it.images[0] ? path.join(dir, it.theme, it.images[0]) : null), name: it.file || it.theme }));
+    const left = items.filter((it) => it.status === 'new' && !it.problem).length;
+    cats.push({ ...c, dir, items, left, used: items.filter((it) => it.status === 'used').length, low: left < INBOX_LOW, problems: items.filter((it) => it.problem).length });
+  }
+  return { root, exists: fs.existsSync(path.join(root, 'inbox.py')), low: INBOX_LOW, cats };
+}
+const cleanName = (n) => String(n).replace(/[#\\/:*?"<>|]/g, '').trim();
+ipcMain.handle('inbox', () => scanInbox());
+ipcMain.handle('inboxRefresh', () => new Promise((res) => runInboxPy(() => res(scanInbox()))));
+ipcMain.handle('inboxAdd', async (_e, cid) => {
+  const c = INBOX_CATS.find((x) => x.id === cid && x.kind === 'song'); if (!c) return { ok: false, error: 'not a song category' };
+  const r = await dialog.showOpenDialog(mainWin, { title: `Add songs for ${cid}`, properties: ['openFile', 'multiSelections'], filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'm4a', 'ogg', 'flac'] }] });
+  if (r.canceled || !r.filePaths.length) return { ok: false, error: 'cancelled' };
+  const dir = path.join(inboxRoot(), c.id, c.sub); fs.mkdirSync(dir, { recursive: true });
+  let n = 0; for (const f of r.filePaths) { try { fs.copyFileSync(f, path.join(dir, cleanName(path.basename(f)))); n++; } catch { /* */ } }
+  runInboxPy(); return { ok: true, added: n };
+});
+ipcMain.handle('inboxNewPack', (_e, name) => {
+  const t = cleanName(name); if (!t) return { ok: false, error: 'Give the theme a name' };
+  const dir = path.join(inboxRoot(), 'K3', 'Packs', t);
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { return { ok: false, error: String(e.message || e) }; }
+  shell.openPath(dir); return { ok: true, dir };
+});
+function startInboxAuto() {
+  try { fs.mkdirSync(inboxRoot(), { recursive: true }); } catch { /* */ }
+  setTimeout(() => runInboxPy(), 25000);
+  clearInterval(inboxTimer); inboxTimer = setInterval(() => runInboxPy(), 10 * 60000);
+  try { inboxWatch?.close(); let t = null; inboxWatch = fs.watch(inboxRoot(), { recursive: true }, (_ev, f) => { if (!f || /index\.json$|__pycache__|\.pyc$/i.test(String(f))) return; clearTimeout(t); t = setTimeout(() => runInboxPy(), 8000); }); } catch { /* no Inbox folder */ }
+}
 ipcMain.handle('mailConnect', async (_e, id, secret) => { try { const r = await gmail.connect(String(id).trim(), String(secret).trim(), true); broadcast(); return { ok: true, email: r.email }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
 ipcMain.handle('mailRead', async (_e, id) => { const r = await gmail.markRead(String(id)); broadcast(); return r; });
 ipcMain.handle('mailAllowModify', async () => { try { await gmail.allowModify(); broadcast(); return { ok: true }; } catch (e) { return { ok: false, error: String(e.message || e) }; } });
@@ -595,6 +656,7 @@ else {
     fixShortcuts();
     if (restartWithUpdate(HIDDEN)) return;
     startLibrariesAuto();
+    startInboxAuto();
     // vault files for the UI. Videos need byte ranges (206), else Chromium stalls after the first chunk (Overview player froze after ~1 s).
     const MIME = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8' };
     protocol.handle('bbfile', async (req) => {

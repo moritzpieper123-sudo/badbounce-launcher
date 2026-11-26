@@ -26,6 +26,7 @@ import Analytics from './pages/Analytics';
 import Library from './pages/Library';
 import Overview from './pages/Overview';
 import Libraries from './pages/Libraries';
+import TempLibrary from './pages/TempLibrary';
 import Control from './pages/Control';
 import { AutoDriver } from './AutoDriver';
 import { autoOf, stockOf } from './autopilot';
@@ -47,6 +48,7 @@ const PAGES = [
   { id: 'library', label: 'Library', short: 'Library', icon: 'grid' },
   { id: 'overview', label: 'Overview (final Konzepte)', short: 'Overview', icon: 'film' },
   { id: 'libraries', label: 'Libraries (Konzept assets + sounds)', short: 'Libraries', icon: 'music' },
+  { id: 'templib', label: 'Temp library (songs + meme packs)', short: 'Temp lib', icon: 'music', desktop: true },
   { id: 'ideas', label: 'Idea inbox', short: 'Ideas', icon: 'bulb' },
   { id: 'mail', label: 'Inbox', short: 'Inbox', icon: 'mail' },
   { id: 'vault', label: 'Vault graph', short: 'Vault', icon: 'graph', desktop: true },
@@ -107,7 +109,7 @@ function App() {
     toast(r.error ? `Update check failed: ${r.error}` : r.ready ? `Update ${r.ready} is ready · click the button again to install` : `You are up to date (v${r.current})`);
   };
   const fetchCsv = () => { if (!bb.csvFetch) { go('analytics'); return; } setCsv({ state: 'running', msg: 'Starting…' }); bb.csvFetch(); };
-  const Page = { today: Today, schedule: Schedule, board: Board, upload: Upload, analytics: Analytics, library: Library, overview: Overview, control: Control, libraries: Libraries, ideas: Ideas, mail: Mail, tools: Tools, settings: Settings, vault: VaultGraphPage }[page] || Today;
+  const Page = { today: Today, schedule: Schedule, board: Board, upload: Upload, analytics: Analytics, library: Library, overview: Overview, control: Control, libraries: Libraries, templib: TempLibrary, ideas: Ideas, mail: Mail, tools: Tools, settings: Settings, vault: VaultGraphPage }[page] || Today;
   const notes = notifications(snap, { due, buf, dueTasks, csv });
   const bellProps = { notes, go, fetchCsv, csv };
   const navIdx = PAGES.findIndex((p) => p.id === page);
@@ -209,7 +211,7 @@ function notifications(snap: Snapshot, o: { due: boolean; buf: ReturnType<typeof
   if (o.dueTasks) out.push({ kind: 'board', key: 'tasks', icon: 'check', title: `${o.dueTasks} task${o.dueTasks > 1 ? 's' : ''} due`, sub: 'Today and late' });
   if (snap.mail?.unread) out.push({ kind: 'mail', key: 'mail', icon: 'mail', title: `${snap.mail.unread} unread email${snap.mail.unread > 1 ? 's' : ''}`, sub: snap.mail.items.find((m) => m.unread)?.subject ?? '' });
   const au = autoOf(snap.state), pend = stockOf(snap).pending.length;
-  for (const a of au.alerts.filter((x) => !x.resolved && !x.read).slice(0, 5)) out.push({ kind: 'control', key: `auto:${a.id}`, icon: a.kind === 'hot' ? 'sparkle' : 'bell', y: a.kind !== 'hot', title: a.title, sub: a.sub });
+  for (const a of au.alerts.filter((x) => !x.resolved && !x.read).slice(0, 5)) out.push({ kind: a.id.startsWith('inbox-') ? 'templib' : 'control', key: `auto:${a.id}`, icon: a.kind === 'hot' ? 'sparkle' : 'bell', y: a.kind !== 'hot', title: a.title, sub: a.sub });
   if (au.enabled && pend) out.push({ kind: 'control', key: 'review', icon: 'radar', title: `${pend} video${pend > 1 ? 's' : ''} wait for your review`, sub: 'Approve the ones you want to post in the Control Room' });
   if (snap.update?.ready) out.push({ kind: 'update', key: 'upd', icon: 'sparkle', y: true, title: `Update ${snap.update.ready} is ready`, sub: 'Restarts the launcher' });
   return out;
@@ -219,7 +221,7 @@ function Bell({ notes, go, fetchCsv, csv, small }: { notes: ReturnType<typeof no
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { if (!open) return; const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); }; addEventListener('mousedown', h); return () => removeEventListener('mousedown', h); }, [open]);
   const n = notes.length, hot = notes.some((x) => x.y);
-  const act = (k: string) => { setOpen(false); if (k === 'board') go('board'); else if (k === 'control') go('control'); else if (k === 'mail') go('mail'); else if (k === 'gen') go('today'); else if (k === 'update') bb.applyUpdate?.(); };
+  const act = (k: string) => { setOpen(false); if (k === 'board') go('board'); else if (k === 'control') go('control'); else if (k === 'templib') go('templib'); else if (k === 'mail') go('mail'); else if (k === 'gen') go('today'); else if (k === 'update') bb.applyUpdate?.(); };
   return <div ref={ref} style={{ position: 'relative' }}>
     <button className={small ? 'iconbtn sm' : `glass round ${hot ? 'ring-on' : ''}`} onClick={() => setOpen((o) => !o)} aria-label={`${n} notifications`} title="Notifications" style={small ? { position: 'relative' } : undefined}>
       <Icon name="bell" size={small ? 16 : 18} />{n > 0 && <span className="vcount" style={small ? { position: 'absolute', top: -6, right: -6, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: 'var(--yellow)', color: 'var(--accent-ink)', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' } : undefined}>{n}</span>}
