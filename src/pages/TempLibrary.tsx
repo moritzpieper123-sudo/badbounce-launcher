@@ -21,8 +21,10 @@ function SongEditor({ cid, it, onClose }: { cid: string; it: InboxItem; onClose:
   const [playing, setPlaying] = useState(false);
   const [gate, setGate] = useState(true);
   const [err, setErr] = useState('');
+  const [vol, setVol] = useState(() => { try { const v = parseFloat(localStorage.getItem('bb.songVol') || ''); return isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8; } catch { return 0.8; } });
+  const volRef = useRef(vol); volRef.current = vol;
   const ctx = useRef<AudioContext | null>(null);
-  const play = useRef<{ src: AudioBufferSourceNode; filt: BiquadFilterNode; t0: number; off: number } | null>(null);
+  const play = useRef<{ src: AudioBufferSourceNode; filt: BiquadFilterNode; gain: GainNode; t0: number; off: number } | null>(null);
   const regsRef = useRef(regs); regsRef.current = regs;
   const gateRef = useRef(gate); gateRef.current = gate;
   const dur = buf?.duration ?? 0;
@@ -50,10 +52,11 @@ function SongEditor({ cid, it, onClose }: { cid: string; it: InboxItem; onClose:
     const c = ctx.current; if (c.state === 'suspended') c.resume();
     const src = c.createBufferSource(); src.buffer = buf;
     const filt = c.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 20000;
-    src.connect(filt); filt.connect(c.destination);
+    const gain = c.createGain(); gain.gain.value = volRef.current * volRef.current;
+    src.connect(filt); filt.connect(gain); gain.connect(c.destination);
     src.start(0, Math.max(0, Math.min(off, buf.duration - 0.05)));
     src.onended = () => { play.current = null; setPlaying(false); };
-    play.current = { src, filt, t0: c.currentTime, off }; setPlaying(true);
+    play.current = { src, filt, gain, t0: c.currentTime, off }; setPlaying(true);
   };
   // playhead + gate: open (20 kHz) inside a passage, muffled (450 Hz) outside, like the video
   useEffect(() => {
@@ -89,21 +92,36 @@ function SongEditor({ cid, it, onClose }: { cid: string; it: InboxItem; onClose:
     if (b - a < 0.4) { setPos(a); if (play.current) start(a); else setPos(a); return; }
     setRegs((r) => merge([...r, [Math.round(a * 10) / 10, Math.round(b * 10) / 10]]));
   };
+  const setVolume = (v: number) => { setVol(v); try { localStorage.setItem('bb.songVol', String(v)); } catch { /* */ } const p = play.current, c = ctx.current; if (p && c) p.gain.gain.setTargetAtTime(v * v, c.currentTime, 0.02); };
+  const seek = (t: number) => { const n = Math.max(0, Math.min(dur, t)); setPos(n); if (play.current) start(n); };
+  const key = (e: React.KeyboardEvent) => {
+    if ((e.target as HTMLElement).tagName === 'INPUT' && (e.target as HTMLInputElement).type === 'range' && e.key.startsWith('Arrow')) return;
+    if (e.key === ' ') { e.preventDefault(); toggle(); } else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(pos - (e.shiftKey ? 15 : 5)); } else if (e.key === 'ArrowRight') { e.preventDefault(); seek(pos + (e.shiftKey ? 15 : 5)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setVolume(Math.min(1, vol + 0.05)); } else if (e.key === 'ArrowDown') { e.preventDefault(); setVolume(Math.max(0, vol - 0.05)); }
+  };
   const toggle = () => { if (playing) stop(); else start(pos >= dur - 0.2 ? 0 : pos); };
   const save = async () => { const r = await bb.inboxSetPassages?.(cid, it.file!, regs); if (r?.ok) { toast(`${r.passages?.length ?? 0} passage${r.passages?.length === 1 ? '' : 's'} saved`); } else toast(r?.error || 'Could not save'); };
-  return <div className="songed" style={{ margin: '8px 0 14px', padding: 12, borderRadius: 14, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.1)' }}>
+  return <div className="songed" tabIndex={0} onKeyDown={key} style={{ outline: 'none', margin: '8px 0 14px', padding: 12, borderRadius: 14, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.1)' }}>
     {err ? <div className="small" style={{ color: 'var(--yellow)' }}>{err}</div> : !buf ? <div className="small dim">Loading waveform…</div> : <>
       <canvas ref={cv} style={{ width: '100%', height: 120, display: 'block', cursor: 'crosshair', borderRadius: 10, background: 'rgba(0,0,0,.25)' }} onMouseDown={down} onMouseMove={move} onMouseUp={up} onMouseLeave={() => drag && up()} />
+      <div className="songed-tl" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+        <span className="small dim" style={{ width: 44 }}>{fmt(pos)}</span>
+        <input type="range" className="songed-range" min={0} max={dur} step={0.1} value={Math.min(pos, dur)} onChange={(e) => seek(parseFloat(e.target.value))} aria-label="Timeline" style={{ flex: 1, ['--p' as string]: `${dur ? (pos / dur) * 100 : 0}%` }} />
+        <span className="small dim" style={{ width: 44, textAlign: 'right' }}>{fmt(dur)}</span>
+      </div>
       <div className="row" style={{ gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button className="btn sm accent" onClick={toggle}><Icon name={playing ? 'pause' : 'play'} size={14} /> {playing ? 'Pause' : 'Play'}</button>
-        <span className="small dim">{fmt(pos)} / {fmt(dur)}</span>
+        <button className="btn sm" onClick={() => seek(pos - 15)} title="Back 15 s (Shift+Left)">-15 s</button>
+        <button className="btn sm" onClick={() => seek(pos - 5)} title="Back 5 s (Left)">-5 s</button>
+        <button className="btn sm accent" onClick={toggle} title="Space"><Icon name={playing ? 'pause' : 'play'} size={14} /> {playing ? 'Pause' : 'Play'}</button>
+        <button className="btn sm" onClick={() => seek(pos + 5)} title="Forward 5 s (Right)">+5 s</button>
+        <button className="btn sm" onClick={() => seek(pos + 15)} title="Forward 15 s (Shift+Right)">+15 s</button>
+        <span className="row small" style={{ gap: 6, alignItems: 'center' }}><Icon name={vol === 0 ? 'mute' : 'vol'} size={14} /><input type="range" className="songed-range" min={0} max={1} step={0.01} value={vol} onChange={(e) => setVolume(parseFloat(e.target.value))} aria-label="Volume" style={{ width: 110, ['--p' as string]: `${vol * 100}%` }} />{Math.round(vol * 100)}%</span>
         <label className="small" style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}><input type="checkbox" checked={gate} onChange={(e) => setGate(e.target.checked)} /> Hear the gate (muffled outside the passages)</label>
         <span style={{ flex: 1 }} />
         <button className="btn sm" onClick={() => setRegs([])} disabled={!regs.length}>Clear all</button>
         <button className="btn sm accent" onClick={save}>Save passages</button>
         <button className="btn sm" onClick={() => { stop(); onClose(); }}>Close</button>
       </div>
-      <p className="small dim" style={{ margin: '8px 0 4px' }}>Drag on the wave to mark a passage where the music must be open (unmuffled). Click to jump. Yellow = open, grey = muffled.</p>
+      <p className="small dim" style={{ margin: '8px 0 4px' }}>Drag on the wave to mark a passage where the music must be open (unmuffled). Click to jump. Yellow = open, grey = muffled. Keys: Space play, Left/Right 5 s (Shift 15 s), Up/Down volume.</p>
       {regs.map((r, i) => <div key={i} className="row small" style={{ gap: 8, alignItems: 'center', padding: '2px 0' }}>
         <button className="btn sm icon" aria-label="Play passage" onClick={() => start(r[0])}><Icon name="play" size={12} /></button>
         <span>{fmt(r[0])} to {fmt(r[1])}</span><span className="dim">{(r[1] - r[0]).toFixed(1)} s</span>

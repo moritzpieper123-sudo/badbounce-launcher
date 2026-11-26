@@ -1265,3 +1265,8 @@ svg.ax-clock { display: block; width: clamp(480px, min(52vw, 68vh), 900px); heig
 .libsw-low { margin-left: auto; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; background: #FF6B5C; color: #fff; box-shadow: 0 0 0 3px rgba(255,107,92,.25); animation: libswPulse 1.6s ease-in-out infinite; }
 @keyframes libswPulse { 50% { box-shadow: 0 0 0 7px rgba(255,107,92,0); } }
 @media (max-width: 640px) { .libsw-txt small { display: none; } .libsw-btn { padding: 12px; } }
+
+/* song editor sliders */
+.songed-range { -webkit-appearance: none; appearance: none; height: 8px; border-radius: 6px; outline: none; cursor: pointer; background: linear-gradient(90deg, var(--yellow) var(--p, 0%), rgba(255,255,255,.14) var(--p, 0%)); }
+.songed-range::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--yellow); box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+.songed-range:hover::-webkit-slider-thumb { transform: scale(1.15); }
