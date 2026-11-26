@@ -1246,3 +1246,22 @@ svg.ax-clock { display: block; width: clamp(480px, min(52vw, 68vh), 900px); heig
 /* Phone home: the upload card sits right under the title so a video can be posted from there (Mo 2026-11-25); on wide screens the Next-slot panel already covers it */
 .phone-first { display: none; }
 @media (max-width: 760px) { .phone-first { display: block; } }
+
+/* Libraries: Perma / Temp switch (big segmented control with a sliding glow) */
+.libsw { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px; margin: 0 0 18px; border-radius: 22px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); backdrop-filter: blur(14px); max-width: 760px; }
+.libsw:has(.libsw-btn:only-of-type) { grid-template-columns: 1fr; }
+.libsw-glow { position: absolute; top: 6px; bottom: 6px; left: 6px; width: calc(50% - 9px); border-radius: 17px; background: linear-gradient(135deg, var(--yellow, #FFC63A), #FF9E3A); box-shadow: 0 8px 28px rgba(255,170,40,.35), inset 0 1px 0 rgba(255,255,255,.45); transition: transform .35s cubic-bezier(.2,.9,.25,1.1); }
+.libsw.temp .libsw-glow { transform: translateX(calc(100% + 6px)); }
+.libsw:has(.libsw-btn:only-of-type) .libsw-glow { width: calc(100% - 12px); }
+.libsw-btn { position: relative; z-index: 1; display: flex; align-items: center; gap: 14px; padding: 16px 20px; border: 0; border-radius: 17px; background: transparent; color: inherit; cursor: pointer; text-align: left; transition: color .25s, transform .15s; }
+.libsw-btn:hover { transform: translateY(-1px); }
+.libsw-btn:active { transform: scale(.985); }
+.libsw-btn.on { color: #1A1404; }
+.libsw-ico { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; background: rgba(255,255,255,.08); flex: none; transition: background .25s; }
+.libsw-btn.on .libsw-ico { background: rgba(26,20,4,.14); }
+.libsw-txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.libsw-txt b { font-size: 20px; font-weight: 800; letter-spacing: .02em; }
+.libsw-txt small { font-size: 12px; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.libsw-low { margin-left: auto; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; background: #FF6B5C; color: #fff; box-shadow: 0 0 0 3px rgba(255,107,92,.25); animation: libswPulse 1.6s ease-in-out infinite; }
+@keyframes libswPulse { 50% { box-shadow: 0 0 0 7px rgba(255,107,92,0); } }
+@media (max-width: 640px) { .libsw-txt small { display: none; } .libsw-btn { padding: 12px; } }

@@ -65,8 +65,16 @@ export function LibTabs({ tab, setTab }: { tab: 'reuse' | 'temp'; setTab: (t: 'r
     const f = () => bb.inbox?.().then((s) => setLow(s?.exists ? s.cats.filter((c) => c.low).length : 0)).catch(() => {});
     f(); return bb.onInboxChanged?.(f);
   }, []);
-  return <div className="row" style={{ gap: 8, margin: '0 0 12px' }}>
-    <button className={`chip chip-btn ${tab === 'reuse' ? 'on' : ''}`} onClick={() => setTab('reuse')}><Icon name="grid" size={12} /> Reusable assets</button>
-    {isDesktop && <button className={`chip chip-btn ${tab === 'temp' ? 'on' : ''}`} onClick={() => setTab('temp')}><Icon name="upload" size={12} /> One-time assets (songs + meme packs){low > 0 && <span className="chip warn" style={{ marginLeft: 6 }}>{low} low</span>}</button>}
+  return <div className={`libsw ${tab}`} role="tablist">
+    <span className="libsw-glow" aria-hidden="true" />
+    <button role="tab" aria-selected={tab === 'reuse'} className={`libsw-btn ${tab === 'reuse' ? 'on' : ''}`} onClick={() => setTab('reuse')}>
+      <span className="libsw-ico"><Icon name="grid" size={22} /></span>
+      <span className="libsw-txt"><b>Perma</b><small>Reusable assets, fill once</small></span>
+    </button>
+    {isDesktop && <button role="tab" aria-selected={tab === 'temp'} className={`libsw-btn ${tab === 'temp' ? 'on' : ''}`} onClick={() => setTab('temp')}>
+      <span className="libsw-ico"><Icon name="update" size={22} /></span>
+      <span className="libsw-txt"><b>Temp</b><small>One-time songs + meme packs, refill</small></span>
+      {low > 0 && <span className="libsw-low">{low} low</span>}
+    </button>}
   </div>;
 }
