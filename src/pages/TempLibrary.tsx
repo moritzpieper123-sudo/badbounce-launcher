@@ -6,7 +6,7 @@ import { Header } from './parts';
 import { Icon } from '../ui';
 import { bb, isDesktop, type InboxScan, type InboxItem } from '../bridge';
 
-export default function TempLibrary() {
+export function TempLibrary() {
   const { toast } = useApp();
   const [scan, setScan] = useState<InboxScan | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,4 +55,18 @@ export default function TempLibrary() {
       </div>)}
     </div>)}
   </>;
+}
+
+/* Category switch shown at the top of the Libraries page: reusable assets vs one-time (temp) assets, with a warning dot when stock is low. */
+export const LIB_TAB_KEY = 'bb.libTab';
+export function LibTabs({ tab, setTab }: { tab: 'reuse' | 'temp'; setTab: (t: 'reuse' | 'temp') => void }) {
+  const [low, setLow] = useState(0);
+  useEffect(() => {
+    const f = () => bb.inbox?.().then((s) => setLow(s?.exists ? s.cats.filter((c) => c.low).length : 0)).catch(() => {});
+    f(); return bb.onInboxChanged?.(f);
+  }, []);
+  return <div className="row" style={{ gap: 8, margin: '0 0 12px' }}>
+    <button className={`chip chip-btn ${tab === 'reuse' ? 'on' : ''}`} onClick={() => setTab('reuse')}><Icon name="grid" size={12} /> Reusable assets</button>
+    {isDesktop && <button className={`chip chip-btn ${tab === 'temp' ? 'on' : ''}`} onClick={() => setTab('temp')}><Icon name="upload" size={12} /> One-time assets (songs + meme packs){low > 0 && <span className="chip warn" style={{ marginLeft: 6 }}>{low} low</span>}</button>}
+  </div>;
 }

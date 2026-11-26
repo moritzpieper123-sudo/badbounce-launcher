@@ -26,7 +26,6 @@ import Analytics from './pages/Analytics';
 import Library from './pages/Library';
 import Overview from './pages/Overview';
 import Libraries from './pages/Libraries';
-import TempLibrary from './pages/TempLibrary';
 import Control from './pages/Control';
 import { AutoDriver } from './AutoDriver';
 import { autoOf, stockOf } from './autopilot';
@@ -47,8 +46,7 @@ const PAGES = [
   { id: 'control', label: 'Control Room (autopilot)', short: 'Control', icon: 'radar', desktop: true },
   { id: 'library', label: 'Library', short: 'Library', icon: 'grid' },
   { id: 'overview', label: 'Overview (final Konzepte)', short: 'Overview', icon: 'film' },
-  { id: 'libraries', label: 'Libraries (Konzept assets + sounds)', short: 'Libraries', icon: 'music' },
-  { id: 'templib', label: 'Temp library (songs + meme packs)', short: 'Temp lib', icon: 'music', desktop: true },
+  { id: 'libraries', label: 'Libraries (assets, sounds, songs)', short: 'Libraries', icon: 'music' },
   { id: 'ideas', label: 'Idea inbox', short: 'Ideas', icon: 'bulb' },
   { id: 'mail', label: 'Inbox', short: 'Inbox', icon: 'mail' },
   { id: 'vault', label: 'Vault graph', short: 'Vault', icon: 'graph', desktop: true },
@@ -109,7 +107,7 @@ function App() {
     toast(r.error ? `Update check failed: ${r.error}` : r.ready ? `Update ${r.ready} is ready · click the button again to install` : `You are up to date (v${r.current})`);
   };
   const fetchCsv = () => { if (!bb.csvFetch) { go('analytics'); return; } setCsv({ state: 'running', msg: 'Starting…' }); bb.csvFetch(); };
-  const Page = { today: Today, schedule: Schedule, board: Board, upload: Upload, analytics: Analytics, library: Library, overview: Overview, control: Control, libraries: Libraries, templib: TempLibrary, ideas: Ideas, mail: Mail, tools: Tools, settings: Settings, vault: VaultGraphPage }[page] || Today;
+  const Page = { today: Today, schedule: Schedule, board: Board, upload: Upload, analytics: Analytics, library: Library, overview: Overview, control: Control, libraries: Libraries, ideas: Ideas, mail: Mail, tools: Tools, settings: Settings, vault: VaultGraphPage }[page] || Today;
   const notes = notifications(snap, { due, buf, dueTasks, csv });
   const bellProps = { notes, go, fetchCsv, csv };
   const navIdx = PAGES.findIndex((p) => p.id === page);
@@ -221,7 +219,7 @@ function Bell({ notes, go, fetchCsv, csv, small }: { notes: ReturnType<typeof no
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { if (!open) return; const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); }; addEventListener('mousedown', h); return () => removeEventListener('mousedown', h); }, [open]);
   const n = notes.length, hot = notes.some((x) => x.y);
-  const act = (k: string) => { setOpen(false); if (k === 'board') go('board'); else if (k === 'control') go('control'); else if (k === 'templib') go('templib'); else if (k === 'mail') go('mail'); else if (k === 'gen') go('today'); else if (k === 'update') bb.applyUpdate?.(); };
+  const act = (k: string) => { setOpen(false); if (k === 'board') go('board'); else if (k === 'control') go('control'); else if (k === 'templib') { try { sessionStorage.setItem('bb.libTab', 'temp'); } catch { /* */ } go('libraries'); } else if (k === 'mail') go('mail'); else if (k === 'gen') go('today'); else if (k === 'update') bb.applyUpdate?.(); };
   return <div ref={ref} style={{ position: 'relative' }}>
     <button className={small ? 'iconbtn sm' : `glass round ${hot ? 'ring-on' : ''}`} onClick={() => setOpen((o) => !o)} aria-label={`${n} notifications`} title="Notifications" style={small ? { position: 'relative' } : undefined}>
       <Icon name="bell" size={small ? 16 : 18} />{n > 0 && <span className="vcount" style={small ? { position: 'absolute', top: -6, right: -6, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: 'var(--yellow)', color: 'var(--accent-ink)', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' } : undefined}>{n}</span>}

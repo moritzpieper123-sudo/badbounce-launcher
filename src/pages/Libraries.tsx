@@ -4,9 +4,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../ctx';
 import { Header } from './parts';
 import { Icon } from '../ui';
+import { TempLibrary, LibTabs, LIB_TAB_KEY } from './TempLibrary';
 import { bb, isDesktop, type LibrariesScan, type LibItem, type LibStatus } from '../bridge';
 
-export default function Libraries() {
+function ReusableLibraries() {
   const { toast } = useApp();
   const [scan, setScan] = useState<LibrariesScan | null>(null);
   const [sel, setSel] = useState<string>('');
@@ -69,5 +70,13 @@ export default function Libraries() {
         </div>; })}
       </div>}
     </>}
+  </>;
+}
+
+export default function Libraries() {
+  const [tab, setTab] = useState<'reuse' | 'temp'>(() => { try { const t = sessionStorage.getItem(LIB_TAB_KEY); sessionStorage.removeItem(LIB_TAB_KEY); return t === 'temp' ? 'temp' : 'reuse'; } catch { return 'reuse'; } });
+  return <>
+    <LibTabs tab={tab} setTab={setTab} />
+    {tab === 'temp' ? <TempLibrary /> : <ReusableLibraries />}
   </>;
 }
