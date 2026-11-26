@@ -474,6 +474,16 @@ ipcMain.handle('inboxAdd', async (_e, cid) => {
   let n = 0; for (const f of r.filePaths) { try { fs.copyFileSync(f, path.join(dir, cleanName(path.basename(f)))); n++; } catch { /* */ } }
   runInboxPy(); return { ok: true, added: n };
 });
+ipcMain.handle('inboxSetPassages', (_e, cid, file, passages) => {
+  const c = INBOX_CATS.find((x) => x.id === cid && x.kind === 'song'); if (!c) return { ok: false, error: 'not a song category' };
+  const ip = path.join(inboxRoot(), c.id, c.sub, 'index.json'); let j;
+  try { j = JSON.parse(fs.readFileSync(ip, 'utf8')); } catch { return { ok: false, error: 'index.json not found, press Check now first' }; }
+  const it = (j.items || []).find((x) => x.file === file); if (!it) return { ok: false, error: 'song not in the index yet' };
+  const clean = (Array.isArray(passages) ? passages : []).map((p) => [Math.max(0, Math.round(Number(p[0]) * 10) / 10), Math.round(Number(p[1]) * 10) / 10]).filter((p) => p[1] - p[0] >= 0.3).sort((a, b) => a[0] - b[0]);
+  if (clean.length) { it.passages = clean; it.passagesSource = 'manual'; } else { delete it.passages; delete it.passagesSource; }
+  try { fs.writeFileSync(ip, JSON.stringify(j, null, 2)); } catch (e) { return { ok: false, error: String(e.message || e) }; }
+  sendAll('inboxChanged'); return { ok: true, passages: clean };
+});
 ipcMain.handle('inboxNewPack', (_e, name) => {
   const t = cleanName(name); if (!t) return { ok: false, error: 'Give the theme a name' };
   const dir = path.join(inboxRoot(), 'K3', 'Packs', t);

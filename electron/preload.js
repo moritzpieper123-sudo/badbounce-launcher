@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld('bb', {
   inbox: () => ipcRenderer.invoke('inbox'),
   inboxRefresh: () => ipcRenderer.invoke('inboxRefresh'),
   inboxAdd: (cid) => ipcRenderer.invoke('inboxAdd', cid),
+  inboxSetPassages: (cid, file, passages) => ipcRenderer.invoke('inboxSetPassages', cid, file, passages),
   inboxNewPack: (name) => ipcRenderer.invoke('inboxNewPack', name),
   onInboxChanged: (cb) => on('inboxChanged', cb),
   onLibrariesStatus: (cb) => { const h = (_e, s) => cb(s); ipcRenderer.on('librariesStatus', h); return () => ipcRenderer.removeListener('librariesStatus', h); },

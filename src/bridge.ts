@@ -62,6 +62,7 @@ export interface BB {
   inbox?(): Promise<InboxScan>;
   inboxRefresh?(): Promise<InboxScan>;
   inboxAdd?(cid: string): Promise<{ ok: boolean; added?: number; error?: string }>;
+  inboxSetPassages?(cid: string, file: string, passages: [number, number][]): Promise<{ ok: boolean; passages?: [number, number][]; error?: string }>;
   inboxNewPack?(name: string): Promise<{ ok: boolean; dir?: string; error?: string }>;
   onInboxChanged?(cb: () => void): () => void;
   onLibrariesStatus?(cb: (s: LibStatus) => void): () => void;
@@ -133,7 +134,7 @@ export interface LibConcept { id: string; name: string; items: LibItem[] }
 export interface Lib { folder: string; kind: 'images' | 'sounds'; title: string; concept: string | null; desc: string; items: LibItem[]; concepts: LibConcept[] }
 export interface LibStatus { state: 'idle' | 'running' | 'done' | 'error'; msg: string; at: number }
 /* Temp library (vault Inbox/): one-time-use songs + meme packs */
-export interface InboxItem { name: string; file?: string; theme?: string; status: 'new' | 'used'; start?: number | null; usedOn?: string; video?: string | null; problem?: string | null; images?: string[]; sound?: string | null; path: string | null }
+export interface InboxItem { name: string; file?: string; theme?: string; status: 'new' | 'used'; start?: number | null; usedOn?: string; video?: string | null; problem?: string | null; images?: string[]; sound?: string | null; passages?: [number, number][]; path: string | null }
 export interface InboxCat { id: string; sub: string; kind: 'song' | 'pack'; title: string; dir: string; items: InboxItem[]; left: number; used: number; low: boolean; problems: number }
 export interface InboxScan { root: string; exists: boolean; low: number; cats: InboxCat[] }
 export interface LibrariesScan { root: string; built: number; libraries: Lib[]; status?: LibStatus }
